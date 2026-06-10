@@ -31,23 +31,6 @@ create type article_status as enum (
   'published'
 );
 
--- 파이프라인 단계 (lib/harness/logger.ts의 PipelineStage와 일치해야 한다)
-create type pipeline_stage as enum (
-  'source_validation',
-  'article_generation',
-  'article_contract_check',
-  'article_eval',
-  'human_review'
-);
-
--- 파이프라인 로그 상태 (lib/harness/logger.ts의 PipelineLogStatus와 일치해야 한다)
-create type pipeline_log_status as enum (
-  'started',
-  'succeeded',
-  'failed',
-  'skipped'
-);
-
 -- ------------------------------------------------------------
 -- 공통: updated_at 자동 갱신 트리거 함수
 -- ------------------------------------------------------------
@@ -68,6 +51,8 @@ create table topics (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   description text,
+  keywords text[] not null default '{}',
+  language text not null default 'ko' check (language in ('ko', 'en')),
   status topic_status not null default 'draft',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -83,22 +68,26 @@ create trigger trg_topics_updated_at
 -- min-source-count 규칙에 대응한다.
 -- ------------------------------------------------------------
 
+-- url/title은 출처 등록 시점에는 비어 있을 수 있다 (source.contract.yaml의
+-- required-fields 규칙은 기사 생성 시점에 검사하며, 그 전까지는 미완성 출처로 등록될 수 있다).
 create table sources (
   id uuid primary key default gen_random_uuid(),
   topic_id uuid not null references topics(id) on delete cascade,
-  url text not null,
-  title text not null,
+  url text not null default '',
+  title text not null default '',
   author text,
   published_at timestamptz,
   summary text,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
 
-  constraint sources_url_format check (url ~* '^https?://'),
-  constraint sources_topic_url_unique unique (topic_id, url)
+  constraint sources_url_format check (url = '' or url ~* '^https?://')
 );
 
 create index idx_sources_topic_id on sources (topic_id);
+
+-- url이 비어 있지 않은 출처에 한해 같은 주제 내 중복 URL을 막는다.
+create unique index sources_topic_url_unique_idx on sources (topic_id, url) where url <> '';
 
 -- ------------------------------------------------------------
 -- articles: 출처를 근거로 생성된 기사 초안
@@ -182,14 +171,20 @@ create index idx_eval_runs_article_id on eval_runs (article_id);
 
 -- ------------------------------------------------------------
 -- pipeline_logs: 파이프라인 단계별 실행 로그 (FR-10)
+--
+-- stage/status는 lib/repositories/log-repository.ts의 LogEventType/LogStatus
+-- (theme_created, source_added, contract_checked, article_draft_created /
+--  success, failed, info)를 그대로 저장한다. lib/harness/pipeline.ts(Phase 2
+-- 오케스트레이터)에서 사용할 source_validation 등 세분화된 단계 이름은 추후
+-- 별도 컬럼/마이그레이션으로 다룬다.
 -- ------------------------------------------------------------
 
 create table pipeline_logs (
   id uuid primary key default gen_random_uuid(),
   topic_id uuid references topics(id) on delete cascade,
   article_id uuid references articles(id) on delete set null,
-  stage pipeline_stage not null,
-  status pipeline_log_status not null,
+  stage text not null,
+  status text not null check (status in ('success', 'failed', 'info')),
   message text,
   details jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()

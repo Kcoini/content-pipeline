@@ -1,12 +1,10 @@
 import { addSource, createTheme, generateArticleDraft } from "./actions";
 import { getLogs } from "@/lib/harness/logger";
-import {
-  getArticleByThemeId,
-  getLatestContractCheck,
-  getSourcesByThemeId,
-  getStore,
-} from "@/lib/store/memory-store";
-import type { ContractViolation } from "@/lib/harness/types";
+import { getLatestContractCheck, type ContractCheckRecord } from "@/lib/repositories/log-repository";
+import { getThemes } from "@/lib/repositories/theme-repository";
+import { getSourcesByThemeId } from "@/lib/repositories/source-repository";
+import { getArticleByThemeId } from "@/lib/repositories/article-repository";
+import type { Article, Source } from "@/lib/types/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -18,23 +16,27 @@ export default async function DashboardPage({
   searchParams: Promise<{ themeId?: string }>;
 }) {
   const { themeId } = await searchParams;
-  const store = getStore();
-  const themes = store.themes;
+  const themes = await getThemes();
 
   const selectedTheme =
     (themeId && themes.find((theme) => theme.id === themeId)) ||
     themes[themes.length - 1];
 
-  const sources = selectedTheme ? getSourcesByThemeId(selectedTheme.id) : [];
-  const article = selectedTheme ? getArticleByThemeId(selectedTheme.id) : undefined;
-  const sourceCheck = selectedTheme
-    ? getLatestContractCheck(selectedTheme.id, "source")
-    : undefined;
-  const articleCheck = selectedTheme
-    ? getLatestContractCheck(selectedTheme.id, "article")
-    : undefined;
+  let sources: Source[] = [];
+  let article: Article | undefined;
+  let sourceCheck: ContractCheckRecord | undefined;
+  let articleCheck: ContractCheckRecord | undefined;
 
-  const logs = getLogs().slice(0, 20);
+  if (selectedTheme) {
+    [sources, article, sourceCheck, articleCheck] = await Promise.all([
+      getSourcesByThemeId(selectedTheme.id),
+      getArticleByThemeId(selectedTheme.id),
+      getLatestContractCheck(selectedTheme.id, "source"),
+      getLatestContractCheck(selectedTheme.id, "article"),
+    ]);
+  }
+
+  const logs = await getLogs(20);
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -345,7 +347,7 @@ function ContractCheckResult({
   check,
 }: {
   label: string;
-  check?: { result: { passed: boolean; violations: ContractViolation[] }; checkedAt: string };
+  check?: ContractCheckRecord;
 }) {
   if (!check) {
     return (
@@ -355,7 +357,7 @@ function ContractCheckResult({
     );
   }
 
-  const { passed, violations } = check.result;
+  const { passed, violations } = check;
 
   return (
     <div

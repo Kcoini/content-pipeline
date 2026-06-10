@@ -1,14 +1,16 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
 import { logEvent } from "@/lib/harness/logger";
 import { generateMockArticle } from "@/lib/ai/generate-article";
-import { getStore, getSourcesByThemeId, getThemeById } from "@/lib/store/memory-store";
-import type { Article, Language, Source, Theme } from "@/lib/types/domain";
+import { recordContractCheck } from "@/lib/repositories/log-repository";
+import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
+import { addSource as addSourceRecord, getSourcesByThemeId } from "@/lib/repositories/source-repository";
+import { saveDraftArticle } from "@/lib/repositories/article-repository";
+import type { Language } from "@/lib/types/domain";
 
 function parseKeywords(raw: string): string[] {
   return raw
@@ -31,22 +33,14 @@ export async function createTheme(formData: FormData): Promise<void> {
   const keywords = parseKeywords(String(formData.get("keywords") ?? ""));
   const language = (String(formData.get("language") ?? "ko") as Language) === "en" ? "en" : "ko";
 
-  const theme: Theme = {
-    id: randomUUID(),
-    title,
-    description,
-    keywords,
-    language,
-    createdAt: new Date().toISOString(),
-  };
+  const theme = await createThemeRecord({ title, description, keywords, language });
 
-  getStore().themes.push(theme);
-
-  logEvent({
+  await logEvent({
     type: "theme_created",
     status: "success",
     message: `테마가 생성되었습니다: ${theme.title}`,
     details: { themeId: theme.id, title: theme.title, language: theme.language },
+    themeId: theme.id,
   });
 
   revalidatePath("/dashboard");
@@ -58,7 +52,7 @@ export async function createTheme(formData: FormData): Promise<void> {
  */
 export async function addSource(formData: FormData): Promise<void> {
   const themeId = String(formData.get("themeId") ?? "");
-  const theme = getThemeById(themeId);
+  const theme = await getThemeById(themeId);
   if (!theme) {
     redirect("/dashboard");
   }
@@ -74,24 +68,14 @@ export async function addSource(formData: FormData): Promise<void> {
     redirect(`/dashboard?themeId=${themeId}`);
   }
 
-  const source: Source = {
-    id: randomUUID(),
-    themeId,
-    url,
-    title,
-    publisher,
-    publishedAt,
-    summary,
-    createdAt: new Date().toISOString(),
-  };
+  const source = await addSourceRecord({ themeId, url, title, publisher, publishedAt, summary });
 
-  getStore().sources.push(source);
-
-  logEvent({
+  await logEvent({
     type: "source_added",
     status: "success",
     message: `출처가 등록되었습니다: ${source.title || source.url || "(제목 없음)"}`,
     details: { themeId, sourceId: source.id, url: source.url, title: source.title },
+    themeId,
   });
 
   revalidatePath("/dashboard");
@@ -103,13 +87,12 @@ export async function addSource(formData: FormData): Promise<void> {
  */
 export async function generateArticleDraft(formData: FormData): Promise<void> {
   const themeId = String(formData.get("themeId") ?? "");
-  const theme = getThemeById(themeId);
+  const theme = await getThemeById(themeId);
   if (!theme) {
     redirect("/dashboard");
   }
 
-  const store = getStore();
-  const sources = getSourcesByThemeId(themeId);
+  const sources = await getSourcesByThemeId(themeId);
 
   // 1) source.contract.yaml 검사 (FR-6, FR-7)
   const sourceContract = loadContract("source.contract.yaml");
@@ -118,15 +101,15 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     collections: { topic_sources: sourceItems },
   });
 
-  store.contractChecks.push({
+  await recordContractCheck({
     themeId,
     target: "source",
     contractName: sourceContract.name,
-    result: sourceResult,
-    checkedAt: new Date().toISOString(),
+    passed: sourceResult.passed,
+    violations: sourceResult.violations,
   });
 
-  logEvent({
+  await logEvent({
     type: "contract_checked",
     status: sourceResult.passed ? "success" : "failed",
     message: sourceResult.passed
@@ -138,6 +121,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
       passed: sourceResult.passed,
       violations: sourceResult.violations,
     },
+    themeId,
   });
 
   if (!sourceResult.passed) {
@@ -148,24 +132,15 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
 
   // 2) mock 기사 초안 생성 (FR-4, FR-5)
   const generated = generateMockArticle(theme, sources);
-  const article: Article = {
-    id: randomUUID(),
-    themeId,
-    title: generated.title,
-    content: generated.content,
-    status: "draft",
-    citedSourceIds: generated.citedSourceIds,
-    createdAt: new Date().toISOString(),
-  };
 
   // 3) article.contract.yaml 검사 (FR-7)
   const articleContract = loadContract("article.contract.yaml");
-  const citedSources = sources.filter((source) => article.citedSourceIds.includes(source.id));
+  const citedSources = sources.filter((source) => generated.citedSourceIds.includes(source.id));
   const articleItem: Record<string, unknown> = {
-    title: article.title,
-    content: article.content,
-    topicId: article.themeId,
-    status: article.status,
+    title: generated.title,
+    content: generated.content,
+    topicId: themeId,
+    status: "draft",
   };
   const articleResult = runContractForCollection(articleContract, [articleItem], {
     collections: {
@@ -174,15 +149,15 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     operation: "create",
   });
 
-  store.contractChecks.push({
+  await recordContractCheck({
     themeId,
     target: "article",
     contractName: articleContract.name,
-    result: articleResult,
-    checkedAt: new Date().toISOString(),
+    passed: articleResult.passed,
+    violations: articleResult.violations,
   });
 
-  logEvent({
+  await logEvent({
     type: "contract_checked",
     status: articleResult.passed ? "success" : "failed",
     message: articleResult.passed
@@ -194,6 +169,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
       passed: articleResult.passed,
       violations: articleResult.violations,
     },
+    themeId,
   });
 
   if (!articleResult.passed) {
@@ -202,10 +178,14 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
   }
 
   // 4) draft 상태로 저장 (이전 초안은 새 초안으로 교체)
-  store.articles = store.articles.filter((existing) => existing.themeId !== themeId);
-  store.articles.push(article);
+  const article = await saveDraftArticle({
+    themeId,
+    title: generated.title,
+    content: generated.content,
+    citedSourceIds: generated.citedSourceIds,
+  });
 
-  logEvent({
+  await logEvent({
     type: "article_draft_created",
     status: "success",
     message: `기사 초안이 생성되었습니다: ${article.title} (status=${article.status})`,
@@ -216,6 +196,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
       citedSourceIds: article.citedSourceIds,
       contentLength: article.content.length,
     },
+    themeId,
   });
 
   revalidatePath("/dashboard");
