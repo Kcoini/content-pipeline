@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateMockArticle } from "./generate-article";
+import { generateAiArticleDraft, generateMockArticleDraft } from "./article-writer";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
 import type { Source, Theme } from "@/lib/types/domain";
@@ -46,16 +46,16 @@ const sources: Source[] = [
   },
 ];
 
-describe("generateMockArticle", () => {
+describe("generateMockArticleDraft", () => {
   it("본문은 500자 이상이고, 등록된 모든 출처를 인용한다", () => {
-    const result = generateMockArticle(theme, sources);
+    const result = generateMockArticleDraft(theme, sources);
 
     expect(result.content.length).toBeGreaterThanOrEqual(500);
     expect(result.citedSourceIds).toEqual(sources.map((source) => source.id));
   });
 
   it("status=draft으로 구성된 기사 객체는 article.contract.yaml을 통과한다", () => {
-    const generated = generateMockArticle(theme, sources);
+    const generated = generateMockArticleDraft(theme, sources);
     const articleContract = loadContract("article.contract.yaml");
 
     const articleItem: Record<string, unknown> = {
@@ -77,7 +77,7 @@ describe("generateMockArticle", () => {
   });
 
   it("status가 draft가 아니면 article.contract.yaml(initial-status-draft)에 위반된다", () => {
-    const generated = generateMockArticle(theme, sources);
+    const generated = generateMockArticleDraft(theme, sources);
     const articleContract = loadContract("article.contract.yaml");
 
     const articleItem: Record<string, unknown> = {
@@ -96,5 +96,25 @@ describe("generateMockArticle", () => {
 
     expect(result.passed).toBe(false);
     expect(result.violations.some((v) => v.ruleId === "initial-status-draft")).toBe(true);
+  });
+
+  it("출처가 3개 미만이면 source.contract.yaml(min-source-count)을 통과하지 못해 기사 생성이 막힌다", () => {
+    const fewSources = sources.slice(0, 2);
+    const sourceContract = loadContract("source.contract.yaml");
+
+    const result = runContractForCollection(
+      sourceContract,
+      fewSources as unknown as Record<string, unknown>[],
+      { collections: { topic_sources: fewSources as unknown as Record<string, unknown>[] } }
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.violations.some((v) => v.ruleId === "min-source-count")).toBe(true);
+  });
+});
+
+describe("generateAiArticleDraft", () => {
+  it("아직 구현되지 않아 호출 시 에러를 던진다", async () => {
+    await expect(generateAiArticleDraft(theme, [])).rejects.toThrow();
   });
 });

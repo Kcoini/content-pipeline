@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
 import { logEvent } from "@/lib/harness/logger";
-import { generateMockArticle } from "@/lib/ai/generate-article";
+import { generateMockArticleDraft } from "@/lib/ai/article-writer";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
 import { addSource as addSourceRecord, getSourcesByThemeId } from "@/lib/repositories/source-repository";
@@ -132,7 +132,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
   }
 
   // 2) mock 기사 초안 생성 (FR-4, FR-5)
-  const generated = generateMockArticle(theme, sources);
+  const generated = generateMockArticleDraft(theme, sources);
 
   // 3) article.contract.yaml 검사 (FR-7)
   const articleContract = loadContract("article.contract.yaml");
