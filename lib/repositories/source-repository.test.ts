@@ -5,7 +5,7 @@ import type { SourceRow } from "@/lib/supabase/database.types";
 function makeSourceRow(overrides: Partial<SourceRow> = {}): SourceRow {
   return {
     id: "source-1",
-    topic_id: "topic-1",
+    theme_id: "theme-1",
     url: "https://a.example.com",
     title: "출처 A",
     author: "A 매체",
@@ -13,6 +13,7 @@ function makeSourceRow(overrides: Partial<SourceRow> = {}): SourceRow {
     summary: "요약",
     metadata: {},
     created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -23,7 +24,7 @@ describe("mapSourceRowToSource", () => {
 
     expect(source).toEqual({
       id: "source-1",
-      themeId: "topic-1",
+      themeId: "theme-1",
       url: "https://a.example.com",
       title: "출처 A",
       publisher: "A 매체",

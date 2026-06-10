@@ -5,7 +5,7 @@ import type { ArticleRow } from "@/lib/supabase/database.types";
 function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
   return {
     id: "article-1",
-    topic_id: "topic-1",
+    theme_id: "theme-1",
     title: "AI 에이전트 동향",
     content: "본문".repeat(300),
     status: "draft",
@@ -25,7 +25,7 @@ describe("mapArticleRowToArticle", () => {
 
     expect(article).toEqual({
       id: "article-1",
-      themeId: "topic-1",
+      themeId: "theme-1",
       title: "AI 에이전트 동향",
       content: row.content,
       status: "draft",

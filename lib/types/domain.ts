@@ -1,5 +1,5 @@
 // 도메인 타입 정의 (Phase 1: Supabase 연동 전 메모리 스토어 기준)
-// db/schema.sql의 topics/sources/articles와 필드를 최대한 맞춘다.
+// db/schema.sql의 themes/sources/articles와 필드를 최대한 맞춘다.
 
 export type Language = "ko" | "en";
 

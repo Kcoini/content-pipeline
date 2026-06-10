@@ -5,13 +5,17 @@ import type { ContractRunRow, PipelineLogRow } from "@/lib/supabase/database.typ
 function makeLogRow(overrides: Partial<PipelineLogRow> = {}): PipelineLogRow {
   return {
     id: "log-1",
-    topic_id: "topic-1",
+    theme_id: "theme-1",
     article_id: null,
-    stage: "theme_created",
+    target_type: null,
+    target_id: null,
+    event: "theme_created",
+    stage: null,
     status: "success",
     message: "테마가 생성되었습니다: AI 에이전트 동향",
-    details: { themeId: "topic-1" },
+    details_json: { themeId: "theme-1" },
     created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -19,13 +23,20 @@ function makeLogRow(overrides: Partial<PipelineLogRow> = {}): PipelineLogRow {
 function makeContractRunRow(overrides: Partial<ContractRunRow> = {}): ContractRunRow {
   return {
     id: "run-1",
-    topic_id: "topic-1",
+    theme_id: "theme-1",
+    article_id: null,
     target_type: "source",
     target_id: null,
     contract_name: "source.contract",
+    stage: null,
     passed: true,
+    status: "success",
+    source_count: null,
+    failed_conditions: [],
     violations: [],
+    details_json: {},
     created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -39,7 +50,7 @@ describe("mapLogRow", () => {
       type: "theme_created",
       status: "success",
       message: "테마가 생성되었습니다: AI 에이전트 동향",
-      details: { themeId: "topic-1" },
+      details: { themeId: "theme-1" },
       createdAt: "2026-01-01T00:00:00.000Z",
     });
   });
@@ -60,7 +71,7 @@ describe("mapContractRunRow", () => {
     );
 
     expect(record).toEqual({
-      themeId: "topic-1",
+      themeId: "theme-1",
       target: "source",
       contractName: "source.contract",
       passed: false,
@@ -69,8 +80,8 @@ describe("mapContractRunRow", () => {
     });
   });
 
-  it("topic_id가 null이면 themeId를 빈 문자열로 변환한다", () => {
-    const record = mapContractRunRow(makeContractRunRow({ topic_id: null }));
+  it("theme_id가 null이면 themeId를 빈 문자열로 변환한다", () => {
+    const record = mapContractRunRow(makeContractRunRow({ theme_id: null }));
     expect(record.themeId).toBe("");
   });
 });

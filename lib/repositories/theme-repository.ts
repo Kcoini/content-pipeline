@@ -1,7 +1,7 @@
-// topics 테이블 ↔ Theme 도메인 타입 매핑 및 데이터 접근.
+// themes 테이블 ↔ Theme 도메인 타입 매핑 및 데이터 접근.
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { TopicRow } from "@/lib/supabase/database.types";
+import type { ThemeRow } from "@/lib/supabase/database.types";
 import type { Language, Theme } from "@/lib/types/domain";
 
 export interface CreateThemeInput {
@@ -11,7 +11,7 @@ export interface CreateThemeInput {
   language: Language;
 }
 
-export function mapTopicRowToTheme(row: TopicRow): Theme {
+export function mapThemeRowToTheme(row: ThemeRow): Theme {
   return {
     id: row.id,
     title: row.title,
@@ -27,7 +27,7 @@ export async function createTheme(input: CreateThemeInput): Promise<Theme> {
   const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase
-    .from("topics")
+    .from("themes")
     .insert({
       title: input.title,
       description: input.description || null,
@@ -41,7 +41,7 @@ export async function createTheme(input: CreateThemeInput): Promise<Theme> {
     throw new Error(`테마 생성에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
-  return mapTopicRowToTheme(data);
+  return mapThemeRowToTheme(data);
 }
 
 /** 전체 테마 목록 조회 (생성 순) */
@@ -49,7 +49,7 @@ export async function getThemes(): Promise<Theme[]> {
   const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase
-    .from("topics")
+    .from("themes")
     .select()
     .order("created_at", { ascending: true });
 
@@ -57,17 +57,17 @@ export async function getThemes(): Promise<Theme[]> {
     throw new Error(`테마 목록 조회에 실패했습니다: ${error.message}`);
   }
 
-  return (data ?? []).map(mapTopicRowToTheme);
+  return (data ?? []).map(mapThemeRowToTheme);
 }
 
 export async function getThemeById(themeId: string): Promise<Theme | undefined> {
   const supabase = createServerSupabaseClient();
 
-  const { data, error } = await supabase.from("topics").select().eq("id", themeId).maybeSingle();
+  const { data, error } = await supabase.from("themes").select().eq("id", themeId).maybeSingle();
 
   if (error) {
     throw new Error(`테마 조회에 실패했습니다: ${error.message}`);
   }
 
-  return data ? mapTopicRowToTheme(data) : undefined;
+  return data ? mapThemeRowToTheme(data) : undefined;
 }

@@ -16,7 +16,7 @@ export interface AddSourceInput {
 export function mapSourceRowToSource(row: SourceRow): Source {
   return {
     id: row.id,
-    themeId: row.topic_id,
+    themeId: row.theme_id,
     url: row.url,
     title: row.title,
     publisher: row.author ?? "",
@@ -33,7 +33,7 @@ export async function addSource(input: AddSourceInput): Promise<Source> {
   const { data, error } = await supabase
     .from("sources")
     .insert({
-      topic_id: input.themeId,
+      theme_id: input.themeId,
       url: input.url,
       title: input.title,
       author: input.publisher || null,
@@ -56,7 +56,7 @@ export async function getSourcesByThemeId(themeId: string): Promise<Source[]> {
   const { data, error } = await supabase
     .from("sources")
     .select()
-    .eq("topic_id", themeId)
+    .eq("theme_id", themeId)
     .order("created_at", { ascending: true });
 
   if (error) {

@@ -14,7 +14,7 @@ export interface SaveDraftArticleInput {
 export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]): Article {
   return {
     id: row.id,
-    themeId: row.topic_id,
+    themeId: row.theme_id,
     title: row.title,
     content: row.content,
     status: row.status,
@@ -29,7 +29,7 @@ export async function getArticleByThemeId(themeId: string): Promise<Article | un
   const { data: articleRow, error: articleError } = await supabase
     .from("articles")
     .select()
-    .eq("topic_id", themeId)
+    .eq("theme_id", themeId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -61,7 +61,7 @@ export async function saveDraftArticle(input: SaveDraftArticleInput): Promise<Ar
   const { error: deleteError } = await supabase
     .from("articles")
     .delete()
-    .eq("topic_id", input.themeId)
+    .eq("theme_id", input.themeId)
     .eq("status", "draft");
 
   if (deleteError) {
@@ -71,7 +71,7 @@ export async function saveDraftArticle(input: SaveDraftArticleInput): Promise<Ar
   const { data: articleRow, error: insertError } = await supabase
     .from("articles")
     .insert({
-      topic_id: input.themeId,
+      theme_id: input.themeId,
       title: input.title,
       content: input.content,
       status: "draft",

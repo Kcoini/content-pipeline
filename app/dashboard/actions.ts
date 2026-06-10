@@ -107,6 +107,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     contractName: sourceContract.name,
     passed: sourceResult.passed,
     violations: sourceResult.violations,
+    sourceCount: sources.length,
   });
 
   await logEvent({
@@ -155,6 +156,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     contractName: articleContract.name,
     passed: articleResult.passed,
     violations: articleResult.violations,
+    sourceCount: citedSources.length,
   });
 
   await logEvent({

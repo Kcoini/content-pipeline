@@ -36,7 +36,8 @@ content-pipeline은 사용자가 입력한 주제와 출처(source)를 근거로
 | Contract(계약) | 각 파이프라인 단계가 만족해야 하는 조건 집합 (YAML로 정의) |
 | Eval(평가) | AI를 이용한 기사 품질 평가 |
 | Approval Gate(승인 게이트) | 사람의 명시적 승인 없이는 상태 전환을 막는 장치 |
-| Pipeline Log | 파이프라인 각 단계의 실행 결과를 기록한 로그 |
+| Pipeline Log | 파이프라인 각 단계의 실행 결과를 기록한 로그 (`pipeline_logs`) |
+| Agent Run(에이전트 실행) | AI/에이전트(LLM) 호출 자체의 입력/출력 실행 기록 (`agent_runs`) |
 
 ## 4. 기능 요구사항 (Functional Requirements)
 
@@ -79,7 +80,7 @@ AI 평가 결과와 무관하게, 기사 초안의 `status`를 `reviewed`(또는
 ### FR-10. 실행 로그
 주제 생성, 출처 등록, 계약 검사, 기사 생성, AI 평가, 사용자 승인 등 주요
 파이프라인 단계의 실행 결과는 `pipeline_logs`에 기록된다 (단계, 상태, 메시지,
-상세 정보, 시각).
+상세 정보, 시각). 각 로그/실행 기록 테이블의 역할 구분은 7장을 참고한다.
 
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
@@ -112,7 +113,44 @@ draft → sources_ready → generating → drafted → reviewed
 draft → reviewed → published (published은 MVP 이후, 구조만 정의)
 ```
 
-## 7. 관련 문서
+## 7. DB 테이블 역할 정리
+
+`db/schema.sql`에 정의된 실제 테이블과 역할은 다음과 같다. 코드(`lib/repositories/*`)가
+사용하는 테이블명/컬럼명을 기준으로 작성되었으며, 스키마 변경 시 이 표도 함께
+갱신한다.
+
+### 7.1 핵심 도메인 테이블
+
+| 테이블 | 역할 | 사용 코드 |
+|---|---|---|
+| `themes` | 사용자가 입력한 기사 주제 (제목, 설명, 키워드, 언어, 상태) | `lib/repositories/theme-repository.ts` |
+| `sources` | 주제별 출처 (URL, 제목, 작성자, 게시일, 요약) | `lib/repositories/source-repository.ts` |
+| `articles` | 출처를 근거로 생성된 기사 초안/본문 | `lib/repositories/article-repository.ts` |
+| `article_sources` | 기사가 인용한 출처의 다대다 연결 | `lib/repositories/article-repository.ts` |
+
+### 7.2 로그/실행 기록 테이블
+
+파이프라인 실행과 관련된 기록은 역할에 따라 다음 테이블로 분리하여 저장한다.
+
+| 테이블 | 역할 | 사용 코드 |
+|---|---|---|
+| `pipeline_logs` | 대시보드 및 파이프라인 이벤트 로그 (FR-10). 상세 정보는 `details_json`(jsonb) 컬럼에 저장한다. `event`/`status`는 `LogEventType`/`LogStatus` 값을 저장하는 현재 사용 컬럼이고, `stage`/`target_type`/`target_id`는 Phase 2 오케스트레이터(`lib/harness/pipeline.ts`)를 위한 자리만 마련해 둔 컬럼이다 (현재 값 없음). `details`(jsonb)는 과거 데이터 보존을 위해 남겨둔 컬럼으로 더 이상 사용하지 않는다 | `lib/repositories/log-repository.ts` (`logEvent`/`getLogs`) |
+| `contract_runs` | 계약 검사(Reins Engineering) 실행 결과 이력. `theme_id`, `target_type`, `target_id`, `contract_name`, `passed`, `violations`은 기존 사용 컬럼이고, `status`(passed로부터 산출), `source_count`(검사 시점 출처 개수), `failed_conditions`(실패한 규칙 ID 목록)는 새로 추가되어 `recordContractCheck`가 채운다. `article_id`/`stage`/`details_json`/`details`는 Phase 2를 위한 자리만 마련해 둔 컬럼이다 | `lib/repositories/log-repository.ts` (`recordContractCheck`/`getLatestContractCheck`) |
+| `agent_runs` | AI/에이전트(LLM) 호출 자체의 실행 기록 (입력/출력, 성공·실패) | 스키마/타입만 정의 (Phase 2: `lib/ai/generate-article.ts`, `lib/ai/eval-article.ts`) |
+| `eval_runs` | AI Evals 평가 결과 기록 (FR-8) | 스키마/타입만 정의 (Phase 2: `lib/ai/eval-article.ts`, `evals/article-quality.eval.yaml` 기준) |
+| `approval_logs` | 사용자 승인(Human Approval) 이벤트 기록 (FR-9) | 스키마/타입만 정의 (MVP 이후 `lib/harness/approval-gate.ts`와 연결 예정) |
+| `publish_logs` | 기사 게시(publish) 이벤트 기록 | 스키마/타입만 정의 (MVP 이후, `article.status = 'published'` 흐름과 함께 구현) |
+
+### 7.3 DB 스키마 적용
+
+- 신규 프로젝트: `db/schema.sql` 전체를 Supabase SQL Editor에서 실행한다.
+- 기존 DB와 코드 간 schema 불일치가 발생한 경우: `db/migrations/001_align_dashboard_schema.sql`을
+  실행한다. `create table if not exists` / `alter table ... add column if not exists` 형식만
+  사용하므로 기존 데이터를 삭제하지 않고 여러 번 실행해도 안전하다 (idempotent).
+  `sources.publisher`/`reliability_score`/`collected_at`은 Phase 2 placeholder 컬럼이며
+  현재 코드는 값을 쓰지 않는다.
+
+## 8. 관련 문서
 - `docs/acceptance-criteria.md` - 기능별 성공 기준
 - `docs/phase-1-plan.md` - Phase 1 구현 계획
 - `contracts/*.yaml` - 단계별 계약 정의

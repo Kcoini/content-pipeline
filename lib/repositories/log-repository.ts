@@ -48,22 +48,24 @@ export interface RecordContractCheckInput {
   contractName: string;
   passed: boolean;
   violations: ContractViolation[];
+  /** 검사 시점의 출처 개수 (source 계약: 등록된 출처 수, article 계약: 인용된 출처 수) */
+  sourceCount?: number;
 }
 
 export function mapLogRow(row: PipelineLogRow): PipelineLogEntry {
   return {
     id: row.id,
-    type: row.stage as LogEventType,
+    type: row.event as LogEventType,
     status: row.status as LogStatus,
     message: row.message ?? "",
-    details: row.details,
+    details: row.details_json,
     createdAt: row.created_at,
   };
 }
 
 export function mapContractRunRow(row: ContractRunRow): ContractCheckRecord {
   return {
-    themeId: row.topic_id ?? "",
+    themeId: row.theme_id ?? "",
     target: row.target_type,
     contractName: row.contract_name,
     passed: row.passed,
@@ -79,11 +81,11 @@ export async function logEvent(input: LogEventInput): Promise<PipelineLogEntry> 
   const { data, error } = await supabase
     .from("pipeline_logs")
     .insert({
-      topic_id: input.themeId ?? null,
-      stage: input.type,
+      theme_id: input.themeId ?? null,
+      event: input.type,
       status: input.status,
       message: input.message,
-      details: input.details ?? {},
+      details_json: input.details ?? {},
     })
     .select()
     .single();
@@ -121,10 +123,13 @@ export async function recordContractCheck(
   const { data, error } = await supabase
     .from("contract_runs")
     .insert({
-      topic_id: input.themeId,
+      theme_id: input.themeId,
       target_type: input.target,
       contract_name: input.contractName,
       passed: input.passed,
+      status: input.passed ? "success" : "failed",
+      source_count: input.sourceCount ?? null,
+      failed_conditions: input.violations.map((violation) => violation.ruleId),
       violations: input.violations,
     })
     .select()
@@ -147,7 +152,7 @@ export async function getLatestContractCheck(
   const { data, error } = await supabase
     .from("contract_runs")
     .select()
-    .eq("topic_id", themeId)
+    .eq("theme_id", themeId)
     .eq("target_type", target)
     .order("created_at", { ascending: false })
     .limit(1)
