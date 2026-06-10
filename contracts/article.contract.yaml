@@ -1,0 +1,49 @@
+# 기사(article) 계약 정의
+#
+# Reins Engineering: 이 계약을 통과해야 기사 초안이 저장되고 AI Evals
+# 단계(article_eval)로 진행할 수 있다. 실패 시 기사는 저장되지 않고
+# 파이프라인은 즉시 중단되어야 한다.
+
+name: article.contract
+version: 1
+target: article
+description: >
+  생성된 기사 초안이 draft 상태로 저장되기 위한 최소 조건과,
+  reviewed 전환을 위한 조건을 정의한다.
+
+rules:
+  - id: required-fields
+    description: 기사에는 title, content, topicId가 있어야 한다.
+    type: required
+    fields:
+      - title
+      - content
+      - topicId
+
+  - id: initial-status-draft
+    description: 새로 생성된 기사는 반드시 draft 상태여야 한다 (FR-5).
+    type: equals
+    field: status
+    value: draft
+    appliesTo: create
+
+  - id: min-content-length
+    description: 기사 본문은 최소 500자 이상이어야 한다.
+    type: minLength
+    field: content
+    value: 500
+
+  - id: min-linked-sources
+    description: 기사는 등록된 출처 중 최소 3개 이상을 인용해야 한다.
+    type: count
+    scope: article_sources
+    min: 3
+
+  - id: review-requires-approval
+    description: >
+      status를 reviewed(또는 published)로 전환하려면 approval-gate를 통해
+      사용자의 명시적 승인을 받아야 한다 (FR-9).
+    type: approvalRequired
+    field: status
+    value: reviewed
+    appliesTo: transition

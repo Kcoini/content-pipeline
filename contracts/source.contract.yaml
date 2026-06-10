@@ -1,0 +1,38 @@
+# 출처(source) 계약 정의
+#
+# Reins Engineering: 이 계약을 통과해야 "기사 생성(article_generation)" 단계로
+# 진행할 수 있다. 실패 시 lib/harness/contract-runner.ts가 ContractResult.passed=false를
+# 반환하고, 파이프라인은 즉시 중단되어야 한다.
+
+name: source.contract
+version: 1
+target: source
+description: >
+  주제(topic)에 등록된 출처(source) 목록이 기사 생성을 시작하기 위한
+  최소 조건을 만족하는지 검사한다.
+
+rules:
+  - id: required-fields
+    description: 각 출처는 url과 title을 반드시 포함해야 한다.
+    type: required
+    fields:
+      - url
+      - title
+
+  - id: url-format
+    description: url은 http(s) 형식이어야 한다.
+    type: pattern
+    field: url
+    pattern: "^https?://"
+
+  - id: unique-url-per-topic
+    description: 동일한 주제 내에서 url은 중복될 수 없다.
+    type: unique
+    scope: topic_sources
+    field: url
+
+  - id: min-source-count
+    description: 주제당 출처는 최소 3개 이상 등록되어야 한다 (FR-6).
+    type: count
+    scope: topic_sources
+    min: 3
