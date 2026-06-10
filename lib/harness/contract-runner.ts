@@ -6,10 +6,12 @@
 // js-yaml 의존성 추가 후 구현한다 (docs/phase-1-plan.md 참고).
 
 import type {
+  CollectionContractResult,
   Contract,
   ContractContext,
   ContractResult,
   ContractRule,
+  ContractRuleType,
   ContractViolation,
 } from "./types";
 
@@ -35,6 +37,60 @@ export function runContract(
     contractName: contract.name,
     passed: violations.length === 0,
     violations,
+  };
+}
+
+/** target 한 건에 대해 검사하는 규칙 타입 (required, pattern, equals, minLength, maxLength) */
+const ITEM_RULE_TYPES: ContractRuleType[] = [
+  "required",
+  "pattern",
+  "equals",
+  "minLength",
+  "maxLength",
+];
+
+/**
+ * 출처(sources) 목록, 또는 단일 기사 등 "항목들의 컬렉션"에 대해 계약을 검사한다.
+ *
+ * - scope가 없는 required/pattern/equals/minLength/maxLength 규칙은 항목별로 검사한다.
+ * - count/unique/approvalRequired 규칙(또는 scope가 지정된 규칙)은
+ *   context.collections를 이용해 컬렉션 단위로 한 번 검사한다.
+ */
+export function runContractForCollection(
+  contract: Contract,
+  items: Record<string, unknown>[],
+  context: ContractContext = {}
+): CollectionContractResult {
+  const itemRules = contract.rules.filter(
+    (rule) => ITEM_RULE_TYPES.includes(rule.type) && !rule.scope
+  );
+  const collectionRules = contract.rules.filter((rule) => !itemRules.includes(rule));
+
+  const itemContract: Contract = { ...contract, rules: itemRules };
+  const itemViolations = items.map((item, index) => ({
+    index,
+    item,
+    violations: runContract(itemContract, item, context).violations,
+  }));
+
+  const collectionContract: Contract = { ...contract, rules: collectionRules };
+  const collectionResult = runContract(collectionContract, {}, context);
+
+  const violations: ContractViolation[] = [
+    ...itemViolations.flatMap((entry) =>
+      entry.violations.map((violation) => ({
+        ruleId: violation.ruleId,
+        message: `[#${entry.index + 1}] ${violation.message}`,
+      }))
+    ),
+    ...collectionResult.violations,
+  ];
+
+  return {
+    contractName: contract.name,
+    passed: violations.length === 0,
+    violations,
+    itemViolations,
   };
 }
 

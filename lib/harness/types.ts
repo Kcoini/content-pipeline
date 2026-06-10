@@ -64,3 +64,19 @@ export interface ContractContext {
   /** 규칙의 appliesTo와 비교할 현재 작업 종류 */
   operation?: ContractRuleAppliesTo;
 }
+
+/** 컬렉션(예: sources 목록) 내 개별 항목에 대한 위반 내역 */
+export interface ItemContractViolations {
+  index: number;
+  item: Record<string, unknown>;
+  violations: ContractViolation[];
+}
+
+/**
+ * runContractForCollection의 결과.
+ * - violations: 항목별 위반 + 컬렉션 단위 위반을 모두 합친 전체 목록
+ * - itemViolations: 항목별 위반 상세 (어떤 출처가 어떤 규칙을 위반했는지 표시할 때 사용)
+ */
+export interface CollectionContractResult extends ContractResult {
+  itemViolations: ItemContractViolations[];
+}
