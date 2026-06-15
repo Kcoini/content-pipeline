@@ -10,6 +10,7 @@
 // generateAiArticleDraft는 prompts/article-draft.v1.md 기준으로 Phase 1-3 이후
 // 실제 LLM 호출로 구현한다.
 
+import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
 import type { Source, Theme } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
 
@@ -47,20 +48,104 @@ export function generateMockArticleDraft(theme: Theme, sources: Source[]): Gener
   return { title, content, citedSourceIds };
 }
 
+const ARTICLE_SYSTEM_PROMPT = `당신은 블로그/홈페이지 기사를 작성하는 에디터입니다.
+아래 제공된 출처 요약(sourceSummaries) 안의 정보만을 근거로 기사를 작성하세요.
+
+규칙:
+1. 제목을 포함하여 작성하세요.
+2. 본문은 공백 포함 500자 이상이어야 합니다.
+3. 제공된 출처 요약 중 최소 3개 이상을 citedSourceIds에 포함하고, 본문에서
+   실제로 언급/인용해야 합니다.
+4. 출처 요약에 없는 통계, 날짜, 고유명사(인명/기관명/지명 등)를 새로 만들어
+   추가하지 마세요 (hallucination 금지).
+5. 사실(fact)과 의견(opinion)을 구분해서 서술하세요. 의견은 "~로 보인다",
+   "~라는 평가가 있다" 등으로 표현하세요.
+6. 클릭베이트성 과장 표현(예: "충격", "경악", "○○가 다 죽었다" 등)을 제목과
+   본문에 사용하지 마세요.
+7. 기사는 도입 - 본문 - 결론 구조를 가져야 합니다.
+8. 출력은 반드시 아래 JSON 형식만 반환하세요. 그 외 텍스트는 출력하지 마세요.
+
+출력 형식:
+{
+  "title": "기사 제목",
+  "content": "기사 본문 (markdown, 500자 이상)",
+  "citedSourceIds": ["source-id-1", "source-id-2", "source-id-3"],
+  "status": "draft"
+}`;
+
+function buildArticleUserPrompt(theme: Theme, sourceSummaries: SourceSummary[]): string {
+  const summaryLines = sourceSummaries
+    .map((summary) =>
+      [
+        `- sourceId: ${summary.sourceId}`,
+        `  title: ${summary.title}`,
+        `  url: ${summary.url}`,
+        `  publisher: ${summary.publisher}`,
+        `  publishedAt: ${summary.publishedAt}`,
+        `  summary: ${summary.summary}`,
+      ].join("\n")
+    )
+    .join("\n");
+
+  return [
+    `주제: ${theme.title}`,
+    `주제 설명: ${theme.description}`,
+    `주요 키워드: ${theme.keywords.join(", ")}`,
+    `출력 언어: ${theme.language}`,
+    "",
+    "출처 요약 목록:",
+    summaryLines,
+    "",
+    "위 출처 요약을 근거로 기사를 작성하세요.",
+  ].join("\n");
+}
+
+interface RawGeneratedArticle {
+  title?: unknown;
+  content?: unknown;
+  citedSourceIds?: unknown;
+}
+
 /**
- * Phase 1-3 TODO: prompts/article-draft.v1.md 기준으로 실제 LLM 기사 생성을 호출한다.
- * 아직 구현되지 않았으며, 호출 시 에러를 던진다.
+ * Phase 1-4: prompts/article-draft.v1.md 기준으로 Anthropic API를 호출해
+ * 기사 초안을 생성한다. 출처가 3개 미만이면 호출하지 않는다 (호출부에서 검사).
+ * JSON parse에 실패하면 에러를 던진다 (호출부에서 mock 초안으로 대체 처리한다).
+ * 반환되는 status는 항상 "draft"로 강제한다 (모델 응답값과 무관).
  */
 export async function generateAiArticleDraft(
   theme: Theme,
   sourceSummaries: SourceSummary[]
 ): Promise<GeneratedArticle> {
-  void theme;
-  void sourceSummaries;
-  throw new Error(
-    "generateAiArticleDraft은 아직 구현되지 않았습니다 " +
-      "(Phase 1-3 TODO: prompts/article-draft.v1.md 기준 LLM 연동 필요)"
-  );
+  const client = getAnthropicClient();
+
+  const response = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 4096,
+    system: ARTICLE_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: buildArticleUserPrompt(theme, sourceSummaries) }],
+  });
+
+  const textBlock = response.content.find((block) => block.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("generateAiArticleDraft: AI 응답에서 텍스트를 찾을 수 없습니다.");
+  }
+
+  let parsed: RawGeneratedArticle;
+  try {
+    parsed = JSON.parse(textBlock.text);
+  } catch {
+    throw new Error("generateAiArticleDraft: AI 응답을 JSON으로 해석할 수 없습니다.");
+  }
+
+  if (typeof parsed.title !== "string" || typeof parsed.content !== "string") {
+    throw new Error("generateAiArticleDraft: AI 응답에 title 또는 content가 없습니다.");
+  }
+
+  const citedSourceIds = Array.isArray(parsed.citedSourceIds)
+    ? parsed.citedSourceIds.filter((id): id is string => typeof id === "string")
+    : [];
+
+  return { title: parsed.title, content: parsed.content, citedSourceIds };
 }
 
 function buildKoreanSections(theme: Theme, sources: Source[]): string[] {

@@ -49,7 +49,17 @@ describe("evaluateArticleMock", () => {
 });
 
 describe("evaluateArticleWithAi", () => {
-  it("아직 구현되지 않아 호출 시 에러를 던진다", async () => {
-    await expect(evaluateArticleWithAi(article, sourceSummaries)).rejects.toThrow();
+  it("ANTHROPIC_API_KEY가 없으면 예외 없이 passed=false 결과를 반환한다", async () => {
+    const original = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+
+    const result = await evaluateArticleWithAi(article, sourceSummaries);
+
+    expect(result.passed).toBe(false);
+    expect(result.aggregateScore).toBe(0);
+    expect(result.criteriaScores).toEqual({});
+    expect(result.notes).toContain("ANTHROPIC_API_KEY");
+
+    if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
   });
 });

@@ -110,6 +110,8 @@ export type EvalRunRow = {
   eval_name: string;
   criteria_scores: Record<string, unknown>;
   aggregate_score: number | null;
+  /** 과거 schema의 호환용 컬럼. aggregate_score와 동일한 값을 저장한다. */
+  score: number | null;
   passed: boolean;
   notes: string | null;
   created_at: string;

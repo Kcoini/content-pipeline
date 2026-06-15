@@ -213,7 +213,8 @@ create table if not exists eval_runs (
 alter table eval_runs add column if not exists article_id uuid;
 alter table eval_runs add column if not exists eval_name text not null default '';
 alter table eval_runs add column if not exists criteria_scores jsonb not null default '{}'::jsonb;
-alter table eval_runs add column if not exists aggregate_score numeric;
+alter table eval_runs add column if not exists aggregate_score numeric default 0;
+alter table eval_runs add column if not exists score numeric default 0;
 alter table eval_runs add column if not exists passed boolean not null default false;
 alter table eval_runs add column if not exists notes text;
 alter table eval_runs add column if not exists created_at timestamptz not null default now();

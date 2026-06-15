@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { summarizeSourcesMock, summarizeSourcesWithAi } from "./source-summarizer";
-import type { Source } from "@/lib/types/domain";
+import type { Source, Theme } from "@/lib/types/domain";
+
+const theme: Theme = {
+  id: "theme-1",
+  title: "AI 에이전트 동향",
+  description: "2026년 AI 에이전트 관련 최신 동향을 정리한다.",
+  keywords: ["AI", "에이전트"],
+  language: "ko",
+  createdAt: new Date().toISOString(),
+};
 
 const sources: Source[] = [
   {
@@ -47,7 +56,14 @@ describe("summarizeSourcesMock", () => {
 });
 
 describe("summarizeSourcesWithAi", () => {
-  it("아직 구현되지 않아 호출 시 에러를 던진다", async () => {
-    await expect(summarizeSourcesWithAi(sources)).rejects.toThrow();
+  it("ANTHROPIC_API_KEY가 없으면 명확한 오류를 던진다", async () => {
+    const original = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+
+    await expect(summarizeSourcesWithAi(theme, sources)).rejects.toThrow(
+      /ANTHROPIC_API_KEY/
+    );
+
+    if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
   });
 });

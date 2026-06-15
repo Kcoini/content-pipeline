@@ -2,14 +2,23 @@
 // lib/harness/logger.ts가 이 모듈을 통해 파이프라인 이벤트와 계약 검사 결과를 영속화한다.
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { ContractRunRow, PipelineLogRow } from "@/lib/supabase/database.types";
+import type { ContractRunRow, ContractTargetType, PipelineLogRow } from "@/lib/supabase/database.types";
 import type { ContractViolation } from "@/lib/harness/types";
 
 export type LogEventType =
   | "theme_created"
   | "source_added"
   | "contract_checked"
-  | "article_draft_created";
+  | "article_draft_created"
+  // Phase 1-4: AI 기사 생성 파이프라인 이벤트
+  | "ai_mode_selected"
+  | "source_summary_started"
+  | "source_summary_completed"
+  | "article_generation_started"
+  | "article_generation_completed"
+  | "article_eval_started"
+  | "article_eval_completed"
+  | "ai_generation_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 
@@ -29,6 +38,12 @@ export interface LogEventInput {
   details?: Record<string, unknown>;
   /** 로그를 특정 테마(주제)와 연결할 때 사용 */
   themeId?: string;
+  /** 로그를 특정 기사와 연결할 때 사용 (Phase 1-4 AI 생성 이벤트) */
+  articleId?: string;
+  /** 로그 대상 종류 (source/article) */
+  targetType?: ContractTargetType;
+  /** 로그 대상 id (targetType과 함께 사용) */
+  targetId?: string;
 }
 
 export type ContractCheckTarget = "source" | "article";
@@ -82,6 +97,9 @@ export async function logEvent(input: LogEventInput): Promise<PipelineLogEntry> 
     .from("pipeline_logs")
     .insert({
       theme_id: input.themeId ?? null,
+      article_id: input.articleId ?? null,
+      target_type: input.targetType ?? null,
+      target_id: input.targetId ?? null,
       event: input.type,
       status: input.status,
       message: input.message,

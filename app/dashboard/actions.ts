@@ -5,11 +5,15 @@ import { revalidatePath } from "next/cache";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
 import { logEvent } from "@/lib/harness/logger";
-import { generateMockArticleDraft } from "@/lib/ai/article-writer";
+import { generateAiArticleDraft, generateMockArticleDraft, type GeneratedArticle } from "@/lib/ai/article-writer";
+import { summarizeSourcesMock, summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
+import { evaluateArticleMock, evaluateArticleWithAi } from "@/lib/ai/eval-article";
+import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
 import { addSource as addSourceRecord, getSourcesByThemeId } from "@/lib/repositories/source-repository";
 import { saveDraftArticle } from "@/lib/repositories/article-repository";
+import { saveEvalRun } from "@/lib/repositories/eval-repository";
 import type { Language } from "@/lib/types/domain";
 
 function parseKeywords(raw: string): string[] {
@@ -131,8 +135,75 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     redirect(`/dashboard?themeId=${themeId}`);
   }
 
-  // 2) mock 기사 초안 생성 (FR-4, FR-5)
-  const generated = generateMockArticleDraft(theme, sources);
+  // 2) AI mode 여부 확인 후 출처 요약 + 기사 초안 생성 (FR-4, FR-5)
+  const aiMode = shouldUseAnthropic();
+
+  await logEvent({
+    type: "ai_mode_selected",
+    status: "info",
+    message: aiMode
+      ? `AI 기사 생성 모드(${getAiProvider()})로 진행합니다.`
+      : "mock 기사 생성 모드로 진행합니다.",
+    details: { themeId, aiMode, provider: getAiProvider() },
+    themeId,
+  });
+
+  let usedAiMode = aiMode;
+  let sourceSummaries = summarizeSourcesMock(sources);
+  let generated: GeneratedArticle;
+
+  if (aiMode) {
+    try {
+      await logEvent({
+        type: "source_summary_started",
+        status: "info",
+        message: "AI 출처 요약을 시작합니다.",
+        themeId,
+      });
+      sourceSummaries = await summarizeSourcesWithAi(theme, sources);
+      await logEvent({
+        type: "source_summary_completed",
+        status: "success",
+        message: "AI 출처 요약을 완료했습니다.",
+        details: { themeId, sourceCount: sourceSummaries.length },
+        themeId,
+      });
+
+      await logEvent({
+        type: "article_generation_started",
+        status: "info",
+        message: "AI 기사 초안 생성을 시작합니다.",
+        themeId,
+      });
+      generated = await generateAiArticleDraft(theme, sourceSummaries);
+      await logEvent({
+        type: "article_generation_completed",
+        status: "success",
+        message: "AI 기사 초안 생성을 완료했습니다.",
+        details: {
+          themeId,
+          contentLength: generated.content.length,
+          citedSourceIds: generated.citedSourceIds,
+        },
+        themeId,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await logEvent({
+        type: "ai_generation_failed",
+        status: "failed",
+        message: `AI 기사 생성에 실패하여 mock 생성으로 전환합니다: ${reason}`,
+        details: { themeId, error: reason },
+        themeId,
+      });
+
+      usedAiMode = false;
+      sourceSummaries = summarizeSourcesMock(sources);
+      generated = generateMockArticleDraft(theme, sources);
+    }
+  } else {
+    generated = generateMockArticleDraft(theme, sources);
+  }
 
   // 3) article.contract.yaml 검사 (FR-7)
   const articleContract = loadContract("article.contract.yaml");
@@ -199,6 +270,56 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
       contentLength: article.content.length,
     },
     themeId,
+    articleId: article.id,
+    targetType: "article",
+    targetId: article.id,
+  });
+
+  // 5) AI Evals (FR-8) - mock 모드에서는 evaluateArticleMock, AI 모드에서는
+  // evaluateArticleWithAi를 사용한다. evaluateArticleWithAi는 실패 시에도
+  // 예외를 던지지 않고 passed=false 결과를 반환한다.
+  await logEvent({
+    type: "article_eval_started",
+    status: "info",
+    message: "기사 품질 평가를 시작합니다.",
+    details: { themeId, articleId: article.id },
+    themeId,
+    articleId: article.id,
+    targetType: "article",
+    targetId: article.id,
+  });
+
+  const citedSummaries = sourceSummaries.filter((summary) =>
+    article.citedSourceIds.includes(summary.sourceId)
+  );
+
+  const evalResult = usedAiMode
+    ? await evaluateArticleWithAi({ title: article.title, content: article.content }, citedSummaries)
+    : evaluateArticleMock({ title: article.title, content: article.content }, citedSummaries);
+
+  await saveEvalRun({
+    articleId: article.id,
+    evalName: "article-quality.v1.eval",
+    result: evalResult,
+  });
+
+  await logEvent({
+    type: "article_eval_completed",
+    status: evalResult.passed ? "success" : "failed",
+    message: evalResult.passed
+      ? "기사 품질 평가를 통과했습니다."
+      : "기사 품질 평가를 통과하지 못했습니다.",
+    details: {
+      themeId,
+      articleId: article.id,
+      aggregateScore: evalResult.aggregateScore,
+      passed: evalResult.passed,
+      notes: evalResult.notes,
+    },
+    themeId,
+    articleId: article.id,
+    targetType: "article",
+    targetId: article.id,
   });
 
   revalidatePath("/dashboard");

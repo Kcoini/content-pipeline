@@ -23,23 +23,24 @@
   이벤트를 `pipeline_logs`에 기록 (`lib/repositories/log-repository.ts`)
 - **eval runs**: `eval_runs` 테이블 스키마/타입 정의 완료 (저장 로직은 Phase 1-3에서 연결)
 
-## 남은 항목 (Phase 1-3 이후)
+- **AI 기사 생성 연동 (Phase 1-4)**: `AI_GENERATION_ENABLED`/`AI_PROVIDER`/
+  `ANTHROPIC_API_KEY` feature flag로 mock/AI generator를 전환.
+  `summarizeSourcesWithAi`, `generateAiArticleDraft`, `evaluateArticleWithAi`를
+  Anthropic API 기반으로 구현하고, `app/dashboard/actions.ts`의
+  `generateArticleDraft`에 source summary → article draft → article eval →
+  `eval_runs` 저장 흐름을 연결. 자세한 내용은
+  `docs/phase-1-4-ai-generation.md` 참고.
 
-- **실제 AI source summary**: `lib/ai/source-summarizer.ts`의
-  `summarizeSourcesWithAi`를 실제 LLM 호출로 구현
-- **실제 AI article generation**: `lib/ai/article-writer.ts`의
-  `generateAiArticleDraft`를 `prompts/article-draft.v1.md` 기준으로 실제 LLM 호출로 구현
-- **article quality eval 강화**: `lib/ai/eval-article.ts`의
-  `evaluateArticleWithAi`를 `prompts/article-eval.v1.md` 기준으로 실제 LLM 호출로
-  구현하고, 결과를 `eval_runs`에 저장
+## 남은 항목 (Phase 1-4 이후)
+
 - **approval flow 개선**: `lib/harness/approval-gate.ts`와 `approval_logs` 연결,
   대시보드 UI에서 평가 결과를 확인한 뒤 승인하는 흐름 구현
 - **Vercel 배포**: 환경변수(`NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, AI API Key) 설정 후
   배포
+- **중복 URL 출처 등록 시 Runtime Error**: `docs/known-issues.md` 참고,
+  사용자 친화적 메시지로 개선 필요
 
 ## 참고
 
-- 실제 AI API 키 추가 및 호출은 이번 단계(Phase 1-3)에서 진행하지 않는다.
-  프롬프트 구조(`prompts/*.v1.md`)와 mock/AI 인터페이스 분리만 준비한다.
 - 이미지 생성, 영상 생성, Hermes Agent는 이번 MVP 범위에 포함하지 않는다.

@@ -114,7 +114,12 @@ describe("generateMockArticleDraft", () => {
 });
 
 describe("generateAiArticleDraft", () => {
-  it("아직 구현되지 않아 호출 시 에러를 던진다", async () => {
-    await expect(generateAiArticleDraft(theme, [])).rejects.toThrow();
+  it("ANTHROPIC_API_KEY가 없으면 명확한 오류를 던진다", async () => {
+    const original = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+
+    await expect(generateAiArticleDraft(theme, [])).rejects.toThrow(/ANTHROPIC_API_KEY/);
+
+    if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
   });
 });

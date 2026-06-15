@@ -103,6 +103,8 @@ create unique index sources_theme_url_unique_idx on sources (theme_id, url) wher
 -- ------------------------------------------------------------
 -- articles: 출처를 근거로 생성된 기사 초안
 -- article.contract.yaml의 initial-status-draft, min-content-length 규칙에 대응한다.
+-- 기사 본문은 content 컬럼 기준이다 (draft_body 등 과거 컬럼은 사용하지 않음;
+-- 기존 DB에 남아있는 경우 db/migrations/002_articles_content_column.sql 참고).
 -- ------------------------------------------------------------
 
 create table articles (
@@ -224,6 +226,9 @@ create index idx_contract_runs_article_id on contract_runs (article_id);
 
 -- ------------------------------------------------------------
 -- eval_runs: AI Evals 실행 결과 (evals/article-quality.eval.yaml 기준)
+-- 평가 점수는 aggregate_score 기준이다. score는 과거 schema와의 호환을 위해
+-- 유지하는 컬럼으로, lib/repositories/eval-repository.ts가 aggregate_score와
+-- 항상 동일한 값을 함께 저장한다 (db/migrations/003_eval_runs_score_column.sql 참고).
 -- ------------------------------------------------------------
 
 create table eval_runs (
@@ -231,7 +236,8 @@ create table eval_runs (
   article_id uuid not null references articles(id) on delete cascade,
   eval_name text not null,
   criteria_scores jsonb not null default '{}'::jsonb,
-  aggregate_score numeric,
+  aggregate_score numeric default 0,
+  score numeric default 0,
   passed boolean not null,
   notes text,
   created_at timestamptz not null default now()
