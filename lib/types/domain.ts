@@ -36,4 +36,9 @@ export interface Article {
   /** 기사가 인용한 출처 id 목록 (최소 3개) */
   citedSourceIds: string[];
   createdAt: string;
+  updatedAt: string;
+  /** 승인(reviewed) 시각. draft 상태이면 null. */
+  reviewedAt: string | null;
+  /** 승인자. draft 상태이면 null. */
+  reviewedBy: string | null;
 }

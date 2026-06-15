@@ -5,6 +5,7 @@
 
 import {
   getLogs as getLogsFromRepository,
+  getLogsByArticleId as getLogsByArticleIdFromRepository,
   logEvent as logEventToRepository,
   type LogEventInput,
   type LogEventType,
@@ -34,4 +35,9 @@ export async function logEvent(input: LogEventInput): Promise<PipelineLogEntry> 
 /** 최신 로그가 먼저 오도록 정렬된 로그 목록을 반환한다. */
 export async function getLogs(limit?: number): Promise<PipelineLogEntry[]> {
   return getLogsFromRepository(limit);
+}
+
+/** 특정 기사와 관련된 로그 목록을 반환한다. */
+export async function getLogsByArticleId(articleId: string, limit?: number): Promise<PipelineLogEntry[]> {
+  return getLogsByArticleIdFromRepository(articleId, limit);
 }

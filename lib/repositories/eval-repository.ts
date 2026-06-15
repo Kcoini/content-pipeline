@@ -70,7 +70,7 @@ export async function saveEvalRun(input: SaveEvalRunInput): Promise<EvalRun> {
 }
 
 /** 특정 기사의 최신 평가 결과를 조회한다. */
-export async function getLatestEvalRun(articleId: string): Promise<EvalRun | undefined> {
+export async function getLatestEvalByArticleId(articleId: string): Promise<EvalRun | undefined> {
   const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase

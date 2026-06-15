@@ -65,3 +65,28 @@ export async function getSourcesByThemeId(themeId: string): Promise<Source[]> {
 
   return (data ?? []).map(mapSourceRowToSource);
 }
+
+/** 기사가 인용한 출처 목록을 조회한다 (/articles/[id] 상세 페이지). */
+export async function getSourcesByArticleId(articleId: string): Promise<Source[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data: linkRows, error: linkError } = await supabase
+    .from("article_sources")
+    .select()
+    .eq("article_id", articleId);
+
+  if (linkError) {
+    throw new Error(`기사-출처 연결 조회에 실패했습니다: ${linkError.message}`);
+  }
+
+  const sourceIds = (linkRows ?? []).map((row) => row.source_id);
+  if (sourceIds.length === 0) return [];
+
+  const { data, error } = await supabase.from("sources").select().in("id", sourceIds);
+
+  if (error) {
+    throw new Error(`출처 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSourceRowToSource);
+}

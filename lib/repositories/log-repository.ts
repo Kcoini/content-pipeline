@@ -18,7 +18,10 @@ export type LogEventType =
   | "article_generation_completed"
   | "article_eval_started"
   | "article_eval_completed"
-  | "ai_generation_failed";
+  | "ai_generation_failed"
+  // Phase 1-5: 기사 검토/수정/승인 이벤트
+  | "article_updated"
+  | "article_approved";
 
 export type LogStatus = "success" | "failed" | "info";
 
@@ -122,6 +125,24 @@ export async function getLogs(limit = 20): Promise<PipelineLogEntry[]> {
   const { data, error } = await supabase
     .from("pipeline_logs")
     .select()
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`파이프라인 로그 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapLogRow);
+}
+
+/** 특정 기사와 관련된 로그를 최신순으로 조회한다 (/articles/[id] 상세 페이지). */
+export async function getLogsByArticleId(articleId: string, limit = 20): Promise<PipelineLogEntry[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("pipeline_logs")
+    .select()
+    .eq("article_id", articleId)
     .order("created_at", { ascending: false })
     .limit(limit);
 

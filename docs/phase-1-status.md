@@ -31,10 +31,18 @@
   `eval_runs` 저장 흐름을 연결. 자세한 내용은
   `docs/phase-1-4-ai-generation.md` 참고.
 
-## 남은 항목 (Phase 1-4 이후)
+- **기사 검토·수정·승인 흐름 (Phase 1-5)**: `/articles`(목록), `/articles/[id]`
+  (상세) 페이지를 추가하고, draft 기사 수정(`updateDraftArticle`) 및 승인
+  (`approveArticle`)을 서버 액션으로만 처리한다. 승인 시
+  `articles.status='reviewed'`, `reviewed_at`/`reviewed_by`를 갱신하고
+  `approval_logs`에 기록한다. reviewed 기사는 수정 불가. 자세한 내용은
+  `docs/phase-1-5-review-approval.md` 참고.
 
-- **approval flow 개선**: `lib/harness/approval-gate.ts`와 `approval_logs` 연결,
-  대시보드 UI에서 평가 결과를 확인한 뒤 승인하는 흐름 구현
+## 남은 항목 (Phase 1-5 이후)
+
+- **AI mode 실제 호출 검증**: `AI_GENERATION_ENABLED=true` +
+  `ANTHROPIC_API_KEY` 설정 후 생성 → 검토 → 승인 end-to-end 확인
+- **published 전환/게시 흐름**: WordPress 게시 등은 Phase 2 이후 범위
 - **Vercel 배포**: 환경변수(`NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, AI API Key) 설정 후
   배포

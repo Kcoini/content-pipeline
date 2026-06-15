@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { addSource, createTheme, generateArticleDraft } from "./actions";
 import { getLogs } from "@/lib/harness/logger";
 import { getLatestContractCheck, type ContractCheckRecord } from "@/lib/repositories/log-repository";
@@ -41,11 +42,19 @@ export default async function DashboardPage({
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header>
-          <h1 className="text-2xl font-bold">content-pipeline 대시보드</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성(draft)까지의 흐름을 확인합니다.
-          </p>
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">content-pipeline 대시보드</h1>
+            <p className="mt-1 text-sm text-zinc-600">
+              테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성(draft)까지의 흐름을 확인합니다.
+            </p>
+          </div>
+          <Link
+            href="/articles"
+            className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            기사 목록 보기
+          </Link>
         </header>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
@@ -289,6 +298,12 @@ export default async function DashboardPage({
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                           status: {article.status}
                         </span>
+                        <Link
+                          href={`/articles/${article.id}`}
+                          className="ml-auto rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          기사 검토/승인하기
+                        </Link>
                       </div>
                       <p className="mb-2 text-xs text-zinc-500">
                         인용된 출처: {article.citedSourceIds.length}개 · 본문 길이:{" "}
