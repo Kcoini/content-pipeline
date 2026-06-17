@@ -283,6 +283,8 @@ create table if not exists approval_logs (
 
 alter table approval_logs add column if not exists theme_id uuid;
 alter table approval_logs add column if not exists article_id uuid;
+alter table approval_logs add column if not exists target_type text;
+alter table approval_logs add column if not exists target_id uuid;
 alter table approval_logs add column if not exists action text not null default '';
 alter table approval_logs add column if not exists approved_by text;
 alter table approval_logs add column if not exists status text not null default 'approved';

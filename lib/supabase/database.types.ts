@@ -138,6 +138,10 @@ export type ApprovalLogRow = {
   id: string;
   theme_id: string | null;
   article_id: string | null;
+  /** 승인 대상 종류 (article / source 등). 현재는 'article' 고정. */
+  target_type: string | null;
+  /** 승인 대상 id. article 승인 시 article_id와 동일하다. */
+  target_id: string | null;
   action: string;
   approved_by: string | null;
   status: ApprovalLogStatus;

@@ -293,6 +293,10 @@ create table approval_logs (
   id uuid primary key default gen_random_uuid(),
   theme_id uuid references themes(id) on delete cascade,
   article_id uuid references articles(id) on delete cascade,
+  -- 승인 대상 종류 (현재는 'article' 고정). saveApprovalLog()가 반드시 채운다.
+  target_type text not null default 'article',
+  -- 승인 대상 id. article 승인 시 article_id와 동일하다.
+  target_id uuid,
   action text not null,
   approved_by text,
   status text not null check (status in ('approved', 'rejected')),

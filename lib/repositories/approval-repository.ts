@@ -8,6 +8,10 @@ export interface ApprovalLogEntry {
   id: string;
   articleId: string | null;
   themeId: string | null;
+  /** 승인 대상 종류 ('article' 고정). */
+  targetType: string | null;
+  /** 승인 대상 id. article 승인 시 articleId와 동일하다. */
+  targetId: string | null;
   action: string;
   status: ApprovalLogStatus;
   approvedBy: string | null;
@@ -18,6 +22,10 @@ export interface ApprovalLogEntry {
 export interface SaveApprovalLogInput {
   articleId: string;
   themeId: string;
+  /** 승인 대상 종류. article 승인 시 반드시 "article"을 전달한다. */
+  targetType: string;
+  /** 승인 대상 id. article 승인 시 articleId와 동일한 값을 전달한다. */
+  targetId: string;
   action: string;
   status: ApprovalLogStatus;
   approvedBy?: string;
@@ -29,6 +37,8 @@ export function mapApprovalLogRow(row: ApprovalLogRow): ApprovalLogEntry {
     id: row.id,
     articleId: row.article_id,
     themeId: row.theme_id,
+    targetType: row.target_type,
+    targetId: row.target_id,
     action: row.action,
     status: row.status,
     approvedBy: row.approved_by,
@@ -46,6 +56,8 @@ export async function saveApprovalLog(input: SaveApprovalLogInput): Promise<Appr
     .insert({
       theme_id: input.themeId,
       article_id: input.articleId,
+      target_type: input.targetType,
+      target_id: input.targetId,
       action: input.action,
       approved_by: input.approvedBy ?? null,
       status: input.status,

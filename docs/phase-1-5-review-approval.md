@@ -70,9 +70,12 @@ reviewed 상태의 기사를 다시 수정 가능하게 하는 것은 이번 Pha
 6. `lib/repositories/approval-repository.ts`의 `saveApprovalLog()`로
    `approval_logs`에 다음 내용을 기록한다.
    - `article_id`, `theme_id`
+   - `target_type = 'article'` (NOT NULL 컬럼, 반드시 전달)
+   - `target_id = article_id` (승인 대상 기사의 uuid)
    - `action = 'approve_article'`
    - `status = 'approved'`
    - `approved_by = 'local-user'`
+   - `notes = 'Article approved from review screen'`
 7. 성공/실패를 `pipeline_logs(event='article_approved')`에도 기록한다.
 
 ## 오류 처리

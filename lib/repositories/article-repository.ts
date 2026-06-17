@@ -289,9 +289,12 @@ export async function approveArticle(input: ApproveArticleInput): Promise<Articl
   await saveApprovalLog({
     articleId: existing.id,
     themeId: existing.themeId,
+    targetType: "article",
+    targetId: existing.id,
     action: "approve_article",
     status: "approved",
     approvedBy: input.approvedBy,
+    notes: "Article approved from review screen",
   });
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);
