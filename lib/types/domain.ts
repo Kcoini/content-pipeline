@@ -12,6 +12,8 @@ export interface Theme {
   createdAt: string;
 }
 
+export type FetchStatus = "pending" | "success" | "failed";
+
 export interface Source {
   id: string;
   themeId: string;
@@ -23,6 +25,10 @@ export interface Source {
   publishedAt: string;
   summary: string;
   createdAt: string;
+  /** Phase 1-9: URL 본문 수집 상태 */
+  fetchStatus: FetchStatus;
+  fetchError: string | null;
+  rawContent: string | null;
 }
 
 export type ArticleStatus = "draft" | "reviewed" | "published";

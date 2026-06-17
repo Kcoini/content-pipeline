@@ -148,7 +148,7 @@ AI mode 기사 생성 후 Supabase에 다음이 저장되어야 한다:
 | `eval_runs` | `aggregate_score` | AI 평가 점수 (1~5 사이) |
 | `eval_runs` | `passed` | `true` 또는 `false` |
 | `eval_runs` | `criteria_scores` | 기준별 점수 JSON |
-| `pipeline_logs` | `event` | `ai_mode_selected`, `source_summary_*`, `article_generation_*`, `article_eval_*` |
+| `pipeline_logs` | `event_name` | `ai_mode_selected`, `source_summary_*`, `article_generation_*`, `article_eval_*` |
 | `approval_logs` | `action` | `approve_article` (승인 후) |
 | `approval_logs` | `target_type` | `article` |
 

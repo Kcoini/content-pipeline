@@ -15,7 +15,7 @@ export type ArticleStatus = "draft" | "reviewed" | "published";
 // 단계 이름이다. pipeline_logs.stage / contract_runs.stage 컬럼은 이 값을 위해
 // 마련해 둔 자리이며, 현재 MVP 코드는 이 컬럼에 값을 쓰지 않는다 (항상 null).
 // 현재 사용 중인 이벤트 어휘는 lib/repositories/log-repository.ts의
-// LogEventType(theme_created, source_added 등)이며, pipeline_logs.event 컬럼에
+// LogEventType(theme_created, source_added 등)이며, pipeline_logs.event_name 컬럼에
 // 저장한다.
 export type PipelineStage =
   | "source_validation"
@@ -41,6 +41,8 @@ export type ThemeRow = {
   updated_at: string;
 };
 
+export type FetchStatus = "pending" | "success" | "failed";
+
 export type SourceRow = {
   id: string;
   theme_id: string;
@@ -52,6 +54,12 @@ export type SourceRow = {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /** Phase 1-9: URL 본문 수집 상태 */
+  fetch_status: FetchStatus;
+  raw_content: string | null;
+  extracted_title: string | null;
+  fetched_at: string | null;
+  fetch_error: string | null;
 };
 
 export type ArticleRow = {
@@ -123,7 +131,7 @@ export type PipelineLogRow = {
   article_id: string | null;
   target_type: ContractTargetType | null;
   target_id: string | null;
-  event: string;
+  event_name: string;
   stage: PipelineStage | null;
   status: string;
   message: string | null;
@@ -209,7 +217,7 @@ export interface Database {
       };
       pipeline_logs: {
         Row: PipelineLogRow;
-        Insert: Partial<PipelineLogRow> & Pick<PipelineLogRow, "event" | "status">;
+        Insert: Partial<PipelineLogRow> & Pick<PipelineLogRow, "event_name" | "status">;
         Update: Partial<PipelineLogRow>;
         Relationships: [];
       };

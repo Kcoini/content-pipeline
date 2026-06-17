@@ -9,7 +9,7 @@ function makeLogRow(overrides: Partial<PipelineLogRow> = {}): PipelineLogRow {
     article_id: null,
     target_type: null,
     target_id: null,
-    event: "theme_created",
+    event_name: "theme_created",
     stage: null,
     status: "success",
     message: "테마가 생성되었습니다: AI 에이전트 동향",

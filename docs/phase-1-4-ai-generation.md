@@ -10,7 +10,7 @@
 
 1. 테마 + 출처 조회
 2. `source.contract.yaml` 검사 (출처 3개 미만이면 여기서 중단, AI 호출 없음)
-3. AI mode 여부 확인 (`shouldUseAnthropic()`) → `pipeline_logs(event='ai_mode_selected')`
+3. AI mode 여부 확인 (`shouldUseAnthropic()`) → `pipeline_logs(event_name='ai_mode_selected')`
 4. **AI mode**
    - 출처 요약: `summarizeSourcesWithAi(theme, sources)` (AI 호출 1회)
      → `source_summary_started` / `source_summary_completed`

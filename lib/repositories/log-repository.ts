@@ -75,7 +75,7 @@ export interface RecordContractCheckInput {
 export function mapLogRow(row: PipelineLogRow): PipelineLogEntry {
   return {
     id: row.id,
-    type: row.event as LogEventType,
+    type: row.event_name as LogEventType,
     status: row.status as LogStatus,
     message: row.message ?? "",
     details: row.details_json,
@@ -105,7 +105,7 @@ export async function logEvent(input: LogEventInput): Promise<PipelineLogEntry> 
       article_id: input.articleId ?? null,
       target_type: input.targetType ?? null,
       target_id: input.targetId ?? null,
-      event: input.type,
+      event_name: input.type,
       status: input.status,
       message: input.message,
       details_json: input.details ?? {},

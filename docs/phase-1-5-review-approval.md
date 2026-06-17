@@ -43,7 +43,7 @@ reviewed 상태의 기사를 다시 수정 가능하게 하는 것은 이번 Pha
 3. `articles.title`, `articles.content`만 갱신한다. `updated_at`은
    `trg_articles_updated_at` 트리거가 자동으로 갱신하므로 코드에서 직접
    쓰지 않는다. `status`는 `draft`로 유지된다.
-4. 성공/실패를 `pipeline_logs(event='article_updated')`에 기록한다.
+4. 성공/실패를 `pipeline_logs(event_name='article_updated')`에 기록한다.
 
 ## 승인 흐름 (`approveArticle`)
 
@@ -76,7 +76,7 @@ reviewed 상태의 기사를 다시 수정 가능하게 하는 것은 이번 Pha
    - `status = 'approved'`
    - `approved_by = 'local-user'`
    - `notes = 'Article approved from review screen'`
-7. 성공/실패를 `pipeline_logs(event='article_approved')`에도 기록한다.
+7. 성공/실패를 `pipeline_logs(event_name='article_approved')`에도 기록한다.
 
 ## 오류 처리
 

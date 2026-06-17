@@ -57,6 +57,12 @@
   로그를 남기고 `/articles/[id]`에 "품질 검토 필요" 배너를 표시한다.
   자세한 내용은 `docs/phase-1-8-article-quality.md` 참고.
 
+- **중복 URL 출처 등록 오류 처리 (Phase 1-8 후속)**: `sources.url` 단독 unique
+  제약을 제거하고 `theme_id + url` 복합 unique로 전환했다 (migration 005).
+  `DuplicateSourceError`를 도입해 23505 PostgreSQL 오류를 Runtime Error 없이
+  처리하며, 대시보드 출처 등록 폼에 "이미 이 테마에 등록된 출처입니다" 메시지를
+  표시한다.
+
 ## 남은 항목 (Phase 1-8 이후)
 
 - **AI mode 실제 호출 검증**: 로컬 및 Vercel에서 `AI_GENERATION_ENABLED=true` +

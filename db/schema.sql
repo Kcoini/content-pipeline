@@ -88,7 +88,16 @@ create table sources (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  constraint sources_url_format check (url = '' or url ~* '^https?://')
+  constraint sources_url_format check (url = '' or url ~* '^https?://'),
+
+  -- Phase 1-9: URL 본문 수집 상태
+  -- fetch_status: pending(수집 대기) / success(수집 완료) / failed(수집 실패)
+  fetch_status text not null default 'pending'
+    check (fetch_status in ('pending', 'success', 'failed')),
+  raw_content text,
+  extracted_title text,
+  fetched_at timestamptz,
+  fetch_error text
 );
 
 create trigger trg_sources_updated_at
@@ -161,7 +170,7 @@ create index idx_article_sources_source_id on article_sources (source_id);
 -- 비고: pipeline_logs / contract_runs의 상세 정보 컬럼명은 details_json으로
 -- 통일한다 (lib/repositories/log-repository.ts가 읽고 쓰는 컬럼).
 --
--- pipeline_logs.event / contract_runs에서 사용하는 어휘는 현재
+-- pipeline_logs.event_name / contract_runs에서 사용하는 어휘는 현재
 -- lib/repositories/log-repository.ts의 LogEventType(theme_created, source_added,
 -- contract_checked, article_draft_created)이다. pipeline_logs.stage,
 -- contract_runs.stage는 lib/harness/pipeline.ts(Phase 2 오케스트레이터)에서 사용할
@@ -265,7 +274,7 @@ create table pipeline_logs (
   article_id uuid references articles(id) on delete set null,
   target_type text check (target_type in ('source', 'article')),
   target_id uuid,
-  event text not null,
+  event_name text not null,
   stage text,
   status text not null check (status in ('success', 'failed', 'info')),
   message text,

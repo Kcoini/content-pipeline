@@ -3,6 +3,17 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SourceRow } from "@/lib/supabase/database.types";
 import type { Source } from "@/lib/types/domain";
+import type { FetchResult } from "@/lib/services/url-fetcher";
+
+/** 같은 테마 안에서 동일한 URL을 중복 등록할 때 발생하는 오류. */
+export class DuplicateSourceError extends Error {
+  constructor(url: string) {
+    super(
+      `이미 이 테마에 등록된 출처입니다. 다른 URL을 입력하거나 기존 출처를 사용하세요. (${url})`
+    );
+    this.name = "DuplicateSourceError";
+  }
+}
 
 export interface AddSourceInput {
   themeId: string;
@@ -23,6 +34,9 @@ export function mapSourceRowToSource(row: SourceRow): Source {
     publishedAt: row.published_at ? row.published_at.slice(0, 10) : "",
     summary: row.summary ?? "",
     createdAt: row.created_at,
+    fetchStatus: row.fetch_status ?? "pending",
+    fetchError: row.fetch_error ?? null,
+    rawContent: row.raw_content ?? null,
   };
 }
 
@@ -44,10 +58,37 @@ export async function addSource(input: AddSourceInput): Promise<Source> {
     .single();
 
   if (error || !data) {
+    // PostgreSQL unique constraint violation (23505): theme_id + url 중복
+    if (error?.code === "23505") {
+      throw new DuplicateSourceError(input.url);
+    }
     throw new Error(`출처 등록에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapSourceRowToSource(data);
+}
+
+/** URL 수집 결과를 sources 테이블에 반영한다 (Phase 1-9). */
+export async function updateSourceFetchResult(
+  sourceId: string,
+  result: FetchResult
+): Promise<void> {
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("sources")
+    .update({
+      fetch_status: result.status,
+      raw_content: result.rawContent,
+      extracted_title: result.extractedTitle,
+      fetched_at: result.fetchedAt,
+      fetch_error: result.fetchError,
+    })
+    .eq("id", sourceId);
+
+  if (error) {
+    throw new Error(`출처 수집 결과 저장에 실패했습니다: ${error.message}`);
+  }
 }
 
 export async function getSourcesByThemeId(themeId: string): Promise<Source[]> {

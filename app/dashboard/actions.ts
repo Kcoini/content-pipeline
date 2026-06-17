@@ -12,7 +12,8 @@ import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
 import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
-import { addSource as addSourceRecord, getSourcesByThemeId } from "@/lib/repositories/source-repository";
+import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, DuplicateSourceError } from "@/lib/repositories/source-repository";
+import { fetchUrlContent } from "@/lib/services/url-fetcher";
 import { saveDraftArticle } from "@/lib/repositories/article-repository";
 import { saveEvalRun } from "@/lib/repositories/eval-repository";
 import type { Language } from "@/lib/types/domain";
@@ -73,7 +74,18 @@ export async function addSource(formData: FormData): Promise<void> {
     redirect(`/dashboard?themeId=${themeId}`);
   }
 
-  const source = await addSourceRecord({ themeId, url, title, publisher, publishedAt, summary });
+  let source;
+  try {
+    source = await addSourceRecord({ themeId, url, title, publisher, publishedAt, summary });
+  } catch (error) {
+    if (error instanceof DuplicateSourceError) {
+      revalidatePath("/dashboard");
+      redirect(
+        `/dashboard?themeId=${themeId}&sourceError=${encodeURIComponent("이미 이 테마에 등록된 출처입니다. 다른 URL을 입력하거나 기존 출처를 사용하세요.")}`
+      );
+    }
+    throw error;
+  }
 
   await logEvent({
     type: "source_added",
@@ -82,6 +94,34 @@ export async function addSource(formData: FormData): Promise<void> {
     details: { themeId, sourceId: source.id, url: source.url, title: source.title },
     themeId,
   });
+
+  // URL이 있으면 서버에서 본문을 수집한다 (실패해도 source는 유지)
+  if (source.url) {
+    const fetchResult = await fetchUrlContent(source.url);
+    try {
+      await updateSourceFetchResult(source.id, fetchResult);
+    } catch {
+      // 저장 실패는 무시 — source 자체는 이미 등록됨
+    }
+
+    if (fetchResult.status === "success") {
+      await logEvent({
+        type: "source_added",
+        status: "success",
+        message: `URL 본문 수집 완료: ${source.url}`,
+        details: { themeId, sourceId: source.id, contentLength: fetchResult.rawContent?.length ?? 0 },
+        themeId,
+      });
+    } else {
+      await logEvent({
+        type: "source_added",
+        status: "failed",
+        message: `URL 본문 수집 실패: ${fetchResult.fetchError ?? "알 수 없는 오류"}`,
+        details: { themeId, sourceId: source.id, url: source.url },
+        themeId,
+      });
+    }
+  }
 
   revalidatePath("/dashboard");
   redirect(`/dashboard?themeId=${themeId}`);

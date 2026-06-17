@@ -44,9 +44,7 @@ async function main() {
         description: t.description ?? "",
         keywords: t.keywords ?? [],
         language: t.language ?? "ko",
-        status: t.status,
         createdAt: t.created_at,
-        updatedAt: t.updated_at,
       };
       selectedSources = sources.map((s) => ({
         id: s.id,
@@ -57,6 +55,9 @@ async function main() {
         publishedAt: s.published_at ?? "",
         summary: s.summary ?? "",
         createdAt: s.created_at,
+        fetchStatus: (s.fetch_status ?? "pending") as "pending" | "success" | "failed",
+        fetchError: s.fetch_error ?? null,
+        rawContent: s.raw_content ?? null,
       }));
       break;
     }

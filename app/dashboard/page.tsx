@@ -14,9 +14,9 @@ const MIN_SOURCE_COUNT = 3;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ themeId?: string }>;
+  searchParams: Promise<{ themeId?: string; sourceError?: string }>;
 }) {
-  const { themeId } = await searchParams;
+  const { themeId, sourceError } = await searchParams;
   const themes = await getThemes();
 
   const selectedTheme =
@@ -176,6 +176,12 @@ export default async function DashboardPage({
                     </span>
                   </div>
 
+                  {sourceError && (
+                    <div className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      {sourceError}
+                    </div>
+                  )}
+
                   <form action={addSource} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <input type="hidden" name="themeId" value={selectedTheme.id} />
                     <label className="flex flex-col gap-1 text-xs text-zinc-600 sm:col-span-2">
@@ -237,8 +243,14 @@ export default async function DashboardPage({
                           key={source.id}
                           className="rounded border border-zinc-200 px-3 py-2 text-sm"
                         >
-                          <div className="font-medium">
-                            {index + 1}. {source.title || "(제목 없음)"}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-medium">
+                              {index + 1}. {source.title || "(제목 없음)"}
+                            </div>
+                            <FetchStatusBadge
+                              status={source.fetchStatus}
+                              error={source.fetchError}
+                            />
                           </div>
                           <div className="text-xs text-zinc-500">
                             {source.url || "(URL 없음)"}
@@ -247,6 +259,11 @@ export default async function DashboardPage({
                           </div>
                           {source.summary && (
                             <p className="mt-1 text-xs text-zinc-600">{source.summary}</p>
+                          )}
+                          {source.fetchStatus === "failed" && source.fetchError && (
+                            <p className="mt-1 text-xs text-red-600">
+                              수집 오류: {source.fetchError}
+                            </p>
                           )}
                         </li>
                       ))}
@@ -354,6 +371,37 @@ export default async function DashboardPage({
         </div>
       </div>
     </div>
+  );
+}
+
+function FetchStatusBadge({
+  status,
+  error,
+}: {
+  status: "pending" | "success" | "failed";
+  error: string | null;
+}) {
+  if (status === "success") {
+    return (
+      <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+        본문 수집 완료
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+        title={error ?? undefined}
+      >
+        수집 실패
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+      수집 대기
+    </span>
   );
 }
 
