@@ -38,14 +38,17 @@
   `approval_logs`에 기록한다. reviewed 기사는 수정 불가. 자세한 내용은
   `docs/phase-1-5-review-approval.md` 참고.
 
-## 남은 항목 (Phase 1-5 이후)
+- **Vercel 배포 준비 (Phase 1-6)**: `next.config.ts`에
+  `outputFileTracingIncludes`를 추가해 `evals/`, `contracts/`, `prompts/`
+  디렉터리가 서버리스 번들에 포함되도록 했다. 환경변수 목록, migration 적용
+  순서, 배포 후 확인 시나리오는 `docs/phase-1-6-vercel-deploy.md` 참고.
 
+## 남은 항목 (Phase 1-6 이후)
+
+- **Vercel 실제 배포**: 환경변수 등록 후 배포 → 배포 후 시나리오 검증
 - **AI mode 실제 호출 검증**: `AI_GENERATION_ENABLED=true` +
   `ANTHROPIC_API_KEY` 설정 후 생성 → 검토 → 승인 end-to-end 확인
 - **published 전환/게시 흐름**: WordPress 게시 등은 Phase 2 이후 범위
-- **Vercel 배포**: 환경변수(`NEXT_PUBLIC_SUPABASE_URL`,
-  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, AI API Key) 설정 후
-  배포
 - **중복 URL 출처 등록 시 Runtime Error**: `docs/known-issues.md` 참고,
   사용자 친화적 메시지로 개선 필요
 
