@@ -43,11 +43,24 @@
   디렉터리가 서버리스 번들에 포함되도록 했다. 환경변수 목록, migration 적용
   순서, 배포 후 확인 시나리오는 `docs/phase-1-6-vercel-deploy.md` 참고.
 
-## 남은 항목 (Phase 1-6 이후)
+- **AI mode 검증 (Phase 1-7)**: `lib/ai/ai-errors.ts`의 `toAiErrorMessage()`로
+  529 과부하·429 레이트 리밋·401 인증 오류 등을 사용자 친화적 메시지로 변환한다.
+  `app/dashboard/actions.ts`와 `lib/ai/eval-article.ts`의 catch 블록에 적용해
+  AI 오류가 Runtime Error 화면 없이 처리된다. 자세한 내용은
+  `docs/phase-1-7-ai-mode-verification.md` 참고.
 
-- **Vercel 실제 배포**: 환경변수 등록 후 배포 → 배포 후 시나리오 검증
-- **AI mode 실제 호출 검증**: `AI_GENERATION_ENABLED=true` +
-  `ANTHROPIC_API_KEY` 설정 후 생성 → 검토 → 승인 end-to-end 확인
+- **기사 품질 개선 (Phase 1-8)**: 프롬프트를 강화해 7개 섹션 구조(리드문·배경·쟁점·
+  비교·독자 의미·전망) 및 표절 방지 규칙(15단어 복사 금지)을 적용했다.
+  AI Evals에 `originality`(0.20), `synthesis`(0.20), `source-integration`(0.10),
+  `copy-risk`(gate only) 4개 기준을 추가했다. `copy-risk >= 4` 또는
+  `synthesis < 2`이면 `passed=false` 강제. 품질 미통과 시 `article_quality_warning`
+  로그를 남기고 `/articles/[id]`에 "품질 검토 필요" 배너를 표시한다.
+  자세한 내용은 `docs/phase-1-8-article-quality.md` 참고.
+
+## 남은 항목 (Phase 1-8 이후)
+
+- **AI mode 실제 호출 검증**: 로컬 및 Vercel에서 `AI_GENERATION_ENABLED=true` +
+  `ANTHROPIC_API_KEY` 설정 후 생성 → 검토 → 승인 end-to-end 시나리오 실행
 - **published 전환/게시 흐름**: WordPress 게시 등은 Phase 2 이후 범위
 - **중복 URL 출처 등록 시 Runtime Error**: `docs/known-issues.md` 참고,
   사용자 친화적 메시지로 개선 필요

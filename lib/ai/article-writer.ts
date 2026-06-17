@@ -11,6 +11,7 @@
 // 실제 LLM 호출로 구현한다.
 
 import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
+import { extractJson } from "./parse-json";
 import type { Source, Theme } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
 
@@ -51,7 +52,23 @@ export function generateMockArticleDraft(theme: Theme, sources: Source[]): Gener
 const ARTICLE_SYSTEM_PROMPT = `당신은 블로그/홈페이지 기사를 작성하는 에디터입니다.
 아래 제공된 출처 요약(sourceSummaries) 안의 정보만을 근거로 기사를 작성하세요.
 
-규칙:
+【필수 구조 - 반드시 다음 7개 섹션을 포함할 것】
+1. 제목: 주제를 명확하게 전달하는 제목 (과장 금지)
+2. 리드문: 핵심 내용을 요약한 2~3문장 (독자가 기사를 읽을 이유를 제시)
+3. 배경: 이 주제가 왜 지금 중요한지 맥락 설명
+4. 핵심 쟁점: 출처들이 공통으로 다루는 핵심 문제/이슈
+5. 출처 간 공통점과 차이점: 여러 출처의 시각을 비교하고 대조
+6. 독자에게 중요한 의미: 독자에게 이 정보가 왜 중요한지 해석
+7. 향후 전망 또는 과제: 출처에 근거한 전망이나 남은 과제
+
+【표절 방지 규칙 - 반드시 준수】
+- 출처 요약을 그대로 붙여 넣지 마세요.
+- 출처 요약과 15단어(15 어절) 이상 연속으로 동일한 구문을 사용하지 마세요.
+- 각 출처의 내용을 단순 나열하지 마세요. 반드시 여러 출처를 통합하고
+  재해석하여 하나의 논지로 연결하세요.
+- 최소 3개 이상의 출처를 유기적으로 종합하여 하나의 흐름으로 만드세요.
+
+【일반 규칙】
 1. 제목을 포함하여 작성하세요.
 2. 본문은 공백 포함 500자 이상이어야 합니다.
 3. 제공된 출처 요약 중 최소 3개 이상을 citedSourceIds에 포함하고, 본문에서
@@ -62,45 +79,71 @@ const ARTICLE_SYSTEM_PROMPT = `당신은 블로그/홈페이지 기사를 작성
    "~라는 평가가 있다" 등으로 표현하세요.
 6. 클릭베이트성 과장 표현(예: "충격", "경악", "○○가 다 죽었다" 등)을 제목과
    본문에 사용하지 마세요.
-7. 기사는 도입 - 본문 - 결론 구조를 가져야 합니다.
+7. 각 문단은 단순 요약이 아니라 해석과 연결을 포함해야 합니다. 독자가 읽었을 때
+   기사처럼 느껴져야 합니다.
 8. 출력은 반드시 아래 JSON 형식만 반환하세요. 그 외 텍스트는 출력하지 마세요.
+   synthesis_notes는 독자에게 보이지 않는 내부 분석 메모이며, 이 분석을 먼저 완성한
+   뒤 content를 작성하세요.
 
 출력 형식:
 {
+  "synthesis_notes": "출처들의 공통 논지와 핵심 차이점을 2~3문장으로 정리 (독자에게 보이지 않음)",
   "title": "기사 제목",
-  "content": "기사 본문 (markdown, 500자 이상)",
+  "content": "기사 본문 (markdown, 500자 이상, 7개 섹션 포함)",
   "citedSourceIds": ["source-id-1", "source-id-2", "source-id-3"],
   "status": "draft"
 }`;
 
+const KEY_POINTS_MAX_LENGTH = 200;
+
 function buildArticleUserPrompt(theme: Theme, sourceSummaries: SourceSummary[]): string {
   const summaryLines = sourceSummaries
-    .map((summary) =>
-      [
+    .map((summary) => {
+      const keyPoints =
+        summary.summary.length > KEY_POINTS_MAX_LENGTH
+          ? `${summary.summary.substring(0, KEY_POINTS_MAX_LENGTH)}...`
+          : summary.summary;
+      return [
         `- sourceId: ${summary.sourceId}`,
         `  title: ${summary.title}`,
         `  url: ${summary.url}`,
         `  publisher: ${summary.publisher}`,
         `  publishedAt: ${summary.publishedAt}`,
-        `  summary: ${summary.summary}`,
-      ].join("\n")
-    )
+        `  key_points: ${keyPoints}`,
+      ].join("\n");
+    })
     .join("\n");
+
+  const intendedAudience = theme.language === "en" ? "General blog readers" : "일반 블로그 독자";
+  const articleAngle = theme.language === "en" ? "Factual reporting with analysis" : "사실 중심 보도 및 해설";
 
   return [
     `주제: ${theme.title}`,
     `주제 설명: ${theme.description}`,
     `주요 키워드: ${theme.keywords.join(", ")}`,
     `출력 언어: ${theme.language}`,
+    `독자 대상: ${intendedAudience}`,
+    `기사 관점: ${articleAngle}`,
     "",
-    "출처 요약 목록:",
+    "출처별 핵심 포인트 목록 (각 출처의 일부 발췌):",
     summaryLines,
     "",
-    "위 출처 요약을 근거로 기사를 작성하세요.",
+    "위 출처들을 읽고 다음 2단계를 순서대로 수행하세요:",
+    "",
+    "【1단계: 분석 — synthesis_notes 필드에 작성】",
+    "- 출처들이 공통으로 주장하는 핵심 사실은 무엇인가?",
+    "- 출처 간 관점 차이나 강조점 차이는 무엇인가?",
+    "- 독자에게 전달할 하나의 통합된 논지(angle)는 무엇인가?",
+    "",
+    "【2단계: 작성 — content 필드에 작성】",
+    "위 분석(synthesis_notes)에서 도출한 논지를 바탕으로 7개 섹션 기사를 작성하세요.",
+    "출처 key_points 문장을 직접 복사하지 마세요. 분석 결과를 자신의 언어로 재표현하세요.",
+    "출처 key_points와 15단어 이상 연속으로 동일한 구문이 나오면 안 됩니다.",
   ].join("\n");
 }
 
 interface RawGeneratedArticle {
+  synthesis_notes?: unknown;
   title?: unknown;
   content?: unknown;
   citedSourceIds?: unknown;
@@ -132,7 +175,7 @@ export async function generateAiArticleDraft(
 
   let parsed: RawGeneratedArticle;
   try {
-    parsed = JSON.parse(textBlock.text);
+    parsed = JSON.parse(extractJson(textBlock.text));
   } catch {
     throw new Error("generateAiArticleDraft: AI 응답을 JSON으로 해석할 수 없습니다.");
   }

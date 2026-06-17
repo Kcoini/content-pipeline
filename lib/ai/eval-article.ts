@@ -10,6 +10,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load } from "js-yaml";
 import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
+import { extractJson } from "./parse-json";
+import { toAiErrorMessage } from "./ai-errors";
 import type { Article } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
 
@@ -30,6 +32,10 @@ export interface EvalConfig {
   scoring: {
     aggregate: string;
     pass_threshold: number;
+    /** copy-risk score 이 값 이상이면 passed=false 강제 */
+    copy_risk_fail_threshold?: number;
+    /** synthesis score 이 값 미만이면 passed=false 강제 */
+    synthesis_fail_threshold?: number;
   };
 }
 
@@ -79,11 +85,17 @@ export function calculateAggregateScore(
   return weightedSum / totalWeight;
 }
 
-const MOCK_SCORE = 4;
 const MOCK_REASON = "Phase 1-3 mock 평가입니다 (실제 AI 평가는 아직 연결되지 않았습니다).";
+
+const MOCK_SCORES: Record<string, number> = {
+  "copy-risk": 1,    // gate: score >= 4 → fail. mock은 복사 위험 없음
+  "synthesis": 5,    // gate: score < 2 → fail. mock은 완벽한 종합
+};
+const MOCK_DEFAULT_SCORE = 4;
 
 /**
  * Phase 1-3: 실제 AI 호출 없이 모든 평가 기준에 고정 점수를 부여하는 mock 평가기.
+ * gate 조건(copy-risk, synthesis)을 트리거하지 않는 점수를 사용한다.
  */
 export function evaluateArticleMock(
   article: Pick<Article, "title" | "content">,
@@ -95,30 +107,74 @@ export function evaluateArticleMock(
 
   const criteriaScores: Record<string, CriterionScore> = {};
   for (const criterion of evalConfig.criteria) {
-    criteriaScores[criterion.id] = { score: MOCK_SCORE, reason: MOCK_REASON };
+    const score = MOCK_SCORES[criterion.id] ?? MOCK_DEFAULT_SCORE;
+    criteriaScores[criterion.id] = { score, reason: MOCK_REASON };
   }
 
   const aggregateScore = calculateAggregateScore(evalConfig, criteriaScores);
-  const passed = aggregateScore >= evalConfig.scoring.pass_threshold;
+  const passed = applyGateConditions(evalConfig, criteriaScores, aggregateScore);
 
   return { criteriaScores, aggregateScore, passed, notes: MOCK_REASON };
 }
 
-const EVAL_SYSTEM_PROMPT = `당신은 콘텐츠 품질 평가자입니다.
-아래 기사를 다음 6가지 평가 기준에 따라 1~5점으로 채점하세요.
+/**
+ * aggregate_score와 gate 조건을 모두 적용해 최종 passed 여부를 판정한다.
+ * - copy-risk score >= copy_risk_fail_threshold → false
+ * - synthesis score < synthesis_fail_threshold → false
+ */
+export function applyGateConditions(
+  evalConfig: EvalConfig,
+  criteriaScores: Record<string, CriterionScore>,
+  aggregateScore: number
+): boolean {
+  if (aggregateScore < evalConfig.scoring.pass_threshold) return false;
 
+  const { copy_risk_fail_threshold, synthesis_fail_threshold } = evalConfig.scoring;
+
+  if (copy_risk_fail_threshold !== undefined) {
+    const copyRiskScore = criteriaScores["copy-risk"]?.score ?? 0;
+    if (copyRiskScore >= copy_risk_fail_threshold) return false;
+  }
+
+  if (synthesis_fail_threshold !== undefined) {
+    const synthesisScore = criteriaScores["synthesis"]?.score ?? 0;
+    if (synthesisScore < synthesis_fail_threshold) return false;
+  }
+
+  return true;
+}
+
+const EVAL_SYSTEM_PROMPT = `당신은 콘텐츠 품질 평가자입니다.
+아래 기사를 다음 10가지 평가 기준에 따라 1~5점으로 채점하세요.
+
+【기존 기준】
 1. factual-grounding: 기사의 주요 주장이 인용된 출처 요약으로 뒷받침되는가
+   (출처에 없는 주장을 사실처럼 서술하면 낮은 점수)
 2. fact-opinion-separation: 사실(fact)과 의견(opinion)이 명확히 구분되어 서술되는가
 3. exaggeration-check: 클릭베이트성 과장 표현이나 근거 없는 단정적 표현이 없는가
 4. unsourced-numbers-check: 출처에 없는 통계, 날짜, 고유명사가 새로 추가되지 않았는가
-5. structure: 기사가 도입-본문-결론 구조를 갖추고 있는가
+5. structure: 리드문→배경→핵심 쟁점→비교/시사점→전망 구조를 갖추고 있는가
+   (출처별 요약 나열에 그치면 낮은 점수)
 6. readability: 문장이 명확하고 가독성이 좋은가
+
+【Phase 1-8 신규 기준】
+7. originality: 기사 문장이 출처 요약과 독립적으로 작성되었는가
+   (출처 요약을 거의 그대로 복사했으면 1점, 완전히 재구성했으면 5점)
+8. synthesis: 여러 출처의 정보를 통합해 하나의 논지/흐름으로 재구성했는가
+   (출처를 각각 나열하는 수준이면 1점, 유기적으로 통합했으면 5점)
+9. source-integration: 본문에서 출처를 자연스럽게 언급하거나 인용했는가
+   (단순 나열 금지, 기사 흐름 속에 녹아 있으면 높은 점수)
+10. copy-risk: 출처 요약과 15단어 이상 연속으로 동일한 구문이 발견되는가
+    (1=위험 없음, 5=심각한 복사 — 점수가 높을수록 위험)
 
 규칙:
 1. 각 기준에 대해 점수(score, 1~5 정수)와 근거(reason)를 작성하세요.
 2. factual-grounding, unsourced-numbers-check 기준은 반드시 제공된 출처
    요약(sourceSummaries)과 대조하여 평가하세요.
-3. 출력은 반드시 아래 JSON 형식만 반환하세요. 그 외 텍스트는 출력하지 마세요.
+3. originality, synthesis, copy-risk 기준은 기사 본문과 출처 요약을 직접 비교하여
+   평가하세요. copy-risk 점수 산정 시 15단어 이상 연속 동일 구문이 있으면 4~5점을
+   부여하세요.
+4. 출력은 반드시 아래 JSON 형식만 반환하세요. 그 외 텍스트는 출력하지 마세요.
 
 출력 형식:
 {
@@ -128,7 +184,11 @@ const EVAL_SYSTEM_PROMPT = `당신은 콘텐츠 품질 평가자입니다.
     "exaggeration-check": { "score": 5, "reason": "..." },
     "unsourced-numbers-check": { "score": 4, "reason": "..." },
     "structure": { "score": 4, "reason": "..." },
-    "readability": { "score": 4, "reason": "..." }
+    "readability": { "score": 4, "reason": "..." },
+    "originality": { "score": 4, "reason": "..." },
+    "synthesis": { "score": 4, "reason": "..." },
+    "source-integration": { "score": 4, "reason": "..." },
+    "copy-risk": { "score": 1, "reason": "..." }
   },
   "notes": "전반적인 평가 요약"
 }`;
@@ -196,7 +256,7 @@ export async function evaluateArticleWithAi(
       throw new Error("AI 응답에서 텍스트를 찾을 수 없습니다.");
     }
 
-    const parsed = JSON.parse(textBlock.text) as RawEvalResult;
+    const parsed = JSON.parse(extractJson(textBlock.text)) as RawEvalResult;
 
     const criteriaScores: Record<string, CriterionScore> = {};
     for (const criterion of evalConfig.criteria) {
@@ -207,17 +267,16 @@ export async function evaluateArticleWithAi(
     }
 
     const aggregateScore = calculateAggregateScore(evalConfig, criteriaScores);
-    const passed = aggregateScore >= evalConfig.scoring.pass_threshold;
+    const passed = applyGateConditions(evalConfig, criteriaScores, aggregateScore);
     const notes = typeof parsed.notes === "string" ? parsed.notes : "";
 
     return { criteriaScores, aggregateScore, passed, notes };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
     return {
       criteriaScores: {},
       aggregateScore: 0,
       passed: false,
-      notes: `AI 평가 응답을 처리하지 못했습니다: ${reason}`,
+      notes: `AI 평가 응답을 처리하지 못했습니다: ${toAiErrorMessage(error)}`,
     };
   }
 }

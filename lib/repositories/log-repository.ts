@@ -21,7 +21,9 @@ export type LogEventType =
   | "ai_generation_failed"
   // Phase 1-5: 기사 검토/수정/승인 이벤트
   | "article_updated"
-  | "article_approved";
+  | "article_approved"
+  // Phase 1-8: 기사 품질 경고
+  | "article_quality_warning";
 
 export type LogStatus = "success" | "failed" | "info";
 

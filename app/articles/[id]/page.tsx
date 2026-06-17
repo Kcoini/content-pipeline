@@ -70,6 +70,17 @@ export default async function ArticleDetailPage({
           </div>
         )}
 
+        {latestEval && !latestEval.passed && (
+          <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="font-semibold">품질 검토 필요</div>
+            <div className="mt-1 text-xs">
+              이 기사는 AI 품질 평가를 통과하지 못했습니다 (종합 점수:{" "}
+              {latestEval.aggregateScore != null ? latestEval.aggregateScore.toFixed(2) : "-"}).{" "}
+              {latestEval.notes && latestEval.notes}
+            </div>
+          </div>
+        )}
+
         <header className="flex items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">{article.title}</h1>
           <span

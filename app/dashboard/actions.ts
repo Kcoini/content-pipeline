@@ -9,6 +9,7 @@ import { generateAiArticleDraft, generateMockArticleDraft, type GeneratedArticle
 import { summarizeSourcesMock, summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
 import { evaluateArticleMock, evaluateArticleWithAi } from "@/lib/ai/eval-article";
 import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
+import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
 import { addSource as addSourceRecord, getSourcesByThemeId } from "@/lib/repositories/source-repository";
@@ -188,7 +189,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
         themeId,
       });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = toAiErrorMessage(error);
       await logEvent({
         type: "ai_generation_failed",
         status: "failed",
@@ -321,6 +322,33 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     targetType: "article",
     targetId: article.id,
   });
+
+  if (!evalResult.passed) {
+    const copyRiskScore = evalResult.criteriaScores["copy-risk"]?.score ?? 0;
+    const synthesisScore = evalResult.criteriaScores["synthesis"]?.score ?? 0;
+    const warningReasons: string[] = [];
+    if (copyRiskScore >= 4) warningReasons.push(`복사 위험 높음 (copy-risk: ${copyRiskScore}점)`);
+    if (synthesisScore < 2) warningReasons.push(`종합성 부족 (synthesis: ${synthesisScore}점)`);
+    if (warningReasons.length === 0) warningReasons.push(`종합 점수 미달 (${evalResult.aggregateScore.toFixed(2)}점)`);
+
+    await logEvent({
+      type: "article_quality_warning",
+      status: "failed",
+      message: `기사 품질 검토가 필요합니다: ${warningReasons.join(", ")}`,
+      details: {
+        themeId,
+        articleId: article.id,
+        aggregateScore: evalResult.aggregateScore,
+        copyRiskScore,
+        synthesisScore,
+        notes: evalResult.notes,
+      },
+      themeId,
+      articleId: article.id,
+      targetType: "article",
+      targetId: article.id,
+    });
+  }
 
   revalidatePath("/dashboard");
   redirect(`/dashboard?themeId=${themeId}`);
