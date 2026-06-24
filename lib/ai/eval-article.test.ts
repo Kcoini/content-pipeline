@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { evaluateArticleMock, evaluateArticleWithAi, loadEvalConfig, applyGateConditions } from "./eval-article";
 import type { Article } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
@@ -96,6 +96,10 @@ describe("applyGateConditions", () => {
 });
 
 describe("evaluateArticleWithAi", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("ANTHROPIC_API_KEY가 없으면 예외 없이 passed=false 결과를 반환한다", async () => {
     const original = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
@@ -108,5 +112,52 @@ describe("evaluateArticleWithAi", () => {
     expect(result.notes).toContain("ANTHROPIC_API_KEY");
 
     if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
+  });
+
+  it("tool_use로 유효한 평가 결과를 반환하면 criteriaScores와 aggregateScore가 채워진다", async () => {
+    const mockScores: Record<string, { score: number; reason: string }> = {
+      "factual-grounding": { score: 4, reason: "근거 있음" },
+      "fact-opinion-separation": { score: 4, reason: "구분됨" },
+      "exaggeration-check": { score: 5, reason: "과장 없음" },
+      "unsourced-numbers-check": { score: 4, reason: "수치 출처 있음" },
+      "structure": { score: 4, reason: "구조 양호" },
+      "readability": { score: 4, reason: "읽기 쉬움" },
+      "originality": { score: 4, reason: "재구성됨" },
+      "synthesis": { score: 4, reason: "통합됨" },
+      "source-integration": { score: 4, reason: "자연스럽게 통합" },
+      "copy-risk": { score: 1, reason: "복사 없음" },
+    };
+    const mockResponse = {
+      content: [
+        {
+          type: "tool_use",
+          id: "eval-1",
+          name: "score_article",
+          input: { criteria_scores: mockScores, notes: "전반적으로 양호한 기사입니다." },
+        },
+      ],
+      stop_reason: "tool_use",
+    };
+
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const result = await evaluateArticleWithAi(article, sourceSummaries);
+
+    expect(result.criteriaScores["originality"]?.score).toBe(4);
+    expect(result.criteriaScores["synthesis"]?.score).toBe(4);
+    expect(result.criteriaScores["copy-risk"]?.score).toBe(1);
+    expect(result.aggregateScore).toBeGreaterThan(0);
+    expect(typeof result.aggregateScore).toBe("number");
+    expect(result.passed).toBe(true);
+    expect(result.notes).toBe("전반적으로 양호한 기사입니다.");
   });
 });

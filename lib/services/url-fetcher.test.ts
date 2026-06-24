@@ -6,6 +6,8 @@ import {
   extractTitle,
   extractText,
   fetchUrlContent,
+  detectCharset,
+  decodeBytes,
 } from "./url-fetcher";
 
 afterEach(() => {
@@ -232,5 +234,53 @@ describe("fetchUrlContent", () => {
     expect(result.status).toBe("success");
     expect(result.rawContent).not.toContain("alert");
     expect(result.rawContent).toContain("깨끗한 본문");
+  });
+});
+
+// ─── 인코딩 감지 ─────────────────────────────────────────────────────────────
+
+describe("detectCharset", () => {
+  const emptyBytes = new Uint8Array(0);
+
+  it("Content-Type 헤더에 charset이 있으면 반환한다", () => {
+    expect(detectCharset("text/html; charset=euc-kr", emptyBytes)).toBe("euc-kr");
+    expect(detectCharset("text/html; charset=UTF-8", emptyBytes)).toBe("utf-8");
+  });
+
+  it("헤더가 없으면 meta charset 태그에서 감지한다", () => {
+    const html = '<html><head><meta charset="euc-kr"></head></html>';
+    const bytes = new TextDecoder("latin1").decode(new Uint8Array([]));
+    void bytes;
+    const htmlBytes = new Uint8Array(Buffer.from(html, "ascii"));
+    expect(detectCharset("text/html", htmlBytes)).toBe("euc-kr");
+  });
+
+  it("감지 실패 시 utf-8을 반환한다", () => {
+    expect(detectCharset("text/html", emptyBytes)).toBe("utf-8");
+  });
+});
+
+describe("decodeBytes", () => {
+  it("utf-8 바이트를 올바르게 디코딩한다", () => {
+    const bytes = new TextEncoder().encode("안녕하세요");
+    expect(decodeBytes(bytes, "utf-8")).toBe("안녕하세요");
+  });
+
+  it("ks_c_5601-1987을 euc-kr로 정규화해 디코딩한다", () => {
+    const bytes = new TextEncoder().encode("test");
+    const result = decodeBytes(bytes, "ks_c_5601-1987");
+    expect(typeof result).toBe("string");
+  });
+
+  it("지원하지 않는 charset이면 utf-8로 fallback한다", () => {
+    const bytes = new TextEncoder().encode("fallback");
+    expect(decodeBytes(bytes, "unknown-charset-xyz")).toBe("fallback");
+  });
+
+  it("EUC-KR 바이트를 올바르게 디코딩한다", () => {
+    // "한국" in EUC-KR: 0xC7D1 0xB1B9
+    const eucKrBytes = new Uint8Array([0xC7, 0xD1, 0xB1, 0xB9]);
+    const result = decodeBytes(eucKrBytes, "euc-kr");
+    expect(result).toBe("한국");
   });
 });

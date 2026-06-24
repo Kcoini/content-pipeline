@@ -168,8 +168,10 @@ export async function fetchUrlContent(url: string): Promise<FetchResult> {
       };
     }
 
-    // 크기 제한을 지키며 본문을 읽는다
-    const html = await readWithSizeLimit(response, MAX_CONTENT_BYTES);
+    // 크기 제한을 지키며 바이트를 수집한 뒤, charset을 감지해 디코딩한다
+    const bytes = await readBytesWithSizeLimit(response, MAX_CONTENT_BYTES);
+    const charset = detectCharset(contentType, bytes);
+    const html = decodeBytes(bytes, charset);
 
     const extractedTitle = extractTitle(html);
     const rawContent = extractText(html).substring(0, MAX_CONTENT_CHARS);
@@ -203,10 +205,12 @@ export async function fetchUrlContent(url: string): Promise<FetchResult> {
   }
 }
 
-async function readWithSizeLimit(response: Response, maxBytes: number): Promise<string> {
+/** 응답 스트림에서 최대 maxBytes만큼 바이트를 수집한다. */
+async function readBytesWithSizeLimit(response: Response, maxBytes: number): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) {
-    return await response.text();
+    const buf = await response.arrayBuffer();
+    return new Uint8Array(buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf);
   }
 
   const chunks: Uint8Array[] = [];
@@ -223,14 +227,62 @@ async function readWithSizeLimit(response: Response, maxBytes: number): Promise<
     }
   }
 
-  const merged = new Uint8Array(totalBytes > maxBytes ? maxBytes : totalBytes);
+  const limit = Math.min(totalBytes, maxBytes);
+  const merged = new Uint8Array(limit);
   let offset = 0;
   for (const chunk of chunks) {
-    const slice = offset + chunk.length > merged.length ? chunk.slice(0, merged.length - offset) : chunk;
+    const remaining = limit - offset;
+    if (remaining <= 0) break;
+    const slice = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
     merged.set(slice, offset);
     offset += slice.length;
-    if (offset >= merged.length) break;
   }
 
-  return new TextDecoder().decode(merged);
+  return merged;
+}
+
+/**
+ * Content-Type 헤더와 HTML meta 태그를 순서대로 검사해 charset을 반환한다.
+ * 감지 실패 시 utf-8을 기본값으로 사용한다.
+ *
+ * 한국 언론사·블로그 중 EUC-KR(ks_c_5601-1987 / windows-949)을 쓰는 곳이 많아
+ * 이 감지 없이는 한글이 깨진다.
+ */
+export function detectCharset(contentType: string, bytes: Uint8Array): string {
+  // 1) Content-Type 헤더: charset=euc-kr
+  const ctMatch = contentType.match(/charset=["']?\s*([^"'\s;,>]+)/i);
+  if (ctMatch) return ctMatch[1].trim().toLowerCase();
+
+  // 2) HTML meta: latin1로 앞 2KB를 디코딩해서 charset 태그를 찾는다
+  //    (latin1은 모든 단일 바이트를 손실 없이 문자로 매핑하므로 바이트 스캔에 적합)
+  const preview = new TextDecoder("latin1").decode(bytes.slice(0, 2048));
+
+  // <meta charset="euc-kr"> 또는 <meta charset=euc-kr>
+  const metaCharset = preview.match(/<meta[^>]+charset=["']?\s*([^"'\s;>]+)/i);
+  if (metaCharset) return metaCharset[1].trim().toLowerCase();
+
+  // <meta http-equiv="Content-Type" content="text/html; charset=euc-kr">
+  const httpEquiv = preview.match(/content-type[^>]+charset=["']?\s*([^"'\s;>]+)/i);
+  if (httpEquiv) return httpEquiv[1].trim().toLowerCase();
+
+  return "utf-8";
+}
+
+/**
+ * 감지된 charset으로 바이트 배열을 문자열로 디코딩한다.
+ * EUC-KR 계열 별칭(ks_c_5601-1987, windows-949, cp949)을 euc-kr로 정규화한다.
+ * 지원하지 않는 charset이면 utf-8로 fallback한다.
+ */
+export function decodeBytes(bytes: Uint8Array, charset: string): string {
+  const normalized = charset
+    .replace(/ks[_-]c[_-]5601[-_]1987/i, "euc-kr")
+    .replace(/windows-949/i, "euc-kr")
+    .replace(/cp949/i, "euc-kr")
+    .replace(/x-windows-949/i, "euc-kr");
+
+  try {
+    return new TextDecoder(normalized).decode(bytes);
+  } catch {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
 }

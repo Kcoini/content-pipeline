@@ -67,6 +67,22 @@ describe("generateMockArticleDraft", () => {
     expect(result.citedSourceIds).toEqual(sources.map((source) => source.id));
   });
 
+  it("mock 본문에 7개 섹션 구조(리드문, 배경, 핵심 쟁점, 출처 간 비교, 독자, 향후 전망)가 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources);
+    expect(result.content).toContain("## 리드문");
+    expect(result.content).toContain("## 배경");
+    expect(result.content).toContain("## 핵심 쟁점");
+    expect(result.content).toContain("## 출처 간 비교");
+    expect(result.content).toContain("## 독자에게 중요한 의미");
+    expect(result.content).toContain("## 향후 전망 또는 과제");
+  });
+
+  it("mock 본문은 출처를 단순 나열하지 않고 구조화된 섹션으로 구성한다", () => {
+    const result = generateMockArticleDraft(theme, sources);
+    // 출처별 순차 나열 패턴("### 1. 출처 A", "### 2. 출처 B")이 없어야 한다
+    expect(result.content).not.toMatch(/### \d+\. /);
+  });
+
   it("status=draft으로 구성된 기사 객체는 article.contract.yaml을 통과한다", () => {
     const generated = generateMockArticleDraft(theme, sources);
     const articleContract = loadContract("article.contract.yaml");

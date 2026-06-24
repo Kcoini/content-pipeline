@@ -42,6 +42,14 @@ describe("prompts/article-draft.v1.md", () => {
   it("종합: 최소 3개 출처를 종합해야 한다는 조건이 포함되어 있다", () => {
     expect(content).toContain("3개 이상");
   });
+
+  it("Chain-of-Thought: synthesis_notes 분석 필드가 포함되어 있다", () => {
+    expect(content).toContain("synthesis_notes");
+  });
+
+  it("Chain-of-Thought: thesis(핵심 주장) 필드가 포함되어 있다", () => {
+    expect(content).toContain("thesis");
+  });
 });
 
 describe("prompts/article-eval.v1.md", () => {

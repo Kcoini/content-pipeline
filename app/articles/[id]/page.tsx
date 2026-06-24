@@ -187,13 +187,29 @@ export default async function ArticleDetailPage({
               {sources.map((source, index) => (
                 <li key={source.id} className="rounded border border-zinc-200 px-3 py-2 text-sm">
                   <div className="font-medium">
-                    {index + 1}. {source.title || "(제목 없음)"}
+                    {index + 1}.{" "}
+                    <a href={source.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                      {source.title || "(제목 없음)"}
+                    </a>
                   </div>
                   <div className="text-xs text-zinc-500">
-                    {source.url || "(URL 없음)"}
-                    {source.publisher && ` · ${source.publisher}`}
+                    {source.publisher && `${source.publisher}`}
                     {source.publishedAt && ` · ${source.publishedAt}`}
                   </div>
+                  {source.summary && (
+                    <p className="mt-1 line-clamp-2 text-xs text-zinc-600">
+                      {source.summary.length > 150
+                        ? `${source.summary.substring(0, 150)}…`
+                        : source.summary}
+                    </p>
+                  )}
+                  {source.keyPoints && source.keyPoints.length > 0 && (
+                    <ul className="mt-1 list-inside list-disc text-xs text-zinc-500">
+                      {source.keyPoints.slice(0, 3).map((kp, kpIdx) => (
+                        <li key={kpIdx}>{kp}</li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>

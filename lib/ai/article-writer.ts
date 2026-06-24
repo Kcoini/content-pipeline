@@ -208,71 +208,102 @@ export async function generateAiArticleDraft(
 }
 
 function buildKoreanSections(theme: Theme, sources: Source[]): string[] {
-  const keywordLine =
-    theme.keywords.length > 0 ? `주요 키워드: ${theme.keywords.join(", ")}` : "";
+  const keywordStr = theme.keywords.length > 0 ? theme.keywords.join(", ") : "";
+  const desc = theme.description || `${theme.title}에 대한 최신 동향`;
 
-  const intro = [
-    `# ${theme.title}`,
-    "",
-    "## 개요",
-    theme.description || `${theme.title}에 대한 자동 생성 기사 초안입니다.`,
-    keywordLine,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const titleSection = `# ${theme.title}`;
 
-  const body = [
-    "## 출처별 핵심 내용",
-    ...sources.map((source, index) => {
-      const meta = [source.publisher, source.publishedAt].filter(Boolean).join(", ");
-      return [
-        `### ${index + 1}. ${source.title}`,
-        source.summary || "(요약 정보가 등록되지 않았습니다.)",
-        `- 출처: ${source.url}${meta ? ` (${meta})` : ""}`,
-      ].join("\n");
-    }),
-  ].join("\n\n");
-
-  const conclusion = [
-    "## 결론",
-    `이상으로 "${theme.title}"에 대해 등록된 ${sources.length}개의 출처를 바탕으로 핵심 내용을 정리했습니다.`,
-    "본 초안은 자동 생성된 draft이며, AI 평가와 사용자 검토를 거쳐야 reviewed 상태로 전환됩니다.",
+  const lead = [
+    "## 리드문",
+    `${desc} ${sources.length}개 출처를 분석해 핵심 내용을 정리했다.` +
+      " 이 초안은 AI 평가와 사용자 검토를 거쳐야 최종 승인된다.",
   ].join("\n");
 
-  return [intro, body, conclusion];
+  const background = [
+    "## 배경",
+    `"${theme.title}"는 최근 주목받는 주제다.` +
+      (keywordStr ? ` 이 기사는 ${keywordStr} 등 핵심 키워드를 중심으로 구성했다.` : "") +
+      ` 등록된 ${sources.length}개 출처는 이 주제의 다양한 측면을 다루고 있다.`,
+  ].join("\n");
+
+  const issueParts = sources.slice(0, 3).map((s) => {
+    const point = s.keyPoints?.[0] || s.summary?.substring(0, 80) || "(내용 없음)";
+    return `- **${s.title || s.url}**: ${point}`;
+  });
+  const issues = ["## 핵심 쟁점", ...issueParts].join("\n");
+
+  const comparison = [
+    "## 출처 간 비교",
+    sources.length >= 2
+      ? `${sources.length}개 출처가 공통적으로 다루는 핵심 사안과 각 출처의 관점 차이를 비교했다.` +
+        " 출처마다 강조점이 다르며, 이러한 차이는 주제를 다각도로 이해하는 데 도움이 된다."
+      : "비교를 위해 최소 2개 이상의 출처가 필요하다.",
+  ].join("\n");
+
+  const significance = [
+    "## 독자에게 중요한 의미",
+    "이 주제는 독자의 일상 또는 업무와 직결될 수 있다." +
+      " 출처들이 공통으로 지적하는 변화와 시사점을 주의 깊게 살펴볼 필요가 있다.",
+  ].join("\n");
+
+  const outlook = [
+    "## 향후 전망 또는 과제",
+    `현재까지 확인된 사실을 바탕으로 볼 때 "${theme.title}" 분야는 지속적인 변화가 예상된다.` +
+      " 구체적인 전망은 추가 출처와 전문가 검토를 거쳐 보완될 필요가 있다.",
+    "",
+    "> ⚠️ 이 초안은 mock article generator가 자동 생성한 draft입니다." +
+      " AI 평가와 사용자 승인을 거쳐야 reviewed 상태로 전환됩니다.",
+  ].join("\n");
+
+  return [titleSection, lead, background, issues, comparison, significance, outlook];
 }
 
 function buildEnglishSections(theme: Theme, sources: Source[]): string[] {
-  const keywordLine =
-    theme.keywords.length > 0 ? `Key keywords: ${theme.keywords.join(", ")}` : "";
+  const keywordStr = theme.keywords.length > 0 ? theme.keywords.join(", ") : "";
+  const desc = theme.description || `The latest trends in ${theme.title}`;
 
-  const intro = [
-    `# ${theme.title}`,
-    "",
-    "## Overview",
-    theme.description || `An automatically generated draft article about ${theme.title}.`,
-    keywordLine,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const titleSection = `# ${theme.title}`;
 
-  const body = [
-    "## Key points by source",
-    ...sources.map((source, index) => {
-      const meta = [source.publisher, source.publishedAt].filter(Boolean).join(", ");
-      return [
-        `### ${index + 1}. ${source.title}`,
-        source.summary || "(No summary provided.)",
-        `- Source: ${source.url}${meta ? ` (${meta})` : ""}`,
-      ].join("\n");
-    }),
-  ].join("\n\n");
-
-  const conclusion = [
-    "## Conclusion",
-    `This article summarizes ${sources.length} sources registered for "${theme.title}".`,
-    "This draft must go through AI evaluation and human review before it can be transitioned to the reviewed status.",
+  const lead = [
+    "## Lead",
+    `${desc} This draft synthesizes ${sources.length} registered sources and must pass AI evaluation and human review before publication.`,
   ].join("\n");
 
-  return [intro, body, conclusion];
+  const background = [
+    "## Background",
+    `"${theme.title}" is a topic that has been gaining attention recently.` +
+      (keywordStr ? ` Key topics include: ${keywordStr}.` : "") +
+      ` The ${sources.length} registered sources cover various aspects of this subject.`,
+  ].join("\n");
+
+  const issueParts = sources.slice(0, 3).map((s) => {
+    const point = s.keyPoints?.[0] || s.summary?.substring(0, 80) || "(no content)";
+    return `- **${s.title || s.url}**: ${point}`;
+  });
+  const issues = ["## Key Issues", ...issueParts].join("\n");
+
+  const comparison = [
+    "## Comparison Across Sources",
+    sources.length >= 2
+      ? `Among the ${sources.length} sources, common themes and differing emphases have been identified.` +
+        " These differences help illuminate the topic from multiple angles."
+      : "At least 2 sources are required for comparison.",
+  ].join("\n");
+
+  const significance = [
+    "## Why This Matters to Readers",
+    "This topic may have direct relevance to readers' daily lives or professional work." +
+      " The key changes and implications highlighted by the sources deserve careful attention.",
+  ].join("\n");
+
+  const outlook = [
+    "## Outlook or Open Questions",
+    `Based on what has been confirmed so far, "${theme.title}" is expected to continue evolving.` +
+      " Specific forecasts should be supplemented with additional sources and expert review.",
+    "",
+    "> ⚠️ This draft was auto-generated by the mock article generator." +
+      " It must pass AI evaluation and human approval before transitioning to reviewed status.",
+  ].join("\n");
+
+  return [titleSection, lead, background, issues, comparison, significance, outlook];
 }
