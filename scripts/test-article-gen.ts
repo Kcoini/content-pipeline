@@ -58,6 +58,10 @@ async function main() {
         fetchStatus: (s.fetch_status ?? "pending") as "pending" | "success" | "failed",
         fetchError: s.fetch_error ?? null,
         rawContent: s.raw_content ?? null,
+        summaryStatus: (s.summary_status ?? "pending") as "pending" | "success" | "failed" | "skipped",
+        summaryError: s.summary_error ?? null,
+        summarizedAt: s.summarized_at ?? null,
+        keyPoints: Array.isArray(s.key_points) ? s.key_points : [],
       }));
       break;
     }

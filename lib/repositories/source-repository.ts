@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SourceRow } from "@/lib/supabase/database.types";
 import type { Source } from "@/lib/types/domain";
 import type { FetchResult } from "@/lib/services/url-fetcher";
+import type { SourceSummaryResult } from "@/lib/ai/source-auto-summarizer";
 
 /** 같은 테마 안에서 동일한 URL을 중복 등록할 때 발생하는 오류. */
 export class DuplicateSourceError extends Error {
@@ -29,7 +30,8 @@ export function mapSourceRowToSource(row: SourceRow): Source {
     id: row.id,
     themeId: row.theme_id,
     url: row.url,
-    title: row.title,
+    // title이 비어있으면 fetch 시 추출한 페이지 제목으로 자동 보완한다
+    title: row.title || row.extracted_title || "",
     publisher: row.author ?? "",
     publishedAt: row.published_at ? row.published_at.slice(0, 10) : "",
     summary: row.summary ?? "",
@@ -37,6 +39,10 @@ export function mapSourceRowToSource(row: SourceRow): Source {
     fetchStatus: row.fetch_status ?? "pending",
     fetchError: row.fetch_error ?? null,
     rawContent: row.raw_content ?? null,
+    summaryStatus: row.summary_status ?? "pending",
+    summaryError: row.summary_error ?? null,
+    summarizedAt: row.summarized_at ?? null,
+    keyPoints: Array.isArray(row.key_points) ? (row.key_points as string[]) : [],
   };
 }
 
@@ -68,12 +74,55 @@ export async function addSource(input: AddSourceInput): Promise<Source> {
   return mapSourceRowToSource(data);
 }
 
+/** AI 자동 요약 결과를 sources 테이블에 반영한다 (Phase 1-10). */
+export async function updateSourceSummary(
+  sourceId: string,
+  result: SourceSummaryResult,
+  status: "success" | "failed",
+  errorMessage?: string
+): Promise<void> {
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("sources")
+    .update({
+      summary: status === "success" ? result.summary : undefined,
+      key_points: status === "success" ? result.keyPoints : undefined,
+      summary_status: status,
+      summary_error: errorMessage ?? null,
+      summarized_at: new Date().toISOString(),
+    })
+    .eq("id", sourceId);
+
+  if (error) {
+    throw new Error(`출처 요약 저장에 실패했습니다: ${error.message}`);
+  }
+}
+
+/** summary_status를 skipped로 기록한다 (raw_content 없을 때). */
+export async function skipSourceSummary(sourceId: string): Promise<void> {
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("sources")
+    .update({ summary_status: "skipped" })
+    .eq("id", sourceId);
+
+  if (error) {
+    throw new Error(`출처 요약 상태 저장에 실패했습니다: ${error.message}`);
+  }
+}
+
 /** URL 수집 결과를 sources 테이블에 반영한다 (Phase 1-9). */
 export async function updateSourceFetchResult(
   sourceId: string,
-  result: FetchResult
+  result: FetchResult,
+  currentTitle?: string
 ): Promise<void> {
   const supabase = createServerSupabaseClient();
+
+  // title이 비어있고 fetch로 페이지 제목을 추출했으면 title도 함께 업데이트한다
+  const shouldFillTitle = !currentTitle && !!result.extractedTitle;
 
   const { error } = await supabase
     .from("sources")
@@ -83,6 +132,7 @@ export async function updateSourceFetchResult(
       extracted_title: result.extractedTitle,
       fetched_at: result.fetchedAt,
       fetch_error: result.fetchError,
+      ...(shouldFillTitle ? { title: result.extractedTitle as string } : {}),
     })
     .eq("id", sourceId);
 

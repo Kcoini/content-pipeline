@@ -13,6 +13,7 @@ export interface Theme {
 }
 
 export type FetchStatus = "pending" | "success" | "failed";
+export type SummaryStatus = "pending" | "success" | "failed" | "skipped";
 
 export interface Source {
   id: string;
@@ -29,6 +30,11 @@ export interface Source {
   fetchStatus: FetchStatus;
   fetchError: string | null;
   rawContent: string | null;
+  /** Phase 1-10: AI 자동 요약 상태 */
+  summaryStatus: SummaryStatus;
+  summaryError: string | null;
+  summarizedAt: string | null;
+  keyPoints: string[];
 }
 
 export type ArticleStatus = "draft" | "reviewed" | "published";

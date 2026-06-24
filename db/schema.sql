@@ -97,7 +97,17 @@ create table sources (
   raw_content text,
   extracted_title text,
   fetched_at timestamptz,
-  fetch_error text
+  fetch_error text,
+
+  -- Phase 1-10: AI 자동 요약 결과
+  -- summary_status: pending / success / failed / skipped(raw_content 없음)
+  -- summary 컬럼은 기존에 존재하며 자동 생성 요약도 이 컬럼에 저장한다.
+  -- key_points: AI가 추출한 핵심 포인트 배열
+  summary_status text not null default 'pending'
+    check (summary_status in ('pending', 'success', 'failed', 'skipped')),
+  summary_error text,
+  summarized_at timestamptz,
+  key_points jsonb not null default '[]'::jsonb
 );
 
 create trigger trg_sources_updated_at

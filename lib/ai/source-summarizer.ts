@@ -1,12 +1,10 @@
-// Phase 1-3/1-4: 출처 요약기.
-// prompts/source-summary.v1.md의 출력 형식(sourceId, summary)을 따른다.
-// mock 구현(summarizeSourcesMock)과 실제 AI 연동(summarizeSourcesWithAi)을 분리한다.
-//
-// 비용 안전장치: 기사 생성 1회 클릭당 AI 호출은 source summary 1회로 제한하기
-// 위해, 출처별로 호출하지 않고 모든 출처를 한 번의 요청으로 묶어 요약한다.
+// Phase 1-3/1-4 → Phase 1-10 업데이트: 출처 요약기.
+// Phase 1-10부터 source 등록 시점에 source-auto-summarizer.ts가 per-source 요약을 생성하고
+// sources.summary / sources.key_points에 저장한다.
+// 기사 생성 시 이 모듈은 저장된 요약을 읽어 SourceSummary[] 형태로 포맷할 뿐,
+// 추가 AI 호출을 하지 않는다.
 
-import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
-import { extractJson } from "./parse-json";
+import { getAnthropicClient } from "./anthropic-client";
 import type { Source, Theme } from "@/lib/types/domain";
 
 export interface SourceSummary {
@@ -16,11 +14,26 @@ export interface SourceSummary {
   publisher: string;
   publishedAt: string;
   summary: string;
+  /** Phase 1-10: 출처별 자동 요약에서 추출한 핵심 포인트 */
+  keyPoints: string[];
+  /** Phase 1-10: 출처 관점 */
+  sourceAngle: string;
 }
 
 /**
- * Phase 1-3: 실제 AI 호출 없이, 출처에 등록된 정보를 그대로 요약으로 사용하는
- * mock 구현. 등록된 summary가 없으면 제목/출판사로 대체 문구를 만든다.
+ * 출처별 요약 텍스트 fallback 순서:
+ * 1) sources.summary (자동 생성 또는 사용자 입력)
+ * 2) raw_content 앞 400자
+ * 3) 제목 + 출판사
+ */
+function buildSummaryText(source: Source): string {
+  if (source.summary) return source.summary;
+  if (source.rawContent) return `${source.rawContent.substring(0, 400)}...`;
+  return `${source.title} (${source.publisher || "출처 미상"})`;
+}
+
+/**
+ * mock 구현: 저장된 summary / keyPoints를 그대로 사용한다.
  */
 export function summarizeSourcesMock(sources: Source[]): SourceSummary[] {
   return sources.map((source) => ({
@@ -29,109 +42,33 @@ export function summarizeSourcesMock(sources: Source[]): SourceSummary[] {
     url: source.url,
     publisher: source.publisher,
     publishedAt: source.publishedAt,
-    summary: source.summary || `${source.title} (${source.publisher || "출처 미상"})`,
+    summary: buildSummaryText(source),
+    keyPoints: source.keyPoints ?? [],
+    sourceAngle: "",
   }));
 }
 
-const SYSTEM_PROMPT = `당신은 기사 작성을 위한 리서치 어시스턴트입니다.
-주어진 출처 정보를 바탕으로 기사 작성에 사용할 핵심 근거 요약을 작성하세요.
-
-규칙:
-1. 뉴스 원문을 그대로 복사하지 마세요 (요약/재구성만 허용).
-2. 출처에 명시된 사실관계만 포함하고, 추측이나 새로운 정보를 추가하지 마세요.
-3. 각 출처당 3~5문장 이내로 간결하게 작성하세요.
-4. 출력은 반드시 JSON 형식만 반환하세요. 그 외 텍스트는 출력하지 마세요.
-5. sourceId는 반드시 입력에서 제공된 값(UUID 형식)을 그대로 복사하세요.
-   절대 "source-1", "source-2" 같은 임의 이름으로 바꾸지 마세요.
-
-출력 형식:
-{
-  "summaries": [
-    { "sourceId": "입력에 있는 실제 sourceId UUID를 그대로 사용", "summary": "출처의 핵심 근거를 요약한 텍스트" }
-  ]
-}`;
-
-function buildUserPrompt(theme: Theme, sources: Source[]): string {
-  const sourceLines = sources
-    .map((source) =>
-      [
-        `- sourceId: ${source.id}`,
-        `  title: ${source.title}`,
-        `  url: ${source.url}`,
-        `  publisher: ${source.publisher}`,
-        `  publishedAt: ${source.publishedAt}`,
-        `  summary: ${source.summary}`,
-      ].join("\n")
-    )
-    .join("\n");
-
-  return `주제: ${theme.title}\n주제 설명: ${theme.description}\n\n출처 목록:\n${sourceLines}\n\n위 출처들을 바탕으로 각 출처별 핵심 근거 요약을 작성하세요.`;
-}
-
-interface RawSourceSummary {
-  sourceId?: unknown;
-  summary?: unknown;
-}
-
 /**
- * Phase 1-4: prompts/source-summary.v1.md 기준으로 Anthropic API를 호출해
- * 모든 출처를 한 번의 요청으로 요약한다. JSON parse에 실패하면 에러를 던진다
- * (호출부에서 mock 요약으로 대체 처리한다).
+ * Phase 1-4 → Phase 1-10 업데이트:
+ * 출처별 자동 요약이 source 등록 시점에 완료되어 있으므로,
+ * 기사 생성 시에는 저장된 summary/keyPoints를 그대로 사용한다 (추가 AI 호출 없음).
+ * API key 확인만 수행하여 AI mode 진입을 보장한다.
  */
 export async function summarizeSourcesWithAi(
-  theme: Theme,
+  _theme: Theme,
   sources: Source[]
 ): Promise<SourceSummary[]> {
-  const client = getAnthropicClient();
+  // API key 없으면 즉시 실패 → 호출부에서 mock으로 대체한다
+  getAnthropicClient();
 
-  const response = await client.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: buildUserPrompt(theme, sources) }],
-  });
-
-  const textBlock = response.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("summarizeSourcesWithAi: AI 응답에서 텍스트를 찾을 수 없습니다.");
-  }
-
-  let parsed: { summaries?: RawSourceSummary[] };
-  try {
-    parsed = JSON.parse(extractJson(textBlock.text));
-  } catch {
-    throw new Error("summarizeSourcesWithAi: AI 응답을 JSON으로 해석할 수 없습니다.");
-  }
-
-  const parsedSummaries = parsed.summaries ?? [];
-
-  // UUID 기반 매핑: 모델이 sourceId를 그대로 반환했을 때 사용
-  const summaryById = new Map<string, string>();
-  for (const item of parsedSummaries) {
-    if (typeof item.sourceId === "string" && typeof item.summary === "string") {
-      summaryById.set(item.sourceId, item.summary);
-    }
-  }
-
-  return sources.map((source, index) => {
-    // 1순위: UUID 매칭 (모델이 실제 UUID를 반환한 경우)
-    const byId = summaryById.get(source.id);
-    // 2순위: 위치 기반 매칭 (모델이 "source-1" 등 임의 이름을 반환한 경우 대비)
-    const byIndex = parsedSummaries[index];
-    const aiSummary =
-      byId ??
-      (typeof byIndex?.summary === "string" ? byIndex.summary : undefined);
-
-    return {
-      sourceId: source.id,
-      title: source.title,
-      url: source.url,
-      publisher: source.publisher,
-      publishedAt: source.publishedAt,
-      summary:
-        aiSummary ||
-        source.summary ||
-        `${source.title} (${source.publisher || "출처 미상"})`,
-    };
-  });
+  return sources.map((source) => ({
+    sourceId: source.id,
+    title: source.title,
+    url: source.url,
+    publisher: source.publisher,
+    publishedAt: source.publishedAt,
+    summary: buildSummaryText(source),
+    keyPoints: source.keyPoints ?? [],
+    sourceAngle: "",
+  }));
 }

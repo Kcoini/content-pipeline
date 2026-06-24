@@ -42,6 +42,7 @@ export type ThemeRow = {
 };
 
 export type FetchStatus = "pending" | "success" | "failed";
+export type SummaryStatus = "pending" | "success" | "failed" | "skipped";
 
 export type SourceRow = {
   id: string;
@@ -60,6 +61,11 @@ export type SourceRow = {
   extracted_title: string | null;
   fetched_at: string | null;
   fetch_error: string | null;
+  /** Phase 1-10: AI 자동 요약 상태 */
+  summary_status: SummaryStatus;
+  summary_error: string | null;
+  summarized_at: string | null;
+  key_points: string[];
 };
 
 export type ArticleRow = {

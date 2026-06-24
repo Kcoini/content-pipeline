@@ -19,6 +19,10 @@ function makeSourceRow(overrides: Partial<SourceRow> = {}): SourceRow {
     extracted_title: null,
     fetched_at: null,
     fetch_error: null,
+    summary_status: "pending",
+    summary_error: null,
+    summarized_at: null,
+    key_points: [],
     ...overrides,
   };
 }
@@ -63,6 +67,10 @@ describe("mapSourceRowToSource", () => {
       fetchStatus: "pending",
       fetchError: null,
       rawContent: null,
+      summaryStatus: "pending",
+      summaryError: null,
+      summarizedAt: null,
+      keyPoints: [],
     });
   });
 

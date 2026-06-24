@@ -23,7 +23,11 @@ export type LogEventType =
   | "article_updated"
   | "article_approved"
   // Phase 1-8: 기사 품질 경고
-  | "article_quality_warning";
+  | "article_quality_warning"
+  // Phase 1-10: 출처별 자동 요약 이벤트
+  | "source_summary_failed"
+  | "source_summary_skipped"
+  | "source_summary_mocked";
 
 export type LogStatus = "success" | "failed" | "info";
 

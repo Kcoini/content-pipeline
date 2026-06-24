@@ -16,6 +16,8 @@ const sourceSummaries: SourceSummary[] = [
     publisher: "A 매체",
     publishedAt: "2026-01-01",
     summary: "출처 A 요약",
+    keyPoints: [],
+    sourceAngle: "",
   },
 ];
 

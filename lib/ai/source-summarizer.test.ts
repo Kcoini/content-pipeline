@@ -11,6 +11,16 @@ const theme: Theme = {
   createdAt: new Date().toISOString(),
 };
 
+const baseSourceFields = {
+  fetchStatus: "pending" as const,
+  fetchError: null,
+  rawContent: null,
+  summaryStatus: "pending" as const,
+  summaryError: null,
+  summarizedAt: null,
+  keyPoints: [],
+};
+
 const sources: Source[] = [
   {
     id: "source-1",
@@ -21,6 +31,7 @@ const sources: Source[] = [
     publishedAt: "2026-01-01",
     summary: "출처 A 요약",
     createdAt: new Date().toISOString(),
+    ...baseSourceFields,
   },
   {
     id: "source-2",
@@ -31,6 +42,7 @@ const sources: Source[] = [
     publishedAt: "2026-02-01",
     summary: "",
     createdAt: new Date().toISOString(),
+    ...baseSourceFields,
   },
 ];
 
@@ -45,6 +57,8 @@ describe("summarizeSourcesMock", () => {
       publisher: "A 매체",
       publishedAt: "2026-01-01",
       summary: "출처 A 요약",
+      keyPoints: [],
+      sourceAngle: "",
     });
   });
 

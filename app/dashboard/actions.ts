@@ -12,11 +12,70 @@ import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
 import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
-import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, DuplicateSourceError } from "@/lib/repositories/source-repository";
+import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, updateSourceSummary, skipSourceSummary, DuplicateSourceError } from "@/lib/repositories/source-repository";
 import { fetchUrlContent } from "@/lib/services/url-fetcher";
+import { generateSourceSummaryWithAi, generateSourceSummaryMock } from "@/lib/ai/source-auto-summarizer";
 import { saveDraftArticle } from "@/lib/repositories/article-repository";
 import { saveEvalRun } from "@/lib/repositories/eval-repository";
 import type { Language } from "@/lib/types/domain";
+
+import type { Source } from "@/lib/types/domain";
+
+interface AutoSummaryContext {
+  source: Source;
+  rawContent: string;
+  themeId: string;
+  aiMode: boolean;
+}
+
+async function runSourceAutoSummary({ source, rawContent, themeId, aiMode }: AutoSummaryContext): Promise<void> {
+  await logEvent({
+    type: "source_summary_started",
+    status: "info",
+    message: `출처 자동 요약을 시작합니다: ${source.title || source.url}`,
+    details: { themeId, sourceId: source.id, aiMode },
+    themeId,
+  });
+
+  if (!aiMode) {
+    const mockResult = generateSourceSummaryMock(source);
+    try {
+      await updateSourceSummary(source.id, mockResult, "success");
+    } catch { /* 무시 */ }
+    await logEvent({
+      type: "source_summary_mocked",
+      status: "success",
+      message: "mock 요약이 생성되었습니다.",
+      details: { themeId, sourceId: source.id },
+      themeId,
+    });
+    return;
+  }
+
+  try {
+    const result = await generateSourceSummaryWithAi(source, rawContent);
+    await updateSourceSummary(source.id, result, "success");
+    await logEvent({
+      type: "source_summary_completed",
+      status: "success",
+      message: `출처 자동 요약이 완료되었습니다: ${source.title || source.url}`,
+      details: { themeId, sourceId: source.id, keyPointsCount: result.keyPoints.length },
+      themeId,
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "알 수 없는 오류";
+    try {
+      await updateSourceSummary(source.id, { summary: "", keyPoints: [], entities: [], risksOrUncertainties: [], sourceAngle: "" }, "failed", reason);
+    } catch { /* 무시 */ }
+    await logEvent({
+      type: "source_summary_failed",
+      status: "failed",
+      message: `출처 자동 요약 실패: ${reason}`,
+      details: { themeId, sourceId: source.id, error: reason },
+      themeId,
+    });
+  }
+}
 
 function parseKeywords(raw: string): string[] {
   return raw
@@ -99,7 +158,7 @@ export async function addSource(formData: FormData): Promise<void> {
   if (source.url) {
     const fetchResult = await fetchUrlContent(source.url);
     try {
-      await updateSourceFetchResult(source.id, fetchResult);
+      await updateSourceFetchResult(source.id, fetchResult, source.title);
     } catch {
       // 저장 실패는 무시 — source 자체는 이미 등록됨
     }
@@ -112,6 +171,21 @@ export async function addSource(formData: FormData): Promise<void> {
         details: { themeId, sourceId: source.id, contentLength: fetchResult.rawContent?.length ?? 0 },
         themeId,
       });
+
+      // 본문 수집 성공 시 source summary 자동 생성 (Phase 1-10)
+      const rawContent = fetchResult.rawContent;
+      if (rawContent) {
+        await runSourceAutoSummary({ source, rawContent, themeId, aiMode: shouldUseAnthropic() });
+      } else {
+        try { await skipSourceSummary(source.id); } catch { /* 무시 */ }
+        await logEvent({
+          type: "source_summary_skipped",
+          status: "info",
+          message: "본문 내용이 없어 자동 요약을 건너뜁니다.",
+          details: { themeId, sourceId: source.id },
+          themeId,
+        });
+      }
     } else {
       await logEvent({
         type: "source_added",

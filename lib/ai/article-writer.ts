@@ -1,17 +1,10 @@
 // Phase 1-3: 기사 초안 생성기.
-// mock 구현(generateMockArticleDraft)과 실제 AI 연동을 위한 인터페이스
-// (generateAiArticleDraft)를 분리한다.
-//
-// generateMockArticleDraft는 prompts/generate-article.prompt.md의 출력 형식
-// (title, content, citedSourceIds)을 그대로 따르되, LLM 대신 등록된 출처를
-// 템플릿에 채워 넣는다. article.contract.yaml의 min-content-length(500자),
-// min-linked-sources(3개) 규칙을 항상 만족하도록 생성한다.
-//
-// generateAiArticleDraft는 prompts/article-draft.v1.md 기준으로 Phase 1-3 이후
-// 실제 LLM 호출로 구현한다.
+// mock 구현(generateMockArticleDraft)과 실제 AI 연동(generateAiArticleDraft)을 분리한다.
+// Phase 1-10: article writer는 source summary(전문) 대신 key_points(불릿 사실)만
+// 전달받아 synthesis 없이 paraphrase하는 경향을 차단한다.
+// Phase 1-11: tool_use로 JSON 출력을 강제한다.
 
 import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
-import { extractJson } from "./parse-json";
 import type { Source, Theme } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
 
@@ -49,110 +42,133 @@ export function generateMockArticleDraft(theme: Theme, sources: Source[]): Gener
   return { title, content, citedSourceIds };
 }
 
-const ARTICLE_SYSTEM_PROMPT = `당신은 블로그/홈페이지 기사를 작성하는 에디터입니다.
-아래 제공된 출처 요약(sourceSummaries) 안의 정보만을 근거로 기사를 작성하세요.
+// ─────────────────────────────────────────────────────────────
+// AI 기사 생성 (tool_use 방식)
+// ─────────────────────────────────────────────────────────────
 
-【필수 구조 - 반드시 다음 7개 섹션을 포함할 것】
-1. 제목: 주제를 명확하게 전달하는 제목 (과장 금지)
-2. 리드문: 핵심 내용을 요약한 2~3문장 (독자가 기사를 읽을 이유를 제시)
-3. 배경: 이 주제가 왜 지금 중요한지 맥락 설명
-4. 핵심 쟁점: 출처들이 공통으로 다루는 핵심 문제/이슈
-5. 출처 간 공통점과 차이점: 여러 출처의 시각을 비교하고 대조
-6. 독자에게 중요한 의미: 독자에게 이 정보가 왜 중요한지 해석
-7. 향후 전망 또는 과제: 출처에 근거한 전망이나 남은 과제
+const ARTICLE_SYSTEM_PROMPT = `당신은 15년 경력의 전문 저널리스트입니다.
+복잡한 사안을 일반 독자가 납득할 수 있게 풀어 쓰는 것이 특기이며,
+여러 출처를 종합해 하나의 명확한 논지를 가진 기사를 작성합니다.
 
-【표절 방지 규칙 - 반드시 준수】
-- 출처 요약을 그대로 붙여 넣지 마세요.
-- 출처 요약과 15단어(15 어절) 이상 연속으로 동일한 구문을 사용하지 마세요.
-- 각 출처의 내용을 단순 나열하지 마세요. 반드시 여러 출처를 통합하고
-  재해석하여 하나의 논지로 연결하세요.
-- 최소 3개 이상의 출처를 유기적으로 종합하여 하나의 흐름으로 만드세요.
+【작업 순서 — 반드시 이 순서를 지킬 것】
+1. synthesis_notes 먼저 작성:
+   - 모든 출처의 핵심 사실을 훑은 뒤, 공통 논지와 의미 있는 차이점을 3~5문장으로 정리한다.
+   - "이 기사로 독자에게 전달할 가장 중요한 한 가지는 무엇인가?"를 스스로 물어본다.
+2. thesis 작성: 위 분석에서 도출한 기사의 핵심 주장을 1~2문장으로 명확히 쓴다.
+3. title 작성: thesis를 반영한 제목 (과장·클릭베이트 금지, 40자 이내).
+4. content 작성: thesis를 중심으로 7개 섹션 기사를 작성한다.
 
-【일반 규칙】
-1. 제목을 포함하여 작성하세요.
-2. 본문은 공백 포함 500자 이상이어야 합니다.
-3. 제공된 출처 요약 중 최소 3개 이상을 citedSourceIds에 포함하고, 본문에서
-   실제로 언급/인용해야 합니다.
-4. 출처 요약에 없는 통계, 날짜, 고유명사(인명/기관명/지명 등)를 새로 만들어
-   추가하지 마세요 (hallucination 금지).
-5. 사실(fact)과 의견(opinion)을 구분해서 서술하세요. 의견은 "~로 보인다",
-   "~라는 평가가 있다" 등으로 표현하세요.
-6. 클릭베이트성 과장 표현(예: "충격", "경악", "○○가 다 죽었다" 등)을 제목과
-   본문에 사용하지 마세요.
-7. 각 문단은 단순 요약이 아니라 해석과 연결을 포함해야 합니다. 독자가 읽었을 때
-   기사처럼 느껴져야 합니다.
-8. 출력은 반드시 아래 JSON 형식만 반환하세요. 그 외 텍스트는 출력하지 마세요.
-   synthesis_notes는 독자에게 보이지 않는 내부 분석 메모이며, 이 분석을 먼저 완성한
-   뒤 content를 작성하세요.
+【문체 기준】
+- 한국 주요 일간지 수준의 품격 있는 설명형 저널리즘
+- 역피라미드 구조 + 내러티브 흐름
+- 각 문단은 하나의 생각을 담고 다음 문단으로 자연스럽게 이어진다
+- 결론에 "~일 것이다", "~해야 한다" 식의 빈약한 전망 나열 금지
+- 독자가 기사를 다 읽고 나서 "아, 이래서 이 주제가 중요하구나"를 느껴야 한다
 
-출력 형식:
-{
-  "synthesis_notes": "출처들의 공통 논지와 핵심 차이점을 2~3문장으로 정리 (독자에게 보이지 않음)",
-  "title": "기사 제목",
-  "content": "기사 본문 (markdown, 500자 이상, 7개 섹션 포함)",
-  "citedSourceIds": ["source-id-1", "source-id-2", "source-id-3"],
-  "status": "draft"
-}`;
+【절대 금지】
+- key_points 항목을 그대로 인용하거나 단어 순서만 바꾸는 paraphrase 금지
+- 각 출처를 순서대로 나열하는 구조 금지 ("A 기사에 따르면... B 기사에 따르면..." 패턴)
+- key_points에 없는 수치·날짜·고유명사를 만들어 추가하는 것 금지 (hallucination)
+- 500자 미만 본문 금지 (800자 이상 권장)
 
-const KEY_POINTS_MAX_LENGTH = 200;
+【7개 섹션 구조】
+1. 리드문 — 독자가 계속 읽을 이유를 제시하는 2~3문장 (thesis 반영)
+2. 배경 — 이 주제가 왜 지금 중요한지 맥락
+3. 핵심 쟁점 — 여러 출처가 공통으로 짚는 문제의 핵심
+4. 다각도 분석 — 출처들의 공통점·차이점·긴장관계를 통합해 해석
+5. 사실과 데이터 — 출처에 명시된 구체적 사실·수치·사례 (있는 것만)
+6. 독자에게 주는 의미 — 이 정보가 일반 독자에게 왜 중요한지 해석
+7. 향후 전망 또는 과제 — 출처 근거 있는 전망 또는 아직 해결되지 않은 과제`;
+
+const ARTICLE_TOOL = {
+  name: "write_article",
+  description: "기사 작성 결과를 저장한다. synthesis_notes → thesis → title → content 순서로 반드시 작성해야 한다.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      synthesis_notes: {
+        type: "string",
+        description: "출처 분석 메모 (독자에게 노출되지 않음). 출처들의 공통 논지·차이점·의미를 3~5문장으로 정리.",
+      },
+      thesis: {
+        type: "string",
+        description: "이 기사의 핵심 주장 (1~2문장). content 전체가 이 논지를 뒷받침해야 한다.",
+      },
+      title: {
+        type: "string",
+        description: "기사 제목 (과장 금지, 40자 이내, thesis를 반영)",
+      },
+      content: {
+        type: "string",
+        description: "기사 본문 (markdown, 공백 포함 800자 이상, 7개 섹션 포함)",
+      },
+      citedSourceIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "본문에서 실제로 활용한 출처 ID 목록 (최소 3개)",
+      },
+    },
+    required: ["synthesis_notes", "thesis", "title", "content", "citedSourceIds"],
+  },
+};
+
+/**
+ * article writer에 보낼 출처 입력을 구성한다.
+ * summary 전문 대신 key_points(불릿 사실)만 전달해 paraphrase를 차단한다.
+ * key_points가 없는 출처는 summary 앞 150자를 짧게 fallback한다.
+ */
+function buildSourceBlock(summary: SourceSummary): string {
+  const lines = [
+    `[출처 ${summary.sourceId}]`,
+    `제목: ${summary.title}`,
+    `출판사: ${summary.publisher || "(없음)"}`,
+    `발행일: ${summary.publishedAt || "(없음)"}`,
+  ];
+
+  if (summary.sourceAngle) {
+    lines.push(`관점: ${summary.sourceAngle}`);
+  }
+
+  if (summary.keyPoints.length > 0) {
+    lines.push("핵심 사실:");
+    summary.keyPoints.forEach((kp) => lines.push(`  • ${kp}`));
+  } else if (summary.summary) {
+    // key_points가 없는 구형 출처는 summary 150자로 fallback
+    const fallback = summary.summary.length > 150
+      ? `${summary.summary.substring(0, 150)}…`
+      : summary.summary;
+    lines.push(`핵심 내용 (요약): ${fallback}`);
+  }
+
+  return lines.join("\n");
+}
 
 function buildArticleUserPrompt(theme: Theme, sourceSummaries: SourceSummary[]): string {
-  const summaryLines = sourceSummaries
-    .map((summary) => {
-      const keyPoints =
-        summary.summary.length > KEY_POINTS_MAX_LENGTH
-          ? `${summary.summary.substring(0, KEY_POINTS_MAX_LENGTH)}...`
-          : summary.summary;
-      return [
-        `- sourceId: ${summary.sourceId}`,
-        `  title: ${summary.title}`,
-        `  url: ${summary.url}`,
-        `  publisher: ${summary.publisher}`,
-        `  publishedAt: ${summary.publishedAt}`,
-        `  key_points: ${keyPoints}`,
-      ].join("\n");
-    })
-    .join("\n");
+  const sourceBlocks = sourceSummaries.map(buildSourceBlock).join("\n\n");
 
-  const intendedAudience = theme.language === "en" ? "General blog readers" : "일반 블로그 독자";
-  const articleAngle = theme.language === "en" ? "Factual reporting with analysis" : "사실 중심 보도 및 해설";
+  const audienceNote =
+    theme.language === "en" ? "General blog readers" : "일반 블로그 독자 (한국어)";
 
   return [
     `주제: ${theme.title}`,
-    `주제 설명: ${theme.description}`,
-    `주요 키워드: ${theme.keywords.join(", ")}`,
-    `출력 언어: ${theme.language}`,
-    `독자 대상: ${intendedAudience}`,
-    `기사 관점: ${articleAngle}`,
+    `주제 설명: ${theme.description || "(없음)"}`,
+    `주요 키워드: ${theme.keywords.join(", ") || "(없음)"}`,
+    `독자 대상: ${audienceNote}`,
     "",
-    "출처별 핵심 포인트 목록 (각 출처의 일부 발췌):",
-    summaryLines,
+    "─── 출처별 핵심 사실 목록 (요약문이 아닌 사실 추출물) ───",
+    sourceBlocks,
     "",
-    "위 출처들을 읽고 다음 2단계를 순서대로 수행하세요:",
-    "",
-    "【1단계: 분석 — synthesis_notes 필드에 작성】",
-    "- 출처들이 공통으로 주장하는 핵심 사실은 무엇인가?",
-    "- 출처 간 관점 차이나 강조점 차이는 무엇인가?",
-    "- 독자에게 전달할 하나의 통합된 논지(angle)는 무엇인가?",
-    "",
-    "【2단계: 작성 — content 필드에 작성】",
-    "위 분석(synthesis_notes)에서 도출한 논지를 바탕으로 7개 섹션 기사를 작성하세요.",
-    "출처 key_points 문장을 직접 복사하지 마세요. 분석 결과를 자신의 언어로 재표현하세요.",
-    "출처 key_points와 15단어 이상 연속으로 동일한 구문이 나오면 안 됩니다.",
+    "─── 작업 지시 ───",
+    "위 사실 목록을 바탕으로 write_article 도구를 호출하세요.",
+    "반드시 synthesis_notes → thesis → title → content 순서로 채우세요.",
+    "각 출처를 순서대로 소개하는 방식으로 작성하지 마세요.",
+    "출처의 핵심 사실을 종합·해석하여 하나의 논지가 있는 기사로 작성하세요.",
   ].join("\n");
-}
-
-interface RawGeneratedArticle {
-  synthesis_notes?: unknown;
-  title?: unknown;
-  content?: unknown;
-  citedSourceIds?: unknown;
 }
 
 /**
  * Phase 1-4: prompts/article-draft.v1.md 기준으로 Anthropic API를 호출해
- * 기사 초안을 생성한다. 출처가 3개 미만이면 호출하지 않는다 (호출부에서 검사).
- * JSON parse에 실패하면 에러를 던진다 (호출부에서 mock 초안으로 대체 처리한다).
+ * 기사 초안을 생성한다. tool_use로 JSON 출력을 강제한다.
  * 반환되는 status는 항상 "draft"로 강제한다 (모델 응답값과 무관).
  */
 export async function generateAiArticleDraft(
@@ -163,32 +179,32 @@ export async function generateAiArticleDraft(
 
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: ARTICLE_SYSTEM_PROMPT,
+    tools: [ARTICLE_TOOL],
+    tool_choice: { type: "tool", name: "write_article" },
     messages: [{ role: "user", content: buildArticleUserPrompt(theme, sourceSummaries) }],
   });
 
-  const textBlock = response.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("generateAiArticleDraft: AI 응답에서 텍스트를 찾을 수 없습니다.");
+  const toolUseBlock = response.content.find((block) => block.type === "tool_use");
+  if (!toolUseBlock || toolUseBlock.type !== "tool_use") {
+    throw new Error("generateAiArticleDraft: AI가 도구를 호출하지 않았습니다.");
   }
 
-  let parsed: RawGeneratedArticle;
-  try {
-    parsed = JSON.parse(extractJson(textBlock.text));
-  } catch {
-    throw new Error("generateAiArticleDraft: AI 응답을 JSON으로 해석할 수 없습니다.");
-  }
+  const input = toolUseBlock.input as Record<string, unknown>;
 
-  if (typeof parsed.title !== "string" || typeof parsed.content !== "string") {
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const content = typeof input.content === "string" ? input.content.trim() : "";
+
+  if (!title || !content) {
     throw new Error("generateAiArticleDraft: AI 응답에 title 또는 content가 없습니다.");
   }
 
-  const citedSourceIds = Array.isArray(parsed.citedSourceIds)
-    ? parsed.citedSourceIds.filter((id): id is string => typeof id === "string")
+  const citedSourceIds = Array.isArray(input.citedSourceIds)
+    ? input.citedSourceIds.filter((id): id is string => typeof id === "string")
     : [];
 
-  return { title: parsed.title, content: parsed.content, citedSourceIds };
+  return { title, content, citedSourceIds };
 }
 
 function buildKoreanSections(theme: Theme, sources: Source[]): string[] {

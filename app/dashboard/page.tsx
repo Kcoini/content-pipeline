@@ -247,10 +247,16 @@ export default async function DashboardPage({
                             <div className="font-medium">
                               {index + 1}. {source.title || "(제목 없음)"}
                             </div>
-                            <FetchStatusBadge
-                              status={source.fetchStatus}
-                              error={source.fetchError}
-                            />
+                            <div className="flex shrink-0 gap-1">
+                              <FetchStatusBadge
+                                status={source.fetchStatus}
+                                error={source.fetchError}
+                              />
+                              <SummaryStatusBadge
+                                status={source.summaryStatus}
+                                summarizedAt={source.summarizedAt}
+                              />
+                            </div>
                           </div>
                           <div className="text-xs text-zinc-500">
                             {source.url || "(URL 없음)"}
@@ -258,11 +264,18 @@ export default async function DashboardPage({
                             {source.publishedAt && ` · ${source.publishedAt}`}
                           </div>
                           {source.summary && (
-                            <p className="mt-1 text-xs text-zinc-600">{source.summary}</p>
+                            <p className="mt-1 text-xs text-zinc-600 line-clamp-2">
+                              {source.summary}
+                            </p>
                           )}
                           {source.fetchStatus === "failed" && source.fetchError && (
                             <p className="mt-1 text-xs text-red-600">
                               수집 오류: {source.fetchError}
+                            </p>
+                          )}
+                          {source.summaryStatus === "failed" && source.summaryError && (
+                            <p className="mt-0.5 text-xs text-orange-600">
+                              요약 오류: {source.summaryError}
                             </p>
                           )}
                         </li>
@@ -371,6 +384,42 @@ export default async function DashboardPage({
         </div>
       </div>
     </div>
+  );
+}
+
+function SummaryStatusBadge({
+  status,
+  summarizedAt,
+}: {
+  status: "pending" | "success" | "failed" | "skipped";
+  summarizedAt: string | null;
+}) {
+  if (status === "success") {
+    const time = summarizedAt ? new Date(summarizedAt).toLocaleTimeString("ko-KR") : "";
+    return (
+      <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700" title={`요약 완료: ${time}`}>
+        요약 완료
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+        요약 실패
+      </span>
+    );
+  }
+  if (status === "skipped") {
+    return (
+      <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500">
+        요약 건너뜀
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500">
+      요약 대기
+    </span>
   );
 }
 
