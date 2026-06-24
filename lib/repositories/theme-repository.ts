@@ -9,6 +9,8 @@ export interface CreateThemeInput {
   description: string;
   keywords: string[];
   language: Language;
+  /** Phase 1-12: 생성 방식 메타데이터 { creation_method, theme_cluster_id? } */
+  metadata?: Record<string, unknown>;
 }
 
 export function mapThemeRowToTheme(row: ThemeRow): Theme {
@@ -19,12 +21,18 @@ export function mapThemeRowToTheme(row: ThemeRow): Theme {
     keywords: row.keywords ?? [],
     language: row.language === "en" ? "en" : "ko",
     createdAt: row.created_at,
+    metadata: row.metadata ?? {},
   };
 }
 
 /** 테마 생성 - FR-1 */
 export async function createTheme(input: CreateThemeInput): Promise<Theme> {
   const supabase = createServerSupabaseClient();
+
+  const metadata = {
+    creation_method: "manual",
+    ...input.metadata,
+  };
 
   const { data, error } = await supabase
     .from("themes")
@@ -33,6 +41,7 @@ export async function createTheme(input: CreateThemeInput): Promise<Theme> {
       description: input.description || null,
       keywords: input.keywords,
       language: input.language,
+      metadata,
     })
     .select()
     .single();

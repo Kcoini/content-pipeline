@@ -37,6 +37,36 @@ export type ThemeRow = {
   keywords: string[];
   language: string;
   status: ThemeStatus;
+  /** Phase 1-12: 생성 방식 메타데이터 { creation_method, theme_cluster_id? } */
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Phase 1-12: 트렌드 후보 (네이버/다음/mock) */
+export type TrendCandidateRow = {
+  id: string;
+  platform: string;
+  keyword: string | null;
+  title: string | null;
+  snippet: string | null;
+  url: string | null;
+  rank_position: number | null;
+  collected_at: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+/** Phase 1-12: 키워드 클러스터링 결과 */
+export type ThemeClusterRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  keywords: string[];
+  naver_count: number;
+  daum_count: number;
+  score: number;
+  status: "candidate" | "selected" | "dismissed";
   created_at: string;
   updated_at: string;
 };
@@ -237,6 +267,18 @@ export interface Database {
         Row: PublishLogRow;
         Insert: Partial<PublishLogRow> & Pick<PublishLogRow, "status">;
         Update: Partial<PublishLogRow>;
+        Relationships: [];
+      };
+      trend_candidates: {
+        Row: TrendCandidateRow;
+        Insert: Partial<TrendCandidateRow> & Pick<TrendCandidateRow, "platform">;
+        Update: Partial<TrendCandidateRow>;
+        Relationships: [];
+      };
+      theme_clusters: {
+        Row: ThemeClusterRow;
+        Insert: Partial<ThemeClusterRow> & Pick<ThemeClusterRow, "title">;
+        Update: Partial<ThemeClusterRow>;
         Relationships: [];
       };
     };

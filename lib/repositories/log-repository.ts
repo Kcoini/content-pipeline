@@ -27,7 +27,15 @@ export type LogEventType =
   // Phase 1-10: 출처별 자동 요약 이벤트
   | "source_summary_failed"
   | "source_summary_skipped"
-  | "source_summary_mocked";
+  | "source_summary_mocked"
+  // Phase 1-12: 트렌드 수집 및 테마 추출 이벤트
+  | "trend_collection_started"
+  | "trend_collection_completed"
+  | "trend_collection_failed"
+  | "theme_clustering_started"
+  | "theme_clustering_completed"
+  | "theme_selected"
+  | "theme_created_from_cluster";
 
 export type LogStatus = "success" | "failed" | "info";
 

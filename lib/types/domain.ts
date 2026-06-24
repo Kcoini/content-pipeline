@@ -10,6 +10,37 @@ export interface Theme {
   keywords: string[];
   language: Language;
   createdAt: string;
+  /** Phase 1-12: 생성 방식 구분 { creation_method: 'manual' | 'trend_cluster', theme_cluster_id? } */
+  metadata?: Record<string, unknown>;
+}
+
+/** Phase 1-12: 트렌드 후보 (네이버/다음/mock 수집 결과) */
+export interface TrendCandidate {
+  id: string;
+  platform: string;
+  keyword: string | null;
+  title: string | null;
+  snippet: string | null;
+  url: string | null;
+  rankPosition: number | null;
+  collectedAt: string;
+  createdAt: string;
+}
+
+export type ThemeClusterStatus = "candidate" | "selected" | "dismissed";
+
+/** Phase 1-12: 공통 테마 클러스터 (키워드 빈도 기반 자동 추출 결과) */
+export interface ThemeCluster {
+  id: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  naverCount: number;
+  daumCount: number;
+  score: number;
+  status: ThemeClusterStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type FetchStatus = "pending" | "success" | "failed";

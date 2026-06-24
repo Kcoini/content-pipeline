@@ -10,6 +10,7 @@ function makeThemeRow(overrides: Partial<ThemeRow> = {}): ThemeRow {
     keywords: ["AI", "에이전트"],
     language: "ko",
     status: "draft",
+    metadata: {},
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -27,6 +28,7 @@ describe("mapThemeRowToTheme", () => {
       keywords: ["AI", "에이전트"],
       language: "ko",
       createdAt: "2026-01-01T00:00:00.000Z",
+      metadata: {},
     });
   });
 

@@ -49,12 +49,20 @@ export default async function DashboardPage({
               테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성(draft)까지의 흐름을 확인합니다.
             </p>
           </div>
-          <Link
-            href="/articles"
-            className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-          >
-            기사 목록 보기
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/trends"
+              className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              자동 테마 찾기
+            </Link>
+            <Link
+              href="/articles"
+              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              기사 목록 보기
+            </Link>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
