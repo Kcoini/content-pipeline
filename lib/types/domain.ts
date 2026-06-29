@@ -43,6 +43,29 @@ export interface ThemeCluster {
   updatedAt: string;
 }
 
+/** Phase 1-13: 기사 URL 후보 상태 */
+export type ArticleUrlCandidateStatus = "candidate" | "selected" | "dismissed" | "imported";
+
+/** Phase 1-13: 테마 키워드 검색으로 수집된 기사 URL 후보 */
+export interface ArticleUrlCandidate {
+  id: string;
+  themeId: string | null;
+  themeClusterId: string | null;
+  platform: string;
+  query: string | null;
+  title: string | null;
+  snippet: string | null;
+  url: string;
+  publisher: string | null;
+  publishedAt: string | null;
+  rankPosition: number | null;
+  status: ArticleUrlCandidateStatus;
+  metadata: Record<string, unknown>;
+  collectedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type FetchStatus = "pending" | "success" | "failed";
 export type SummaryStatus = "pending" | "success" | "failed" | "skipped";
 

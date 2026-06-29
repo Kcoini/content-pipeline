@@ -151,19 +151,29 @@ export default async function DashboardPage({
             ) : (
               <>
                 <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-                  <h2 className="text-lg font-semibold">{selectedTheme.title}</h2>
-                  {selectedTheme.description && (
-                    <p className="mt-1 text-sm text-zinc-600">{selectedTheme.description}</p>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
-                    {selectedTheme.keywords.map((keyword) => (
-                      <span key={keyword} className="rounded-full bg-zinc-100 px-2 py-0.5">
-                        #{keyword}
-                      </span>
-                    ))}
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                      언어: {selectedTheme.language}
-                    </span>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-lg font-semibold">{selectedTheme.title}</h2>
+                      {selectedTheme.description && (
+                        <p className="mt-1 text-sm text-zinc-600">{selectedTheme.description}</p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
+                        {selectedTheme.keywords.map((keyword) => (
+                          <span key={keyword} className="rounded-full bg-zinc-100 px-2 py-0.5">
+                            #{keyword}
+                          </span>
+                        ))}
+                        <span className="rounded-full bg-zinc-100 px-2 py-0.5">
+                          언어: {selectedTheme.language}
+                        </span>
+                      </div>
+                    </div>
+                    <Link
+                      href={`/themes/${selectedTheme.id}`}
+                      className="shrink-0 rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                    >
+                      관련 기사 URL 수집
+                    </Link>
                   </div>
                 </section>
 

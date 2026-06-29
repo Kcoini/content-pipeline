@@ -57,6 +57,29 @@ export type TrendCandidateRow = {
   created_at: string;
 };
 
+/** Phase 1-13: 기사 URL 후보 상태 */
+export type ArticleUrlCandidateStatus = "candidate" | "selected" | "dismissed" | "imported";
+
+/** Phase 1-13: 테마 키워드 검색으로 수집된 기사 URL 후보 */
+export type ArticleUrlCandidateRow = {
+  id: string;
+  theme_id: string | null;
+  theme_cluster_id: string | null;
+  platform: string;
+  query: string | null;
+  title: string | null;
+  snippet: string | null;
+  url: string;
+  publisher: string | null;
+  published_at: string | null;
+  rank_position: number | null;
+  status: ArticleUrlCandidateStatus;
+  metadata: Record<string, unknown>;
+  collected_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 /** Phase 1-12: 키워드 클러스터링 결과 */
 export type ThemeClusterRow = {
   id: string;
@@ -279,6 +302,12 @@ export interface Database {
         Row: ThemeClusterRow;
         Insert: Partial<ThemeClusterRow> & Pick<ThemeClusterRow, "title">;
         Update: Partial<ThemeClusterRow>;
+        Relationships: [];
+      };
+      article_url_candidates: {
+        Row: ArticleUrlCandidateRow;
+        Insert: Partial<ArticleUrlCandidateRow> & Pick<ArticleUrlCandidateRow, "platform" | "url">;
+        Update: Partial<ArticleUrlCandidateRow>;
         Relationships: [];
       };
     };

@@ -35,7 +35,22 @@ export type LogEventType =
   | "theme_clustering_started"
   | "theme_clustering_completed"
   | "theme_selected"
-  | "theme_created_from_cluster";
+  | "theme_created_from_cluster"
+  // Phase 1-13: 플랫폼별 트렌드 수집 이벤트
+  | "naver_trend_collection_started"
+  | "naver_trend_collection_completed"
+  | "naver_trend_collection_failed"
+  | "daum_trend_collection_started"
+  | "daum_trend_collection_completed"
+  | "daum_trend_collection_failed"
+  // Phase 1-13: 기사 URL 후보 수집 이벤트
+  | "article_url_collection_started"
+  | "article_url_collection_completed"
+  | "article_url_collection_failed"
+  | "article_url_candidate_selected"
+  | "article_url_candidate_imported"
+  | "article_url_candidate_dismissed"
+  | "source_created_from_candidate";
 
 export type LogStatus = "success" | "failed" | "info";
 

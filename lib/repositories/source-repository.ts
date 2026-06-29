@@ -23,6 +23,8 @@ export interface AddSourceInput {
   publisher: string;
   publishedAt: string;
   summary: string;
+  /** Phase 1-13: candidate import 시 collection_method 등 메타데이터를 저장한다 */
+  metadata?: Record<string, unknown>;
 }
 
 export function mapSourceRowToSource(row: SourceRow): Source {
@@ -59,6 +61,7 @@ export async function addSource(input: AddSourceInput): Promise<Source> {
       author: input.publisher || null,
       published_at: input.publishedAt ? new Date(input.publishedAt).toISOString() : null,
       summary: input.summary || null,
+      metadata: input.metadata ?? {},
     })
     .select()
     .single();
