@@ -20,7 +20,18 @@ import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
  */
 async function resolveFeaturedMediaForPublish(articleId: string, article: Article): Promise<number | undefined> {
   const mediaId = resolveExistingFeaturedMediaId(article);
-  if (mediaId !== undefined) return mediaId;
+  if (mediaId !== undefined) {
+    await logEvent({
+      type: "wordpress_featured_media_prepared",
+      status: "info",
+      message: `기사(${articleId})의 featured_media(${mediaId})를 WordPress post에 연결합니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+    return mediaId;
+  }
 
   await logEvent({
     type: "featured_image_upload_skipped_not_implemented",
@@ -35,6 +46,15 @@ async function resolveFeaturedMediaForPublish(articleId: string, article: Articl
     type: "wordpress_featured_image_skipped_no_media",
     status: "info",
     message: `기사(${articleId})에 WordPress media id가 없어 featured_media를 설정하지 않습니다.`,
+    articleId,
+    themeId: article.themeId,
+    targetType: "article",
+    targetId: articleId,
+  });
+  await logEvent({
+    type: "wordpress_featured_media_skipped_no_media_id",
+    status: "info",
+    message: `기사(${articleId})에 WordPress media id가 없어 featured_media 연결을 건너뜁니다 (Phase 2-6).`,
     articleId,
     themeId: article.themeId,
     targetType: "article",
@@ -349,6 +369,18 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
           caption: article.featuredImageCaption,
           style: article.featuredImageStyle,
           aspectRatio: article.featuredImageAspectRatio,
+        },
+        featuredImageUpload: {
+          uploadStatus: article.featuredImageUploadStatus,
+          sourceType: article.featuredImageSourceType,
+          filename: article.featuredImageFilename,
+          mimeType: article.featuredImageMimeType,
+          altText: article.featuredImageAltText,
+          caption: article.featuredImageCaption,
+          shouldSetAsFeatured:
+            (article.featuredImageUploadPayload as { shouldSetAsFeatured?: boolean })?.shouldSetAsFeatured ?? null,
+          wordpressMediaId: article.featuredImageWordpressMediaId,
+          wouldAttachAsFeatured: article.featuredImageWordpressMediaId != null,
         },
       },
     });

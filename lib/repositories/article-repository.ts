@@ -2,9 +2,16 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ArticleRow } from "@/lib/supabase/database.types";
-import type { Article, ArticleStatus, SeoPluginProvider } from "@/lib/types/domain";
+import type {
+  Article,
+  ArticleStatus,
+  SeoPluginProvider,
+  WordPressMediaSourceType,
+  WordPressMediaUploadStatus,
+} from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
+import type { WordPressMediaUploadPayload } from "@/lib/publish/wordpress-media-types";
 import { assertApproved } from "@/lib/harness/approval-gate";
 import { saveApprovalLog } from "@/lib/repositories/approval-repository";
 import {
@@ -123,6 +130,15 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     featuredImageWordpressMediaId: row.featured_image_wordpress_media_id,
     featuredImageWordpressUrl: row.featured_image_wordpress_url,
     featuredImageError: row.featured_image_error,
+    featuredImageSourceType: row.featured_image_source_type ?? "none",
+    featuredImageSourceUrl: row.featured_image_source_url,
+    featuredImageLocalPath: row.featured_image_local_path,
+    featuredImageFilename: row.featured_image_filename,
+    featuredImageMimeType: row.featured_image_mime_type,
+    featuredImageUploadStatus: row.featured_image_upload_status ?? "not_ready",
+    featuredImageUploadPayload: row.featured_image_upload_payload ?? {},
+    featuredImageUploadError: row.featured_image_upload_error,
+    featuredImageUploadAttemptedAt: row.featured_image_upload_attempted_at,
   };
 }
 
@@ -647,6 +663,85 @@ export async function markFeaturedImageReviewed(articleId: string): Promise<Arti
 
   if (error || !data) {
     throw new Error(`대표 이미지 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveWordPressMediaUploadPayloadInput {
+  articleId: string;
+  sourceType: WordPressMediaSourceType;
+  filename: string;
+  mimeType: string;
+  payload: WordPressMediaUploadPayload;
+  /** 'prepared' 또는 'failed' — 'dry_run'/'skipped'/'uploaded'는 updateWordPressMediaUploadStatus로만 전환한다. */
+  status: "prepared" | "failed";
+  error?: string;
+}
+
+/**
+ * WordPress media upload 준비 정보(payload)를 저장한다 (Phase 2-6).
+ * 실제 이미지 생성/업로드는 하지 않으며, WordPress media endpoint에 전달할
+ * "준비된 payload"만 저장한다.
+ */
+export async function saveWordPressMediaUploadPayload(
+  input: SaveWordPressMediaUploadPayloadInput
+): Promise<Article> {
+  const existing = await getArticleById(input.articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(input.articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      featured_image_source_type: input.sourceType,
+      featured_image_filename: input.filename,
+      featured_image_mime_type: input.mimeType,
+      featured_image_upload_status: input.status,
+      featured_image_upload_payload: input.payload as unknown as Record<string, unknown>,
+      featured_image_upload_error: input.error ?? null,
+      featured_image_upload_attempted_at: new Date().toISOString(),
+    })
+    .eq("id", input.articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress media upload 준비 정보 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/** WordPress media upload 시도 상태(dry_run/skipped/uploaded/failed)를 갱신한다. */
+export async function updateWordPressMediaUploadStatus(
+  articleId: string,
+  status: WordPressMediaUploadStatus,
+  errorMessage?: string | null
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      featured_image_upload_status: status,
+      featured_image_upload_error: errorMessage ?? null,
+      featured_image_upload_attempted_at: new Date().toISOString(),
+    })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress media upload 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

@@ -142,6 +142,23 @@
 - [ ] 기존 WordPress draft publish, SEO metadata, SEO plugin metadata,
       article generation, review/approval 흐름이 깨지지 않는다.
 
+## AC-15. WordPress Media Upload Preparation (FR-16, Phase 2-6)
+- [ ] article에서 WordPress media upload payload를 준비할 수 있다.
+- [ ] featured_image_alt_text와 caption이 payload에 포함된다.
+- [ ] filename이 slug 기반으로 생성된다.
+- [ ] slug가 없으면 article id 기반 fallback filename이 생성된다.
+- [ ] `WORDPRESS_MEDIA_UPLOAD_ENABLED=false`(기본값)이면 dry-run 확인 시
+      실제 upload를 호출하지 않는다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=false`이면 실제 upload를 호출하지 않는다.
+- [ ] WordPress dry-run publish의 `publish_logs.details`에
+      `featuredImageUpload` 요약이 포함된다.
+- [ ] `featured_image_wordpress_media_id`가 없으면 실제 게시 시에도
+      `featured_media`를 전송하지 않는다.
+- [ ] `featured_image_wordpress_media_id`가 있으면 `featured_media`로 보낼
+      수 있는 payload 구조가 만들어진다.
+- [ ] 실제 API key가 없어도 `npm run lint`/`test`/`build`가 통과한다.
+- [ ] 기존 WordPress draft publish 흐름이 깨지지 않는다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

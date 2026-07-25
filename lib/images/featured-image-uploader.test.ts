@@ -51,6 +51,15 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     featuredImageWordpressMediaId: null,
     featuredImageWordpressUrl: null,
     featuredImageError: null,
+    featuredImageSourceType: "none",
+    featuredImageSourceUrl: null,
+    featuredImageLocalPath: null,
+    featuredImageFilename: null,
+    featuredImageMimeType: null,
+    featuredImageUploadStatus: "not_ready",
+    featuredImageUploadPayload: {},
+    featuredImageUploadError: null,
+    featuredImageUploadAttemptedAt: null,
     ...overrides,
   };
 }

@@ -126,6 +126,12 @@ export type SeoPluginWriteStatus =
 /** Phase 2-5: 대표 이미지(featured image) 준비/검토 상태. 'uploaded'는 실제 업로드 구현 후 사용한다. */
 export type FeaturedImageStatus = "not_ready" | "prepared" | "reviewed" | "failed" | "uploaded";
 
+/** Phase 2-6: featured image 원본 소스 종류 */
+export type WordPressMediaSourceType = "none" | "generated_url" | "external_url" | "local_file" | "uploaded";
+
+/** Phase 2-6: WordPress media upload 준비/시도 상태 (safe stub — 현재는 'uploaded'가 되지 않는다) */
+export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | "uploaded" | "failed" | "skipped";
+
 export interface Article {
   id: string;
   themeId: string;
@@ -214,4 +220,22 @@ export interface Article {
   featuredImageWordpressUrl: string | null;
   /** Phase 2-5: 준비 실패 시 오류 메시지 */
   featuredImageError: string | null;
+  /** Phase 2-6: featured image 원본 소스 종류 (기본값 none) */
+  featuredImageSourceType: WordPressMediaSourceType;
+  /** Phase 2-6: 원본 이미지 URL (generated_url/external_url일 때) */
+  featuredImageSourceUrl: string | null;
+  /** Phase 2-6: 로컬 파일 경로 (local_file일 때, 실제 파일 처리는 아직 구현 안 함) */
+  featuredImageLocalPath: string | null;
+  /** Phase 2-6: WordPress에 업로드할 파일명 (slug 기반 생성) */
+  featuredImageFilename: string | null;
+  /** Phase 2-6: MIME 타입 (기본값 image/webp) */
+  featuredImageMimeType: string | null;
+  /** Phase 2-6: WordPress media upload 준비/시도 상태 */
+  featuredImageUploadStatus: WordPressMediaUploadStatus;
+  /** Phase 2-6: WordPress media upload payload (준비된 요청 내용, 실제 전송 아님) */
+  featuredImageUploadPayload: Record<string, unknown>;
+  /** Phase 2-6: 업로드 준비/시도 실패 시 오류 메시지 */
+  featuredImageUploadError: string | null;
+  /** Phase 2-6: 업로드가 마지막으로 시도(준비/dry-run)된 시각 */
+  featuredImageUploadAttemptedAt: string | null;
 }

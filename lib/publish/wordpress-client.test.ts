@@ -4,6 +4,7 @@ import {
   isWordPressConfigured,
   findOrCreateCategory,
   findOrCreateTag,
+  uploadMediaToWordPress,
 } from "./wordpress-client";
 
 const ENV_KEYS = ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"] as const;
@@ -194,5 +195,58 @@ describe("findOrCreateCategory / findOrCreateTag", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [, createInit] = fetchMock.mock.calls[1];
     expect(JSON.parse(createInit.body as string)).toEqual({ name: "장기요양보험" });
+  });
+});
+
+describe("uploadMediaToWordPress", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    clearWordPressEnv();
+  });
+
+  const input = {
+    filename: "care-guide-featured.webp",
+    mimeType: "image/webp",
+    altText: "alt text",
+    caption: "caption",
+    title: "title",
+    description: "description",
+  };
+
+  it("WORDPRESS_MEDIA_UPLOAD_ENABLED=false(기본값)이면 실제 fetch 호출 없이 skipped를 반환한다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "false");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress(input);
+
+    expect(result.status).toBe("skipped");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("WORDPRESS_MEDIA_UPLOAD_ENABLED=true이지만 WORDPRESS_PUBLISH_ENABLED=false이면 실제 fetch 호출 없이 dry_run을 반환한다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress(input);
+
+    expect(result.status).toBe("dry_run");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("두 플래그가 모두 true여도 실제 업로드는 구현되지 않아 failed를 반환한다 (safe stub)", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress(input);
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

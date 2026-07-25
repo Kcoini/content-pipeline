@@ -88,6 +88,15 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     featuredImageWordpressMediaId: null,
     featuredImageWordpressUrl: null,
     featuredImageError: null,
+    featuredImageSourceType: "none",
+    featuredImageSourceUrl: null,
+    featuredImageLocalPath: null,
+    featuredImageFilename: null,
+    featuredImageMimeType: null,
+    featuredImageUploadStatus: "not_ready",
+    featuredImageUploadPayload: {},
+    featuredImageUploadError: null,
+    featuredImageUploadAttemptedAt: null,
     ...overrides,
   };
 }
@@ -378,6 +387,38 @@ describe("publishArticleToWordPressDraft", () => {
     );
   });
 
+  it("dry-run details에 featuredImageUpload 요약(uploadStatus/sourceType/filename/mimeType/wouldAttachAsFeatured)이 포함된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        status: "reviewed",
+        featuredImageUploadStatus: "prepared",
+        featuredImageSourceType: "none",
+        featuredImageFilename: "care-guide-featured.webp",
+        featuredImageMimeType: "image/webp",
+        featuredImageWordpressMediaId: null,
+      })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "dry_run",
+        details: expect.objectContaining({
+          featuredImageUpload: expect.objectContaining({
+            uploadStatus: "prepared",
+            sourceType: "none",
+            filename: "care-guide-featured.webp",
+            mimeType: "image/webp",
+            wordpressMediaId: null,
+            wouldAttachAsFeatured: false,
+          }),
+        }),
+      })
+    );
+  });
+
   it("featured_image_wordpress_media_id가 없으면 실제 게시 시 featuredMedia를 보내지 않고 skip 이벤트를 기록한다", async () => {
     getArticleById.mockResolvedValue(
       makeArticle({ status: "reviewed", featuredImageWordpressMediaId: null })
@@ -401,6 +442,9 @@ describe("publishArticleToWordPressDraft", () => {
     expect(logEvent).toHaveBeenCalledWith(
       expect.objectContaining({ type: "wordpress_featured_image_skipped_no_media" })
     );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_featured_media_skipped_no_media_id" })
+    );
   });
 
   it("featured_image_wordpress_media_id가 있으면 실제 게시 시 featuredMedia로 전달한다 (구조만 준비, 업로드는 하지 않음)", async () => {
@@ -418,6 +462,9 @@ describe("publishArticleToWordPressDraft", () => {
     await publishArticleToWordPressDraft("article-1");
 
     expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ featuredMedia: 42 }));
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_featured_media_prepared" })
+    );
   });
 
   it("SEO plugin provider가 none이면 실제 API 게시 성공 시 write를 시도하지 않고 skipped_provider_none으로 기록한다", async () => {

@@ -19,6 +19,10 @@ import { generateWordPressMetadata, reviewWordPressMetadata } from "@/lib/publis
 import { generateSeoPluginPayload, reviewSeoPluginMetadata } from "@/lib/seo/seo-plugin-metadata-service";
 import { isSeoPluginProvider } from "@/lib/seo/seo-plugin-types";
 import { prepareFeaturedImage, reviewFeaturedImage } from "@/lib/images/featured-image-preparation-service";
+import {
+  prepareWordPressMediaUpload,
+  confirmWordPressMediaUploadDryRun,
+} from "@/lib/publish/wordpress-media-preparation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -246,6 +250,61 @@ export async function reviewFeaturedImageAction(formData: FormData): Promise<voi
 
   try {
     const result = await reviewFeaturedImage(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Phase 2-5에서 준비한 featured image metadata(prompt/alt text/caption/style)를
+ * 바탕으로 WordPress media upload payload를 준비한다 (Phase 2-6). 실제 이미지
+ * 생성이나 WordPress media upload는 하지 않는다.
+ */
+export async function prepareWordPressMediaUploadAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await prepareWordPressMediaUpload(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 준비된 WordPress media upload payload로 dry-run 확인을 수행한다 (Phase 2-6).
+ * WORDPRESS_MEDIA_UPLOAD_ENABLED=false이면 실제 업로드를 시도하지 않는다.
+ */
+export async function confirmWordPressMediaUploadDryRunAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await confirmWordPressMediaUploadDryRun(articleId);
     message = result.message;
     isError = !result.success;
   } catch (error) {

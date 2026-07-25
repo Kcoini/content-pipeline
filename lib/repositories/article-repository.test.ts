@@ -57,6 +57,15 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     featured_image_wordpress_media_id: null,
     featured_image_wordpress_url: null,
     featured_image_error: null,
+    featured_image_source_type: "none",
+    featured_image_source_url: null,
+    featured_image_local_path: null,
+    featured_image_filename: null,
+    featured_image_mime_type: null,
+    featured_image_upload_status: "not_ready",
+    featured_image_upload_payload: {},
+    featured_image_upload_error: null,
+    featured_image_upload_attempted_at: null,
     ...overrides,
   };
 }
@@ -114,6 +123,15 @@ describe("mapArticleRowToArticle", () => {
       featuredImageWordpressMediaId: null,
       featuredImageWordpressUrl: null,
       featuredImageError: null,
+      featuredImageSourceType: "none",
+      featuredImageSourceUrl: null,
+      featuredImageLocalPath: null,
+      featuredImageFilename: null,
+      featuredImageMimeType: null,
+      featuredImageUploadStatus: "not_ready",
+      featuredImageUploadPayload: {},
+      featuredImageUploadError: null,
+      featuredImageUploadAttemptedAt: null,
     });
   });
 

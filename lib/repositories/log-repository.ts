@@ -83,7 +83,15 @@ export type LogEventType =
   | "featured_image_preparation_failed"
   | "featured_image_reviewed"
   | "featured_image_upload_skipped_not_implemented"
-  | "wordpress_featured_image_skipped_no_media";
+  | "wordpress_featured_image_skipped_no_media"
+  // Phase 2-6: WordPress Media Upload Preparation 이벤트
+  | "wordpress_media_upload_preparation_started"
+  | "wordpress_media_upload_preparation_completed"
+  | "wordpress_media_upload_preparation_failed"
+  | "wordpress_media_upload_dry_run"
+  | "wordpress_media_upload_skipped_disabled"
+  | "wordpress_featured_media_prepared"
+  | "wordpress_featured_media_skipped_no_media_id";
 
 export type LogStatus = "success" | "failed" | "info";
 

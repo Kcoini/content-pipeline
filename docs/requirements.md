@@ -135,6 +135,19 @@ dry-run details에는 featured image 요약(상태/alt text/caption/style/비율
 `featured_media`를 전송하지 않는다. 자세한 내용은
 `docs/phase-2-5-featured-image-preparation.md` 참고.
 
+### FR-16. WordPress Media Upload Preparation (Phase 2-6)
+사용자는 Phase 2-5에서 준비한 featured image metadata를 바탕으로 WordPress
+media upload 준비 정보(payload)를 생성할 수 있다. 실제 이미지 생성이나
+실제 WordPress media upload는 이번 단계에서 구현하지 않는다.
+`WORDPRESS_MEDIA_UPLOAD_ENABLED`(기본값 false)가 false이면 dry-run 확인 시
+실제 API를 호출하지 않고 `skipped`를 반환하며, `WORDPRESS_PUBLISH_ENABLED`가
+true가 아니면 `dry_run`을 반환한다. 두 조건이 모두 충족되어도 실제 파일
+업로드는 아직 구현되지 않은 safe stub이다. WordPress 게시(Phase 2-2)
+dry-run details에는 featured image upload 요약(상태/소스타입/파일명/MIME
+타입/featured_media 연결 여부)이 포함되며, `featured_image_wordpress_
+media_id`가 없으면 실제 게시 시에도 `featured_media`를 전송하지 않는다.
+자세한 내용은 `docs/phase-2-6-wordpress-media-upload-preparation.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

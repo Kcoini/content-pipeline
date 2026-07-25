@@ -289,3 +289,58 @@ export function createTag(name: string): Promise<WordPressTermResult> {
 export function findOrCreateTag(name: string): Promise<WordPressTermResult> {
   return findOrCreateTerm("tags", name);
 }
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-6: WordPress media upload (safe stub — 실제 업로드는 구현하지 않는다)
+//
+// 실제 이미지 파일 read/download/multipart upload는 이번 단계에서 구현하지
+// 않는다. WORDPRESS_MEDIA_UPLOAD_ENABLED/WORDPRESS_PUBLISH_ENABLED 값에 따라
+// skipped/dry_run만 반환하며, 나중에 실제 업로드를 구현할 때 이 함수 내부만
+// 교체하면 되도록 인터페이스만 준비한다.
+// ─────────────────────────────────────────────────────────────
+
+export interface UploadMediaInput {
+  filename: string;
+  mimeType: string;
+  altText: string;
+  caption: string;
+  title: string;
+  description: string;
+}
+
+export type UploadMediaStatus = "dry_run" | "skipped" | "uploaded" | "failed";
+
+export interface UploadMediaResult {
+  status: UploadMediaStatus;
+  wordpressMediaId?: number;
+  wordpressUrl?: string;
+  error?: string;
+}
+
+/**
+ * WordPress media endpoint(`/wp-json/wp/v2/media`)에 이미지를 업로드한다 (safe stub).
+ *
+ * - `WORDPRESS_MEDIA_UPLOAD_ENABLED=false`(기본값)이면 업로드 기능 자체가
+ *   꺼져 있으므로 `skipped`를 반환한다.
+ * - `WORDPRESS_PUBLISH_ENABLED=true`가 아니면(dry-run 모드) `dry_run`을 반환한다.
+ * - 두 조건이 모두 충족되어도 실제 파일 처리/multipart 업로드는 아직 구현되지
+ *   않았으므로 `failed`를 반환한다 (커스텀 구현 전까지의 안전장치).
+ */
+export async function uploadMediaToWordPress(input: UploadMediaInput): Promise<UploadMediaResult> {
+  const mediaUploadEnabled = process.env.WORDPRESS_MEDIA_UPLOAD_ENABLED === "true";
+  if (!mediaUploadEnabled) {
+    return { status: "skipped" };
+  }
+
+  const publishEnabled = process.env.WORDPRESS_PUBLISH_ENABLED === "true";
+  if (!publishEnabled) {
+    return { status: "dry_run" };
+  }
+
+  // 실제 파일 read/download/multipart upload는 이번 단계에서 구현하지 않는다.
+  void input;
+  return {
+    status: "failed",
+    error: "실제 WordPress media upload는 아직 구현되지 않았습니다 (파일 처리 로직이 필요합니다).",
+  };
+}

@@ -16,15 +16,19 @@ import {
   reviewSeoPluginMetadataAction,
   prepareFeaturedImageAction,
   reviewFeaturedImageAction,
+  prepareWordPressMediaUploadAction,
+  confirmWordPressMediaUploadDryRunAction,
 } from "./actions";
 import type {
   WordPressMetadataStatus,
   SeoPluginMetadataStatus,
   SeoPluginWriteStatus,
   FeaturedImageStatus,
+  WordPressMediaUploadStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
+import { isWordPressMediaUploadEnabled } from "@/lib/publish/wordpress-media-config";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +102,24 @@ const FEATURED_IMAGE_STATUS_STYLE: Record<FeaturedImageStatus, string> = {
   reviewed: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
   uploaded: "bg-blue-100 text-blue-700",
+};
+
+const MEDIA_UPLOAD_STATUS_LABEL: Record<WordPressMediaUploadStatus, string> = {
+  not_ready: "준비 안 됨",
+  prepared: "준비됨",
+  dry_run: "dry-run 확인됨",
+  uploaded: "업로드됨",
+  failed: "실패",
+  skipped: "건너뜀 (비활성화)",
+};
+
+const MEDIA_UPLOAD_STATUS_STYLE: Record<WordPressMediaUploadStatus, string> = {
+  not_ready: "bg-zinc-100 text-zinc-500",
+  prepared: "bg-amber-100 text-amber-700",
+  dry_run: "bg-blue-100 text-blue-700",
+  uploaded: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+  skipped: "bg-zinc-100 text-zinc-500",
 };
 
 export default async function ArticleDetailPage({
@@ -605,6 +627,100 @@ export default async function ArticleDetailPage({
                 <p className="mt-3 text-xs text-red-600">오류: {article.featuredImageError}</p>
               )}
             </>
+          )}
+        </section>
+
+        {/* Phase 2-6: WordPress Media Upload Preparation */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">WordPress Media Upload Preparation</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${MEDIA_UPLOAD_STATUS_STYLE[article.featuredImageUploadStatus]}`}
+            >
+              {MEDIA_UPLOAD_STATUS_LABEL[article.featuredImageUploadStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Phase 2-5에서 준비한 대표 이미지 정보를 바탕으로 WordPress media
+            업로드 payload를 준비합니다. 실제 이미지 생성이나 WordPress media
+            upload는 아직 실행하지 않습니다.
+          </p>
+          {!isWordPressMediaUploadEnabled() && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠ 실제 업로드는 아직 비활성화됨 (WORDPRESS_MEDIA_UPLOAD_ENABLED=false)
+            </p>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={prepareWordPressMediaUploadAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+              >
+                {article.featuredImageUploadStatus === "not_ready" ? "WordPress 이미지 업로드 준비" : "다시 준비"}
+              </button>
+            </form>
+            {article.featuredImageUploadStatus !== "not_ready" && (
+              <form action={confirmWordPressMediaUploadDryRunAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                >
+                  업로드 dry-run 확인
+                </button>
+              </form>
+            )}
+          </div>
+
+          {article.featuredImageUploadStatus !== "not_ready" && (
+            <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-600">source type</dt>
+                <dd className="text-zinc-500">{article.featuredImageSourceType}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">source url</dt>
+                <dd className="text-zinc-500">{article.featuredImageSourceUrl || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">filename</dt>
+                <dd className="text-zinc-500 font-mono">{article.featuredImageFilename || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">mime type</dt>
+                <dd className="text-zinc-500 font-mono">{article.featuredImageMimeType || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">WordPress media id</dt>
+                <dd className="text-zinc-500">{article.featuredImageWordpressMediaId ?? "해당 없음 (아직 없음)"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">WordPress media url</dt>
+                <dd className="text-zinc-500">{article.featuredImageWordpressUrl || "해당 없음"}</dd>
+              </div>
+            </dl>
+          )}
+
+          {article.featuredImageUploadStatus !== "not_ready" &&
+            Object.keys(article.featuredImageUploadPayload).length > 0 && (
+              <div className="mt-3 text-xs">
+                <div className="font-medium text-zinc-600">upload payload 미리보기</div>
+                <ul className="mt-1 flex flex-col gap-0.5 font-mono text-zinc-500">
+                  {Object.entries(article.featuredImageUploadPayload)
+                    .filter(([key]) => key !== "articleId")
+                    .map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+
+          {article.featuredImageUploadError && (
+            <p className="mt-3 text-xs text-red-600">오류: {article.featuredImageUploadError}</p>
           )}
         </section>
 
