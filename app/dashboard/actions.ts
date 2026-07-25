@@ -7,8 +7,9 @@ import { loadContract } from "@/lib/harness/load-contract";
 import { logEvent } from "@/lib/harness/logger";
 import { generateAiArticleDraft, generateMockArticleDraft, type GeneratedArticle } from "@/lib/ai/article-writer";
 import { summarizeSourcesMock, summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
-import { evaluateArticleMock, evaluateArticleWithAi } from "@/lib/ai/eval-article";
+import { evaluateArticleForMode } from "@/lib/ai/eval-article";
 import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
+import { getArticleModeConfig, resolveArticleMode } from "@/lib/articles/article-modes";
 import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
@@ -211,6 +212,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     redirect("/dashboard");
   }
 
+  const articleMode = resolveArticleMode(formData.get("articleMode"));
   const sources = await getSourcesByThemeId(themeId);
 
   // 1) source.contract.yaml 검사 (FR-6, FR-7)
@@ -290,7 +292,7 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
         message: "AI 기사 초안 생성을 시작합니다.",
         themeId,
       });
-      generated = await generateAiArticleDraft(theme, sourceSummaries);
+      generated = await generateAiArticleDraft(theme, sourceSummaries, articleMode);
       await logEvent({
         type: "article_generation_completed",
         status: "success",
@@ -314,10 +316,10 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
 
       usedAiMode = false;
       sourceSummaries = summarizeSourcesMock(sources);
-      generated = generateMockArticleDraft(theme, sources);
+      generated = generateMockArticleDraft(theme, sources, articleMode);
     }
   } else {
-    generated = generateMockArticleDraft(theme, sources);
+    generated = generateMockArticleDraft(theme, sources, articleMode);
   }
 
   // 3) article.contract.yaml 검사 (FR-7)
@@ -371,6 +373,19 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     title: generated.title,
     content: generated.content,
     citedSourceIds: generated.citedSourceIds,
+    articleMode,
+    modeFields: {
+      seoTitle: generated.seoTitle,
+      metaDescription: generated.metaDescription,
+      targetKeyword: generated.targetKeyword,
+      secondaryKeywords: generated.secondaryKeywords,
+      searchIntent: generated.searchIntent,
+      readerPersona: generated.readerPersona,
+      adSlots: generated.adSlots,
+      internalLinkSuggestions: generated.internalLinkSuggestions,
+      monetizationScore: generated.monetizationScore,
+      policyRiskScore: generated.policyRiskScore,
+    },
   });
 
   await logEvent({
@@ -390,8 +405,8 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     targetId: article.id,
   });
 
-  // 5) AI Evals (FR-8) - mock 모드에서는 evaluateArticleMock, AI 모드에서는
-  // evaluateArticleWithAi를 사용한다. evaluateArticleWithAi는 실패 시에도
+  // 5) AI Evals (FR-8, Phase 2-1) - evaluateArticleForMode가 articleMode에 맞는
+  // 평가 기준(evals/*.yaml)과 mock/AI 평가 함수를 선택한다. AI 평가 실패 시에도
   // 예외를 던지지 않고 passed=false 결과를 반환한다.
   await logEvent({
     type: "article_eval_started",
@@ -408,13 +423,18 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     article.citedSourceIds.includes(summary.sourceId)
   );
 
-  const evalResult = usedAiMode
-    ? await evaluateArticleWithAi({ title: article.title, content: article.content }, citedSummaries)
-    : evaluateArticleMock({ title: article.title, content: article.content }, citedSummaries);
+  const evalResult = await evaluateArticleForMode(
+    articleMode,
+    { title: article.title, content: article.content },
+    citedSummaries,
+    usedAiMode
+  );
+
+  const evalConfigName = getArticleModeConfig(articleMode).evalFileName.replace(/\.yaml$/, "");
 
   await saveEvalRun({
     articleId: article.id,
-    evalName: "article-quality.v1.eval",
+    evalName: evalConfigName,
     result: evalResult,
   });
 

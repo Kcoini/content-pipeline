@@ -6,6 +6,7 @@ import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
 import { getLogsByArticleId } from "@/lib/harness/logger";
 import type { ArticleStatus } from "@/lib/types/domain";
 import { approveArticleAction, updateArticleAction } from "./actions";
+import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 
 export const dynamic = "force-dynamic";
 
@@ -83,11 +84,16 @@ export default async function ArticleDetailPage({
 
         <header className="flex items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">{article.title}</h1>
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[article.status]}`}
-          >
-            {STATUS_LABEL[article.status]}
-          </span>
+          <div className="flex shrink-0 gap-2">
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              {ARTICLE_MODE_CONFIGS[article.articleMode]?.label ?? article.articleMode}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[article.status]}`}
+            >
+              {STATUS_LABEL[article.status]}
+            </span>
+          </div>
         </header>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 text-sm shadow-sm">
@@ -110,6 +116,90 @@ export default async function ArticleDetailPage({
             {article.reviewedBy && <span>승인자: {article.reviewedBy}</span>}
           </div>
         </section>
+
+        {/* Phase 2-1: 모드별 SEO/수익화 메타데이터 (해당 없으면 섹션 자체를 숨긴다) */}
+        {(article.seoTitle ||
+          article.metaDescription ||
+          article.targetKeyword ||
+          article.monetizationScore != null ||
+          article.policyRiskScore != null ||
+          article.adSlots.length > 0 ||
+          article.internalLinkSuggestions.length > 0) && (
+          <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-zinc-700">
+              수익형 블로그 메타데이터 ({ARTICLE_MODE_CONFIGS[article.articleMode]?.label})
+            </h2>
+            <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-600">SEO 제목</dt>
+                <dd className="text-zinc-500">{article.seoTitle || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">메타 설명</dt>
+                <dd className="text-zinc-500">{article.metaDescription || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">타깃 키워드</dt>
+                <dd className="text-zinc-500">{article.targetKeyword || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">보조 키워드</dt>
+                <dd className="text-zinc-500">
+                  {article.secondaryKeywords.length > 0 ? article.secondaryKeywords.join(", ") : "해당 없음"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">검색 의도</dt>
+                <dd className="text-zinc-500">{article.searchIntent || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">독자 페르소나</dt>
+                <dd className="text-zinc-500">{article.readerPersona || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">수익화 적합도 (monetization_score)</dt>
+                <dd className="text-zinc-500">
+                  {article.monetizationScore != null ? `${article.monetizationScore} / 100` : "해당 없음"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">정책 위험도 (policy_risk_score)</dt>
+                <dd className="text-zinc-500">
+                  {article.policyRiskScore != null ? `${article.policyRiskScore} / 100 (높을수록 위험)` : "해당 없음"}
+                </dd>
+              </div>
+            </dl>
+
+            {article.adSlots.length > 0 && (
+              <div className="mt-3 text-xs">
+                <div className="font-medium text-zinc-600">광고 슬롯 marker (실제 광고 코드 아님)</div>
+                <ul className="mt-1 flex flex-wrap gap-1">
+                  {article.adSlots.map((slot) => (
+                    <li
+                      key={slot.position}
+                      className="rounded bg-zinc-100 px-2 py-0.5 font-mono text-zinc-600"
+                    >
+                      {slot.marker}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {article.internalLinkSuggestions.length > 0 && (
+              <div className="mt-3 text-xs">
+                <div className="font-medium text-zinc-600">내부 링크 추천</div>
+                <ul className="mt-1 list-inside list-disc text-zinc-500">
+                  {article.internalLinkSuggestions.map((link, index) => (
+                    <li key={index}>
+                      {link.title} — {link.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 기사 본문 / 수정 */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

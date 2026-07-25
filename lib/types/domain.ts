@@ -93,6 +93,19 @@ export interface Source {
 
 export type ArticleStatus = "draft" | "reviewed" | "published";
 
+/** Phase 2-1: 수익형 콘텐츠 글쓰기 모드 3종 */
+export type ArticleMode = "general_news" | "source_based_explainer" | "monetized_blog";
+
+export interface AdSlotEntry {
+  position: string;
+  marker: string;
+}
+
+export interface InternalLinkSuggestion {
+  title: string;
+  reason: string;
+}
+
 export interface Article {
   id: string;
   themeId: string;
@@ -107,4 +120,30 @@ export interface Article {
   reviewedAt: string | null;
   /** 승인자. draft 상태이면 null. */
   reviewedBy: string | null;
+  /** Phase 2-1: 글쓰기 모드 (기본값 source_based_explainer) */
+  articleMode: ArticleMode;
+  /** monetized_blog 전용: SEO 제목 (해당 없으면 null) */
+  seoTitle: string | null;
+  /** monetized_blog 전용: 메타 설명 */
+  metaDescription: string | null;
+  /** monetized_blog 전용: slug */
+  slug: string | null;
+  /** monetized_blog 전용: 타깃 키워드 */
+  targetKeyword: string | null;
+  /** monetized_blog 전용: 보조 키워드 목록 */
+  secondaryKeywords: string[];
+  /** monetized_blog 전용: 검색 의도 (정보성/거래성 등) */
+  searchIntent: string | null;
+  /** monetized_blog 전용: 독자 페르소나 */
+  readerPersona: string | null;
+  /** monetized_blog 전용: 본문에 삽입된 AD_SLOT marker 목록 (실제 광고 코드 아님) */
+  adSlots: AdSlotEntry[];
+  /** monetized_blog 전용: 내부 링크 추천 목록 */
+  internalLinkSuggestions: InternalLinkSuggestion[];
+  /** monetized_blog 전용: 수익화 적합도 점수 (0~100) */
+  monetizationScore: number | null;
+  /** monetized_blog 전용: AdSense 정책 위험도 점수 (0~100, 높을수록 위험) */
+  policyRiskScore: number | null;
+  /** 모드별 부가 메타데이터 (자유 형식) */
+  formatMetadata: Record<string, unknown>;
 }

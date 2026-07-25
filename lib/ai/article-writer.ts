@@ -3,15 +3,55 @@
 // Phase 1-10: article writer는 source summary(전문) 대신 key_points(불릿 사실)만
 // 전달받아 synthesis 없이 paraphrase하는 경향을 차단한다.
 // Phase 1-11: tool_use로 JSON 출력을 강제한다.
+// Phase 2-1: article_mode(general_news / source_based_explainer / monetized_blog) 지원.
+// mode 인자를 생략하면 기존과 동일하게 source_based_explainer로 동작해 기존 흐름을 깨지 않는다.
 
 import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
 import type { Source, Theme } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
+import {
+  AD_SLOT_MARKERS,
+  DEFAULT_ARTICLE_MODE,
+  adSlotMarkerComment,
+  type AdSlotEntry,
+  type ArticleMode,
+  type InternalLinkSuggestion,
+} from "@/lib/articles/article-modes";
 
 export interface GeneratedArticle {
   title: string;
   content: string;
   citedSourceIds: string[];
+  /** monetized_blog 전용 부가 필드 (해당 없는 모드는 undefined) */
+  seoTitle?: string;
+  metaDescription?: string;
+  targetKeyword?: string;
+  secondaryKeywords?: string[];
+  searchIntent?: string;
+  readerPersona?: string;
+  adSlots?: AdSlotEntry[];
+  internalLinkSuggestions?: InternalLinkSuggestion[];
+  monetizationScore?: number;
+  policyRiskScore?: number;
+}
+
+/**
+ * 본문에 AD_SLOT_MARKERS가 모두 존재하는지 확인하고, 빠진 marker는 본문 끝에
+ * 추가한다. 실제 AdSense 코드는 절대 삽입하지 않고 HTML 주석 marker만 사용한다.
+ */
+function ensureAdSlotMarkers(content: string): { content: string; adSlots: AdSlotEntry[] } {
+  let result = content;
+  const adSlots: AdSlotEntry[] = [];
+
+  for (const position of AD_SLOT_MARKERS) {
+    const marker = adSlotMarkerComment(position);
+    if (!result.includes(marker)) {
+      result += `\n\n${marker}`;
+    }
+    adSlots.push({ position, marker });
+  }
+
+  return { content: result, adSlots };
 }
 
 const MIN_CONTENT_LENGTH = 500;
@@ -23,8 +63,24 @@ const FILLER_PARAGRAPH: Record<Theme["language"], string> = {
 
 /**
  * Phase 1-3: 실제 AI API를 호출하지 않는 mock 기사 초안 생성기.
+ * Phase 2-1: mode를 생략하면 기존과 동일하게 source_based_explainer로 동작한다
+ * (기존 흐름 보존).
  */
-export function generateMockArticleDraft(theme: Theme, sources: Source[]): GeneratedArticle {
+export function generateMockArticleDraft(
+  theme: Theme,
+  sources: Source[],
+  mode: ArticleMode = DEFAULT_ARTICLE_MODE
+): GeneratedArticle {
+  if (mode === "general_news") {
+    return generateGeneralNewsMock(theme, sources);
+  }
+  if (mode === "monetized_blog") {
+    return generateMonetizedBlogMock(theme, sources);
+  }
+  return generateSourceBasedExplainerMock(theme, sources);
+}
+
+function generateSourceBasedExplainerMock(theme: Theme, sources: Source[]): GeneratedArticle {
   const lang = theme.language;
   const title = theme.title;
   const citedSourceIds = sources.map((source) => source.id);
@@ -40,6 +96,120 @@ export function generateMockArticleDraft(theme: Theme, sources: Source[]): Gener
   }
 
   return { title, content, citedSourceIds };
+}
+
+/** Phase 2-1: 일반 기사형(general_news) mock 생성기 — 짧고 간결한 구조. */
+function generateGeneralNewsMock(theme: Theme, sources: Source[]): GeneratedArticle {
+  const title = theme.title;
+  const citedSourceIds = sources.map((source) => source.id);
+  const desc = theme.description || `${theme.title}에 대한 최신 소식`;
+
+  const issueParts = sources.slice(0, 3).map((s) => {
+    const point = s.keyPoints?.[0] || s.summary?.substring(0, 80) || "(내용 없음)";
+    return `- **${s.title || s.url}**: ${point}`;
+  });
+
+  const sections = [
+    `# ${title}`,
+    ["## 리드문", `${desc} 관련 출처 ${sources.length}건을 바탕으로 핵심 사실을 빠르게 전달한다.`].join("\n"),
+    ["## 핵심 내용", ...issueParts].join("\n"),
+    ["## 배경", `"${title}"는 최근 발생한 이슈다. 등록된 출처를 바탕으로 사실관계를 정리했다.`].join("\n"),
+    [
+      "## 관련 자료 또는 반응",
+      sources.length > 0
+        ? "등록된 출처들이 전하는 관련 사실과 반응은 다음과 같다."
+        : "등록된 관련 자료가 아직 없다.",
+    ].join("\n"),
+    [
+      "## 향후 전망",
+      "추가 사실 확인과 후속 보도에 따라 상황이 달라질 수 있다.",
+      "",
+      "> ⚠️ 이 초안은 mock article generator가 자동 생성한 draft입니다.",
+    ].join("\n"),
+    [
+      "## 참고 출처",
+      ...sources.map((s, i) => `${i + 1}. ${s.title || s.url} ${s.publisher ? `(${s.publisher})` : ""}`),
+    ].join("\n"),
+  ];
+
+  let content = sections.join("\n\n");
+  while (content.length < MIN_CONTENT_LENGTH) {
+    content += `\n\n${FILLER_PARAGRAPH[theme.language]}`;
+  }
+
+  return { title, content, citedSourceIds };
+}
+
+/** Phase 2-1: 수익형 블로그형(monetized_blog) mock 생성기 — SEO/광고 슬롯/체크리스트 포함. */
+function generateMonetizedBlogMock(theme: Theme, sources: Source[]): GeneratedArticle {
+  const title = theme.title;
+  const citedSourceIds = sources.map((source) => source.id);
+  const keywordStr = theme.keywords.join(", ");
+  const targetKeyword = theme.keywords[0] || theme.title;
+  const seoTitle = `${title} 완벽 가이드 (${new Date().getFullYear()}년 기준)`;
+  const metaDescription = `${title}에 대해 알아야 할 핵심 정보를 정리했다. ${keywordStr}`.slice(0, 160);
+
+  const sections = [
+    `# ${seoTitle}`,
+    ["## 도입부", `${theme.description || title}에 대해 궁금한 점을 이 글에서 모두 정리했다.`].join("\n"),
+    adSlotMarkerComment("after_intro"),
+    ["## 핵심 요약", `- ${title} 관련 핵심 정보 ${sources.length}건을 정리했다.`].join("\n"),
+    adSlotMarkerComment("after_summary"),
+    ["## 목차", "1. 문제 설명", "2. 핵심 정보", "3. 비교", "4. 체크리스트", "5. 주의점", "6. FAQ", "7. 결론"].join("\n"),
+    ["## 문제 설명", `"${title}"를 찾는 독자가 흔히 겪는 어려움을 정리했다.`].join("\n"),
+    [
+      "## 핵심 정보",
+      ...sources.slice(0, 3).map((s) => `- **${s.title || s.url}**: ${s.keyPoints?.[0] || s.summary?.substring(0, 80) || "(내용 없음)"}`),
+    ].join("\n"),
+    adSlotMarkerComment("mid_content_1"),
+    ["## 비교표", "| 항목 | 설명 |", "|---|---|", `| ${title} | 출처 ${sources.length}건 기반 요약 |`].join("\n"),
+    adSlotMarkerComment("mid_content_2"),
+    ["## 체크리스트", "- [ ] 출처를 확인했는가", "- [ ] 최신 정보인가", "- [ ] 나에게 해당하는 정보인가"].join("\n"),
+    ["## 주의점", "이 글은 일반 정보 제공 목적이며, 개별 상황에 따라 다를 수 있다."].join("\n"),
+    adSlotMarkerComment("before_faq"),
+    [
+      "## FAQ",
+      `**Q. ${title}란 무엇인가?**`,
+      "A. 등록된 출처를 바탕으로 정리한 정보다.",
+    ].join("\n"),
+    adSlotMarkerComment("before_conclusion"),
+    ["## 결론", `"${title}"에 대해 핵심 내용을 정리했다. 추가 정보는 참고자료를 확인하라.`].join("\n"),
+    [
+      "## 관련 글 추천",
+      `- ${title} 관련 주제를 더 깊이 다루는 글 (추후 연결 예정)`,
+    ].join("\n"),
+    [
+      "## 참고자료",
+      ...sources.map((s, i) => `${i + 1}. ${s.title || s.url} ${s.publisher ? `(${s.publisher})` : ""}`),
+    ].join("\n"),
+  ];
+
+  let content = sections.join("\n\n");
+  while (content.length < MIN_CONTENT_LENGTH) {
+    content += `\n\n${FILLER_PARAGRAPH[theme.language]}`;
+  }
+
+  const { content: contentWithAllSlots, adSlots } = ensureAdSlotMarkers(content);
+
+  const internalLinkSuggestions: InternalLinkSuggestion[] = [
+    { title: `${title} 관련 주제 1`, reason: "동일 카테고리 독자 관심사" },
+  ];
+
+  return {
+    title,
+    content: contentWithAllSlots,
+    citedSourceIds,
+    seoTitle,
+    metaDescription,
+    targetKeyword,
+    secondaryKeywords: theme.keywords.slice(1),
+    searchIntent: "informational",
+    readerPersona: `${title}에 관심 있는 일반 독자`,
+    adSlots,
+    internalLinkSuggestions,
+    monetizationScore: 50,
+    policyRiskScore: 10,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -170,13 +340,32 @@ function buildArticleUserPrompt(theme: Theme, sourceSummaries: SourceSummary[]):
  * Phase 1-4: prompts/article-draft.v1.md 기준으로 Anthropic API를 호출해
  * 기사 초안을 생성한다. tool_use로 JSON 출력을 강제한다.
  * 반환되는 status는 항상 "draft"로 강제한다 (모델 응답값과 무관).
+ * Phase 2-1: mode를 생략하면 기존과 동일하게 source_based_explainer로 동작한다
+ * (기존 흐름 보존 — client 생성 실패 시 즉시 예외, 이하 로직 동일).
  */
 export async function generateAiArticleDraft(
   theme: Theme,
-  sourceSummaries: SourceSummary[]
+  sourceSummaries: SourceSummary[],
+  mode: ArticleMode = DEFAULT_ARTICLE_MODE
 ): Promise<GeneratedArticle> {
   const client = getAnthropicClient();
 
+  if (mode === "general_news") {
+    return generateGeneralNewsAiDraft(client, theme, sourceSummaries);
+  }
+  if (mode === "monetized_blog") {
+    return generateMonetizedBlogAiDraft(client, theme, sourceSummaries);
+  }
+  return generateSourceBasedExplainerAiDraft(client, theme, sourceSummaries);
+}
+
+type AnthropicClient = ReturnType<typeof getAnthropicClient>;
+
+async function generateSourceBasedExplainerAiDraft(
+  client: AnthropicClient,
+  theme: Theme,
+  sourceSummaries: SourceSummary[]
+): Promise<GeneratedArticle> {
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 8192,
@@ -205,6 +394,235 @@ export async function generateAiArticleDraft(
     : [];
 
   return { title, content, citedSourceIds };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-1: 일반 기사형(general_news) AI 생성
+// ─────────────────────────────────────────────────────────────
+
+const GENERAL_NEWS_SYSTEM_PROMPT = `당신은 통신사 소속의 스트레이트 뉴스 기자입니다.
+빠른 이슈 전달을 목표로, 객관적이고 간결한 일반 기사형 초안을 작성합니다.
+
+【절대 금지】
+- 과장된 표현, 클릭베이트성 제목
+- 출처에 없는 단정적 주장이나 수치·고유명사 추가 (hallucination)
+- 출처를 순서대로 나열하는 구조 ("A 기사에 따르면... B 기사에 따르면...")
+
+【7개 섹션 구조】
+1. 리드문 — 무엇이·언제·왜 일어났는지 2~3문장 요약
+2. 핵심 내용 — 이슈의 핵심 사실
+3. 배경 — 이슈가 발생한 맥락
+4. 관련 자료 또는 반응 — 출처가 전하는 관련 사실/반응
+5. 향후 전망 — 출처 근거가 있는 전망 (과도한 예측 금지)
+6. 참고 출처 — 인용된 출처
+
+빠른 전달이 목적이므로 출처 기반 설명형보다 짧고 간결하게 작성하세요 (500자 이상, 1500자 이내 권장).`;
+
+const GENERAL_NEWS_TOOL = {
+  name: "write_general_news_article",
+  description: "일반 기사형(general_news) 결과를 저장한다.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: { type: "string", description: "기사 제목 (과장 금지, 40자 이내)" },
+      content: { type: "string", description: "기사 본문 (markdown, 500자 이상, 7개 섹션)" },
+      citedSourceIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "본문에서 실제로 활용한 출처 ID 목록 (최소 3개)",
+      },
+    },
+    required: ["title", "content", "citedSourceIds"],
+  },
+};
+
+async function generateGeneralNewsAiDraft(
+  client: AnthropicClient,
+  theme: Theme,
+  sourceSummaries: SourceSummary[]
+): Promise<GeneratedArticle> {
+  const response = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 4096,
+    system: GENERAL_NEWS_SYSTEM_PROMPT,
+    tools: [GENERAL_NEWS_TOOL],
+    tool_choice: { type: "tool", name: "write_general_news_article" },
+    messages: [{ role: "user", content: buildArticleUserPrompt(theme, sourceSummaries) }],
+  });
+
+  const toolUseBlock = response.content.find((block) => block.type === "tool_use");
+  if (!toolUseBlock || toolUseBlock.type !== "tool_use") {
+    throw new Error("generateAiArticleDraft: AI가 도구를 호출하지 않았습니다.");
+  }
+
+  const input = toolUseBlock.input as Record<string, unknown>;
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const content = typeof input.content === "string" ? input.content.trim() : "";
+
+  if (!title || !content) {
+    throw new Error("generateAiArticleDraft: AI 응답에 title 또는 content가 없습니다.");
+  }
+
+  const citedSourceIds = Array.isArray(input.citedSourceIds)
+    ? input.citedSourceIds.filter((id): id is string => typeof id === "string")
+    : [];
+
+  return { title, content, citedSourceIds };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-1: 수익형 블로그형(monetized_blog) AI 생성
+// ─────────────────────────────────────────────────────────────
+
+const MONETIZED_BLOG_SYSTEM_PROMPT = `당신은 검색 유입과 체류시간을 고려하는 SEO 콘텐츠 전문 작가입니다.
+독자의 문제 해결을 최우선으로 하는 수익형 블로그 글을 작성합니다.
+
+【절대 금지】
+- 과장된 클릭베이트, 허위 또는 과장된 수익 약속
+- AdSense 정책을 위반할 수 있는 광고 클릭 유도 문구
+- 의료/금융/법률 등 고위험 주제에 대한 단정적 조언
+- 출처 없는 주장, 원문 15단어 이상 연속 복사
+
+【실제 광고 코드 절대 금지】
+- 실제 AdSense 스크립트나 광고 코드를 절대 작성하지 마세요.
+- 광고 위치는 반드시 HTML 주석 marker만 사용하세요: <!-- AD_SLOT: after_summary --> 형태.
+- 사용 가능한 marker: after_summary, after_intro, mid_content_1, mid_content_2, before_faq, before_conclusion
+
+【구조】
+SEO 제목 → 메타 설명 → 도입부 → 핵심 요약 박스(AD_SLOT: after_summary) → 목차 → 문제 설명 →
+핵심 정보(AD_SLOT: mid_content_1) → 비교표(AD_SLOT: mid_content_2) → 체크리스트 → 주의점 →
+FAQ(AD_SLOT: before_faq) → 결론(AD_SLOT: before_conclusion) → 관련 글 추천 → 참고자료
+
+monetizationScore(0~100)는 검색 수요, 문제 해결성, 비교/구매 의도, 콘텐츠 확장성, 광고 적합성,
+장기 검색 가능성, 경쟁 강도, 정책 위험도를 종합해 산출하세요.
+policyRiskScore(0~100, 높을수록 위험)는 허위/과장 수익 약속, 광고 클릭 유도 문구, 선정적 제목,
+고위험 단정, 출처 없는 주장, 복사/저작권 위험을 종합해 산출하세요.`;
+
+const MONETIZED_BLOG_TOOL = {
+  name: "write_monetized_blog_article",
+  description: "수익형 블로그형(monetized_blog) 결과를 저장한다.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      seoTitle: { type: "string", description: "SEO 제목 (60자 이내, 타깃 키워드 포함)" },
+      metaDescription: { type: "string", description: "메타 설명 (160자 이내)" },
+      targetKeyword: { type: "string", description: "타깃 키워드" },
+      secondaryKeywords: { type: "array", items: { type: "string" }, description: "보조 키워드 목록" },
+      searchIntent: { type: "string", description: "검색 의도 (informational/commercial/transactional 등)" },
+      readerPersona: { type: "string", description: "독자 페르소나 설명" },
+      title: { type: "string", description: "본문에 표시할 제목" },
+      content: {
+        type: "string",
+        description: "기사 본문 (markdown, AD_SLOT marker 포함, 목차/비교표/체크리스트/FAQ 포함, 1200자 이상)",
+      },
+      citedSourceIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "본문에서 실제로 활용한 출처 ID 목록 (최소 3개)",
+      },
+      adSlots: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            position: { type: "string" },
+            marker: { type: "string" },
+          },
+        },
+        description: "본문에 삽입한 AD_SLOT marker 목록",
+      },
+      internalLinkSuggestions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            reason: { type: "string" },
+          },
+        },
+        description: "관련 글 추천 목록",
+      },
+      monetizationScore: { type: "number", description: "수익화 적합도 점수 (0~100)" },
+      policyRiskScore: { type: "number", description: "AdSense 정책 위험도 점수 (0~100, 높을수록 위험)" },
+    },
+    required: [
+      "seoTitle",
+      "metaDescription",
+      "targetKeyword",
+      "title",
+      "content",
+      "citedSourceIds",
+      "monetizationScore",
+      "policyRiskScore",
+    ],
+  },
+};
+
+async function generateMonetizedBlogAiDraft(
+  client: AnthropicClient,
+  theme: Theme,
+  sourceSummaries: SourceSummary[]
+): Promise<GeneratedArticle> {
+  const response = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 8192,
+    system: MONETIZED_BLOG_SYSTEM_PROMPT,
+    tools: [MONETIZED_BLOG_TOOL],
+    tool_choice: { type: "tool", name: "write_monetized_blog_article" },
+    messages: [{ role: "user", content: buildArticleUserPrompt(theme, sourceSummaries) }],
+  });
+
+  const toolUseBlock = response.content.find((block) => block.type === "tool_use");
+  if (!toolUseBlock || toolUseBlock.type !== "tool_use") {
+    throw new Error("generateAiArticleDraft: AI가 도구를 호출하지 않았습니다.");
+  }
+
+  const input = toolUseBlock.input as Record<string, unknown>;
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  let content = typeof input.content === "string" ? input.content.trim() : "";
+
+  if (!title || !content) {
+    throw new Error("generateAiArticleDraft: AI 응답에 title 또는 content가 없습니다.");
+  }
+
+  const citedSourceIds = Array.isArray(input.citedSourceIds)
+    ? input.citedSourceIds.filter((id): id is string => typeof id === "string")
+    : [];
+
+  const { content: contentWithAllSlots, adSlots } = ensureAdSlotMarkers(content);
+  content = contentWithAllSlots;
+
+  const internalLinkSuggestions: InternalLinkSuggestion[] = Array.isArray(input.internalLinkSuggestions)
+    ? input.internalLinkSuggestions
+        .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+        .map((item) => ({
+          title: typeof item.title === "string" ? item.title : "",
+          reason: typeof item.reason === "string" ? item.reason : "",
+        }))
+    : [];
+
+  const clampScore = (value: unknown): number => {
+    const num = typeof value === "number" ? value : 0;
+    return Math.max(0, Math.min(100, Math.round(num)));
+  };
+
+  return {
+    title,
+    content,
+    citedSourceIds,
+    seoTitle: typeof input.seoTitle === "string" ? input.seoTitle : title,
+    metaDescription: typeof input.metaDescription === "string" ? input.metaDescription : "",
+    targetKeyword: typeof input.targetKeyword === "string" ? input.targetKeyword : "",
+    secondaryKeywords: Array.isArray(input.secondaryKeywords)
+      ? input.secondaryKeywords.filter((k): k is string => typeof k === "string")
+      : [],
+    searchIntent: typeof input.searchIntent === "string" ? input.searchIntent : "",
+    readerPersona: typeof input.readerPersona === "string" ? input.readerPersona : "",
+    adSlots,
+    internalLinkSuggestions,
+    monetizationScore: clampScore(input.monetizationScore),
+    policyRiskScore: clampScore(input.policyRiskScore),
+  };
 }
 
 function buildKoreanSections(theme: Theme, sources: Source[]): string[] {

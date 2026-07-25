@@ -5,12 +5,36 @@ import type { ArticleRow } from "@/lib/supabase/database.types";
 import type { Article, ArticleStatus } from "@/lib/types/domain";
 import { assertApproved } from "@/lib/harness/approval-gate";
 import { saveApprovalLog } from "@/lib/repositories/approval-repository";
+import {
+  DEFAULT_ARTICLE_MODE,
+  resolveArticleMode,
+  type AdSlotEntry,
+  type ArticleMode,
+  type InternalLinkSuggestion,
+} from "@/lib/articles/article-modes";
+import type { GeneratedArticle } from "@/lib/ai/article-writer";
 
 export interface SaveDraftArticleInput {
   themeId: string;
   title: string;
   content: string;
   citedSourceIds: string[];
+  /** Phase 2-1: 글쓰기 모드 (기본값 source_based_explainer) */
+  articleMode?: ArticleMode;
+  /** Phase 2-1: monetized_blog 등 모드별 부가 필드. 생략 시 저장하지 않는다. */
+  modeFields?: Pick<
+    GeneratedArticle,
+    | "seoTitle"
+    | "metaDescription"
+    | "targetKeyword"
+    | "secondaryKeywords"
+    | "searchIntent"
+    | "readerPersona"
+    | "adSlots"
+    | "internalLinkSuggestions"
+    | "monetizationScore"
+    | "policyRiskScore"
+  >;
 }
 
 export interface UpdateDraftArticleInput {
@@ -60,6 +84,19 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     updatedAt: row.updated_at,
     reviewedAt: row.reviewed_at,
     reviewedBy: row.reviewed_by,
+    articleMode: resolveArticleMode(row.article_mode),
+    seoTitle: row.seo_title,
+    metaDescription: row.meta_description,
+    slug: row.slug,
+    targetKeyword: row.target_keyword,
+    secondaryKeywords: row.secondary_keywords ?? [],
+    searchIntent: row.search_intent,
+    readerPersona: row.reader_persona,
+    adSlots: (row.ad_slots ?? []) as unknown as AdSlotEntry[],
+    internalLinkSuggestions: (row.internal_link_suggestions ?? []) as unknown as InternalLinkSuggestion[],
+    monetizationScore: row.monetization_score,
+    policyRiskScore: row.policy_risk_score,
+    formatMetadata: row.format_metadata ?? {},
   };
 }
 
@@ -179,6 +216,9 @@ export async function saveDraftArticle(input: SaveDraftArticleInput): Promise<Ar
     throw new Error(`기존 기사 초안 삭제에 실패했습니다: ${deleteError.message}`);
   }
 
+  const mode = input.articleMode ?? DEFAULT_ARTICLE_MODE;
+  const modeFields = input.modeFields;
+
   const { data: articleRow, error: insertError } = await supabase
     .from("articles")
     .insert({
@@ -186,6 +226,17 @@ export async function saveDraftArticle(input: SaveDraftArticleInput): Promise<Ar
       title: input.title,
       content: input.content,
       status: "draft",
+      article_mode: mode,
+      seo_title: modeFields?.seoTitle ?? null,
+      meta_description: modeFields?.metaDescription ?? null,
+      target_keyword: modeFields?.targetKeyword ?? null,
+      secondary_keywords: modeFields?.secondaryKeywords ?? [],
+      search_intent: modeFields?.searchIntent ?? null,
+      reader_persona: modeFields?.readerPersona ?? null,
+      ad_slots: (modeFields?.adSlots ?? []) as unknown as Record<string, unknown>[],
+      internal_link_suggestions: (modeFields?.internalLinkSuggestions ?? []) as unknown as Record<string, unknown>[],
+      monetization_score: modeFields?.monetizationScore ?? null,
+      policy_risk_score: modeFields?.policyRiskScore ?? null,
     })
     .select()
     .single();

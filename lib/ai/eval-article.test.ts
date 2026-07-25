@@ -1,5 +1,12 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { evaluateArticleMock, evaluateArticleWithAi, loadEvalConfig, applyGateConditions } from "./eval-article";
+import {
+  evaluateArticleMock,
+  evaluateArticleWithAi,
+  evaluateArticleForMode,
+  evaluateArticleModeMock,
+  loadEvalConfig,
+  applyGateConditions,
+} from "./eval-article";
 import type { Article } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
 
@@ -159,5 +166,65 @@ describe("evaluateArticleWithAi", () => {
     expect(typeof result.aggregateScore).toBe("number");
     expect(result.passed).toBe(true);
     expect(result.notes).toBe("전반적으로 양호한 기사입니다.");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-1: article_mode별 평가 기준 로드/디스패치 테스트
+// ─────────────────────────────────────────────────────────────
+
+describe("loadEvalConfig — Phase 2-1 mode별 eval 파일", () => {
+  it("general-news.eval.yaml의 criteria를 로드한다", () => {
+    const config = loadEvalConfig("general-news.eval.yaml");
+    expect(config.name).toBe("general-news.eval");
+    expect(config.criteria.length).toBeGreaterThan(0);
+  });
+
+  it("monetized-blog.eval.yaml의 criteria를 로드한다", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    expect(config.name).toBe("monetized-blog.eval");
+    expect(config.criteria.some((c) => c.id === "adsense-policy-risk")).toBe(true);
+  });
+});
+
+describe("evaluateArticleModeMock", () => {
+  it("evalConfig.criteria 전체에 대해 점수를 생성한다", () => {
+    const config = loadEvalConfig("general-news.eval.yaml");
+    const result = evaluateArticleModeMock(article, sourceSummaries, config);
+
+    expect(Object.keys(result.criteriaScores)).toEqual(config.criteria.map((c) => c.id));
+    expect(typeof result.aggregateScore).toBe("number");
+  });
+});
+
+describe("evaluateArticleForMode", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("source_based_explainer는 기존 evaluateArticleMock과 동일한 결과를 반환한다 (기존 흐름 보존)", async () => {
+    const direct = evaluateArticleMock(article, sourceSummaries);
+    const viaDispatcher = await evaluateArticleForMode(
+      "source_based_explainer",
+      article,
+      sourceSummaries,
+      false
+    );
+
+    expect(viaDispatcher).toEqual(direct);
+  });
+
+  it("general_news는 general-news.eval.yaml 기준으로 mock 평가를 수행한다", async () => {
+    const result = await evaluateArticleForMode("general_news", article, sourceSummaries, false);
+    const config = loadEvalConfig("general-news.eval.yaml");
+
+    expect(Object.keys(result.criteriaScores)).toEqual(config.criteria.map((c) => c.id));
+  });
+
+  it("monetized_blog는 monetized-blog.eval.yaml 기준으로 mock 평가를 수행한다", async () => {
+    const result = await evaluateArticleForMode("monetized_blog", article, sourceSummaries, false);
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+
+    expect(Object.keys(result.criteriaScores)).toEqual(config.criteria.map((c) => c.id));
   });
 });

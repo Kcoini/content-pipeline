@@ -82,6 +82,15 @@ AI 평가 결과와 무관하게, 기사 초안의 `status`를 `reviewed`(또는
 파이프라인 단계의 실행 결과는 `pipeline_logs`에 기록된다 (단계, 상태, 메시지,
 상세 정보, 시각). 각 로그/실행 기록 테이블의 역할 구분은 7장을 참고한다.
 
+### FR-11. 글쓰기 모드 선택 (Phase 2-1)
+사용자는 기사 초안을 생성할 때 `article_mode`(`general_news` / `source_based_explainer` /
+`monetized_blog`)를 선택할 수 있다. 선택하지 않으면 기본값 `source_based_explainer`로
+동작해 기존 흐름을 그대로 유지한다. `monetized_blog`는 SEO 메타데이터
+(`seo_title`, `meta_description`, `target_keyword` 등)와 광고 슬롯 marker
+(`AD_SLOT_MARKERS`, 실제 광고 코드 아님), `monetization_score`, `policy_risk_score`를
+함께 생성/저장한다. 모드와 무관하게 FR-5(Draft 저장), FR-9(사용자 승인)는
+그대로 적용된다. 자세한 내용은 `docs/phase-2-1-article-modes.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

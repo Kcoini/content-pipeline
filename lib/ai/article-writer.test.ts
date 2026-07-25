@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { generateAiArticleDraft, generateMockArticleDraft } from "./article-writer";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
+import { AD_SLOT_MARKERS, adSlotMarkerComment } from "@/lib/articles/article-modes";
 import type { Source, Theme } from "@/lib/types/domain";
 
 const theme: Theme = {
@@ -150,5 +151,159 @@ describe("generateAiArticleDraft", () => {
     await expect(generateAiArticleDraft(theme, [])).rejects.toThrow(/ANTHROPIC_API_KEY/);
 
     if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-1: article_mode별 mock 생성 테스트
+// ─────────────────────────────────────────────────────────────
+
+describe("generateMockArticleDraft — article_mode", () => {
+  it("mode를 생략하면 기본값(source_based_explainer)과 동일하게 동작한다 (기존 흐름 보존)", () => {
+    const withoutMode = generateMockArticleDraft(theme, sources);
+    const withDefaultMode = generateMockArticleDraft(theme, sources, "source_based_explainer");
+
+    expect(withoutMode.content).toBe(withDefaultMode.content);
+    expect(withoutMode.title).toBe(withDefaultMode.title);
+  });
+
+  it("general_news 모드는 짧은 기사형 구조(제목/핵심 내용/참고 출처)를 생성한다", () => {
+    const result = generateMockArticleDraft(theme, sources, "general_news");
+
+    expect(result.content).toContain("## 리드문");
+    expect(result.content).toContain("## 핵심 내용");
+    expect(result.content).toContain("## 참고 출처");
+    expect(result.content.length).toBeGreaterThanOrEqual(500);
+    expect(result.citedSourceIds).toEqual(sources.map((s) => s.id));
+    // 수익형 전용 필드는 생성되지 않는다.
+    expect(result.seoTitle).toBeUndefined();
+    expect(result.monetizationScore).toBeUndefined();
+  });
+
+  it("monetized_blog 모드는 SEO/광고 슬롯/수익화 점수를 포함한다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+
+    expect(result.seoTitle).toBeTruthy();
+    expect(result.metaDescription).toBeTruthy();
+    expect(result.targetKeyword).toBeTruthy();
+    expect(result.monetizationScore).toBeTypeOf("number");
+    expect(result.policyRiskScore).toBeTypeOf("number");
+    expect(result.adSlots).toBeDefined();
+    expect(result.adSlots!.length).toBe(AD_SLOT_MARKERS.length);
+    expect(result.internalLinkSuggestions).toBeDefined();
+  });
+
+  it("monetized_blog 본문에는 AD_SLOT marker만 삽입되고 실제 광고 코드는 삽입되지 않는다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+
+    for (const position of AD_SLOT_MARKERS) {
+      expect(result.content).toContain(adSlotMarkerComment(position));
+    }
+    expect(result.content).not.toMatch(/adsbygoogle|googlesyndication|data-ad-client|data-ad-slot/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-1: article_mode별 AI 생성 tool 선택 테스트
+// ─────────────────────────────────────────────────────────────
+
+function mockToolUseResponse(toolName: string, input: Record<string, unknown>) {
+  return new Response(
+    JSON.stringify({
+      content: [{ type: "tool_use", id: "call-1", name: toolName, input }],
+      stop_reason: "tool_use",
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+}
+
+describe("generateAiArticleDraft — article_mode별 prompt 선택", () => {
+  // Anthropic client는 모듈 내부에서 캐싱되므로(getAnthropicClient의 cachedClient),
+  // fetch stub 자체를 테스트마다 교체하지 않고 하나의 vi.fn()을 재사용하면서
+  // mockResolvedValueOnce로 응답만 큐잉한다 (caching된 client가 예전 stub을
+  // 참조해 Response body를 재사용하려는 문제를 피한다).
+  const fetchMock = vi.fn();
+
+  beforeAll(() => {
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  afterEach(() => {
+    fetchMock.mockReset();
+  });
+
+  it("general_news 모드는 write_general_news_article 도구를 호출한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_general_news_article", {
+        title: "일반 기사 제목",
+        content: "일반 기사 본문입니다.".repeat(50),
+        citedSourceIds: sources.map((s) => s.id),
+      })
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "general_news");
+
+    expect(result.title).toBe("일반 기사 제목");
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(requestBody.tools[0].name).toBe("write_general_news_article");
+  });
+
+  it("source_based_explainer 모드는 write_article 도구를 호출한다 (기존 동작 유지)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_article", {
+        synthesis_notes: "메모",
+        thesis: "논지",
+        title: "설명형 기사 제목",
+        content: "설명형 기사 본문입니다.".repeat(50),
+        citedSourceIds: sources.map((s) => s.id),
+      })
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "source_based_explainer");
+
+    expect(result.title).toBe("설명형 기사 제목");
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(requestBody.tools[0].name).toBe("write_article");
+  });
+
+  it("monetized_blog 모드는 write_monetized_blog_article 도구를 호출하고 SEO/점수 필드를 반환한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", {
+        seoTitle: "SEO 제목",
+        metaDescription: "메타 설명",
+        targetKeyword: "타깃 키워드",
+        secondaryKeywords: ["보조1", "보조2"],
+        searchIntent: "informational",
+        readerPersona: "일반 독자",
+        title: "본문 제목",
+        content: "수익형 블로그 본문입니다.".repeat(80),
+        citedSourceIds: sources.map((s) => s.id),
+        adSlots: [],
+        internalLinkSuggestions: [{ title: "관련 글", reason: "관련성 높음" }],
+        monetizationScore: 72,
+        policyRiskScore: 15,
+      })
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(requestBody.tools[0].name).toBe("write_monetized_blog_article");
+    expect(result.seoTitle).toBe("SEO 제목");
+    expect(result.metaDescription).toBe("메타 설명");
+    expect(result.monetizationScore).toBe(72);
+    expect(result.policyRiskScore).toBe(15);
+    // AI가 marker를 누락해도 코드가 모든 AD_SLOT marker를 보장한다.
+    for (const position of AD_SLOT_MARKERS) {
+      expect(result.content).toContain(adSlotMarkerComment(position));
+    }
+    expect(result.content).not.toMatch(/adsbygoogle|googlesyndication|data-ad-client|data-ad-slot/i);
   });
 });

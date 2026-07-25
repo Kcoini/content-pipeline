@@ -15,6 +15,17 @@ export interface TrendActionResult {
   error?: string;
 }
 
+/** redirect()가 내부적으로 던지는 NEXT_REDIRECT 특수 예외인지 확인한다 (digest 기반). */
+function isNextRedirectError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof (err as { digest: unknown }).digest === "string" &&
+    (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
 /** 트렌드 후보 수집 + 클러스터링을 한 번에 실행하고 결과를 query param으로 redirect한다. */
 export async function runTrendCollection(): Promise<void> {
   try {
@@ -36,6 +47,10 @@ export async function runTrendCollection(): Promise<void> {
 
     redirect(`/trends?${params.toString()}`);
   } catch (err) {
+    // redirect()가 던지는 NEXT_REDIRECT 예외는 그대로 다시 던져야 실제 리다이렉트가 수행된다.
+    // 여기서 잡아버리면 "NEXT_REDIRECT" 문자열이 에러 메시지로 화면에 노출된다.
+    if (isNextRedirectError(err)) throw err;
+
     const error = err instanceof Error ? err.message : String(err);
     revalidatePath("/trends");
     redirect(`/trends?msg=${encodeURIComponent(error)}&type=error`);

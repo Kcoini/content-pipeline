@@ -6,6 +6,7 @@ import { getThemes } from "@/lib/repositories/theme-repository";
 import { getSourcesByThemeId } from "@/lib/repositories/source-repository";
 import { getArticleByThemeId } from "@/lib/repositories/article-repository";
 import type { Article, Source } from "@/lib/types/domain";
+import { ARTICLE_MODE_LIST, DEFAULT_ARTICLE_MODE } from "@/lib/articles/article-modes";
 
 export const dynamic = "force-dynamic";
 
@@ -304,12 +305,34 @@ export default async function DashboardPage({
 
                 {/* 기사 생성 + 계약 검사 결과 */}
                 <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-zinc-700">
-                      계약 검사 &amp; 기사 초안 생성
-                    </h2>
-                    <form action={generateArticleDraft}>
-                      <input type="hidden" name="themeId" value={selectedTheme.id} />
+                  <h2 className="text-sm font-semibold text-zinc-700">
+                    계약 검사 &amp; 기사 초안 생성
+                  </h2>
+
+                  <form action={generateArticleDraft} className="mt-3 flex flex-col gap-3">
+                    <input type="hidden" name="themeId" value={selectedTheme.id} />
+                    <fieldset className="flex flex-col gap-2">
+                      <legend className="text-xs font-medium text-zinc-600">글쓰기 모드</legend>
+                      {ARTICLE_MODE_LIST.map((modeConfig) => (
+                        <label
+                          key={modeConfig.id}
+                          className="flex items-start gap-2 rounded border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
+                        >
+                          <input
+                            type="radio"
+                            name="articleMode"
+                            value={modeConfig.id}
+                            defaultChecked={modeConfig.id === DEFAULT_ARTICLE_MODE}
+                            className="mt-0.5"
+                          />
+                          <span>
+                            <span className="font-medium text-zinc-800">{modeConfig.label}</span>
+                            <span className="block text-xs text-zinc-500">{modeConfig.description}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                    <div>
                       <button
                         type="submit"
                         disabled={sources.length < MIN_SOURCE_COUNT}
@@ -317,8 +340,8 @@ export default async function DashboardPage({
                       >
                         기사 초안 생성
                       </button>
-                    </form>
-                  </div>
+                    </div>
+                  </form>
 
                   <div className="mt-3 flex flex-col gap-3">
                     <ContractCheckResult
@@ -345,6 +368,9 @@ export default async function DashboardPage({
                         <h3 className="text-base font-semibold">{article.title}</h3>
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                           status: {article.status}
+                        </span>
+                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                          {ARTICLE_MODE_LIST.find((m) => m.id === article.articleMode)?.label ?? article.articleMode}
                         </span>
                         <Link
                           href={`/articles/${article.id}`}

@@ -11,6 +11,9 @@ export type ThemeStatus =
 
 export type ArticleStatus = "draft" | "reviewed" | "published";
 
+/** Phase 2-1: 수익형 콘텐츠 글쓰기 모드 3종 */
+export type ArticleMode = "general_news" | "source_based_explainer" | "monetized_blog";
+
 // PipelineStage: lib/harness/pipeline.ts(전체 오케스트레이터, Phase 2)에서 사용할
 // 단계 이름이다. pipeline_logs.stage / contract_runs.stage 컬럼은 이 값을 위해
 // 마련해 둔 자리이며, 현재 MVP 코드는 이 컬럼에 값을 쓰지 않는다 (항상 null).
@@ -132,6 +135,20 @@ export type ArticleRow = {
   reviewed_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Phase 2-1: 글쓰기 모드 및 모드별 부가 필드 */
+  article_mode: ArticleMode;
+  seo_title: string | null;
+  meta_description: string | null;
+  slug: string | null;
+  target_keyword: string | null;
+  secondary_keywords: string[];
+  search_intent: string | null;
+  reader_persona: string | null;
+  ad_slots: Record<string, unknown>[];
+  internal_link_suggestions: Record<string, unknown>[];
+  monetization_score: number | null;
+  policy_risk_score: number | null;
+  format_metadata: Record<string, unknown>;
 };
 
 export type ArticleSourceRow = {

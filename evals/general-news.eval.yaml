@@ -1,0 +1,58 @@
+# 일반 기사형(general_news) 품질 평가 기준 - Phase 2-1
+#
+# lib/ai/eval-article.ts의 evaluateModeArticleWithAi/evaluateModeArticleMock가
+# article_mode='general_news'인 기사에 대해 이 기준으로 평가한다.
+
+name: general-news.eval
+version: 1
+target: article
+description: >
+  일반 기사형 초안의 품질을 사실성, 중립성, 출처 반영, 과장 표현 여부,
+  기사 구조 충족 관점에서 평가한다.
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+
+criteria:
+  - id: factuality
+    description: 기사의 주요 주장이 인용된 출처로 뒷받침되는가 (사실성)
+    weight: 0.30
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: neutrality
+    description: 특정 입장에 치우치지 않고 중립적으로 서술되었는가
+    weight: 0.20
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: source-reflection
+    description: 출처의 핵심 내용이 기사에 충실히 반영되었는가
+    weight: 0.20
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: exaggeration-check
+    description: 과장된 표현이나 클릭베이트성 제목이 없는가 (1=과장 심함, 5=과장 없음)
+    weight: 0.15
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: structure
+    description: 제목/리드문/핵심 내용/배경/관련 자료/전망/참고 출처 구조를 갖추었는가
+    weight: 0.15
+    scale: 1-5
+    pass_threshold: 3
+
+scoring:
+  aggregate: weighted_average
+  pass_threshold: 3.0
+
+output:
+  format: json
+  fields:
+    - criteria_scores
+    - aggregate_score
+    - passed
+    - notes

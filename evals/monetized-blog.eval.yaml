@@ -1,0 +1,96 @@
+# 수익형 블로그형(monetized_blog) 품질 평가 기준 - Phase 2-1
+#
+# lib/ai/eval-article.ts의 evaluateModeArticleWithAi/evaluateModeArticleMock가
+# article_mode='monetized_blog'인 기사에 대해 이 기준으로 평가한다.
+# 이 평가는 사람의 검토(human_review)를 대체하지 않으며, 참고 자료로만 제공된다.
+
+name: monetized-blog.eval
+version: 1
+target: article
+description: >
+  수익형 블로그 초안의 품질을 검색 의도 적합성, 클릭 가능성, 과장/허위 여부,
+  체류시간 구조, 요약/비교/체크리스트/FAQ 요소, 내부 링크, 광고 슬롯 위치,
+  AdSense 정책 위험도 관점에서 평가한다.
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+
+criteria:
+  - id: search-intent-fit
+    description: 제목/본문이 타깃 키워드의 검색 의도(정보성/거래성 등)에 부합하는가
+    weight: 0.12
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: title-clickability
+    description: 제목이 클릭베이트 없이도 클릭을 유도할 만큼 매력적인가
+    weight: 0.08
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: exaggeration-check
+    description: 과장/허위 수익 약속, 클릭베이트 표현이 없는가 (1=심각, 5=없음)
+    weight: 0.12
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: dwell-time-structure
+    description: 목차, 소제목, 단락 구성이 체류시간을 늘리는 구조인가
+    weight: 0.10
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: summary-box
+    description: 핵심 요약 박스가 명확하고 유용한가
+    weight: 0.08
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: comparison-checklist
+    description: 비교표와 체크리스트가 실질적인 정보를 제공하는가
+    weight: 0.10
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: faq-quality
+    description: FAQ가 독자의 실제 질문을 반영하고 정확한가
+    weight: 0.08
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: internal-link-suggestions
+    description: 내부 링크 추천이 주제와 관련성이 높고 전환에 도움이 되는가
+    weight: 0.07
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: ad-slot-placement
+    description: AD_SLOT marker 위치가 가독성을 해치지 않고 적절한가
+    weight: 0.07
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: adsense-policy-risk
+    description: >
+      AdSense 정책 위반 소지(허위 수익 약속, 클릭 유도 문구, 선정적 제목,
+      고위험 단정, 출처 없는 주장, 복사/저작권 위험)가 있는가.
+      (1=위험 없음, 5=심각한 위험 — 점수가 높을수록 위험. 가중 평균에는 포함하되
+      gate로도 사용한다.)
+    weight: 0.18
+    scale: 1-5
+    pass_threshold: 3
+
+scoring:
+  aggregate: weighted_average
+  pass_threshold: 3.0
+  # adsense-policy-risk >= 4이면 passed=false 강제 (가중 평균과 무관)
+  policy_risk_fail_threshold: 4
+
+output:
+  format: json
+  fields:
+    - criteria_scores
+    - aggregate_score
+    - passed
+    - notes

@@ -16,6 +16,25 @@ describe("prompts/*.v1.md", () => {
   });
 });
 
+// Phase 2-1: article_mode별 prompt 문서
+const ARTICLE_MODE_PROMPT_FILES = [
+  "general-news.md",
+  "source-based-explainer.md",
+  "monetized-blog.md",
+];
+
+describe("prompts/articles/*.md", () => {
+  it.each(ARTICLE_MODE_PROMPT_FILES)("%s 파일이 존재한다", (fileName) => {
+    expect(existsSync(join(PROMPTS_DIR, "articles", fileName))).toBe(true);
+  });
+
+  it("monetized-blog.md에는 AD_SLOT marker와 실제 광고 코드 금지 원칙이 문서화되어 있다", () => {
+    const content = readFileSync(join(PROMPTS_DIR, "articles", "monetized-blog.md"), "utf-8");
+    expect(content).toContain("AD_SLOT");
+    expect(content.toLowerCase()).toMatch(/adsense.*(금지|절대)/);
+  });
+});
+
 describe("prompts/article-draft.v1.md", () => {
   const content = readFileSync(join(PROMPTS_DIR, "article-draft.v1.md"), "utf-8");
 

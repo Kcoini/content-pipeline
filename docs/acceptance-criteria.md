@@ -63,6 +63,19 @@
       `topic_id`를 포함한다.
 - [ ] 한 단계가 실패하면 이후 단계는 실행되지 않는다 (파이프라인 중단).
 
+## AC-10. 글쓰기 모드 선택 (FR-11, Phase 2-1)
+- [ ] 기사 생성 화면에서 사용자는 일반 기사형/출처 기반 설명형/수익형 블로그형 중
+      하나를 선택할 수 있으며, 기본 선택은 출처 기반 설명형이다.
+- [ ] `article_mode`를 지정하지 않고 생성 API를 호출하면 `source_based_explainer`로
+      동작하며 기존 생성 결과와 동일하다 (회귀 없음).
+- [ ] `monetized_blog`로 생성한 기사는 `seo_title`, `meta_description`,
+      `target_keyword`, `ad_slots`, `monetization_score`, `policy_risk_score`가
+      함께 저장된다.
+- [ ] `monetized_blog` 본문에는 `<!-- AD_SLOT: ... -->` marker만 삽입되며,
+      실제 AdSense 광고 코드는 어떤 모드에서도 삽입되지 않는다.
+- [ ] 어떤 `article_mode`로 생성되었더라도 `status`는 `draft`로 저장되고,
+      FR-9(사용자 승인) 없이는 `reviewed`로 전환되지 않는다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.
