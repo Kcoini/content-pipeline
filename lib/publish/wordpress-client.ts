@@ -55,6 +55,11 @@ export function isWordPressConfigured(): boolean {
 
 const RESPONSE_BODY_EXCERPT_LENGTH = 300;
 
+function buildAuthHeader(config: WordPressConfig): string {
+  const authToken = Buffer.from(`${config.username}:${config.appPassword}`).toString("base64");
+  return `Basic ${authToken}`;
+}
+
 /**
  * WordPress REST API(`/wp-json/wp/v2/posts`)에 status="draft"로 post를 생성한다.
  * 자동 공개(publish)는 절대 수행하지 않는다 — status는 항상 "draft"로 고정한다.
@@ -70,7 +75,6 @@ export async function createDraftPost(input: CreateDraftPostInput): Promise<Crea
   }
 
   const endpoint = `${config.baseUrl.replace(/\/+$/, "")}/wp-json/wp/v2/posts`;
-  const authToken = Buffer.from(`${config.username}:${config.appPassword}`).toString("base64");
 
   const body: Record<string, unknown> = {
     title: input.title,
@@ -90,7 +94,7 @@ export async function createDraftPost(input: CreateDraftPostInput): Promise<Crea
       headers: {
         "Content-Type": "application/json",
         // Authorization header는 절대 로그로 출력하지 않는다.
-        Authorization: `Basic ${authToken}`,
+        Authorization: buildAuthHeader(config),
       },
       body: JSON.stringify(body),
       cache: "no-store",
@@ -143,4 +147,138 @@ export async function createDraftPost(input: CreateDraftPostInput): Promise<Crea
       slug: data.slug,
     },
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-3: category/tag 동기화 (구조만 준비 — 실제 연결은 다음 단계)
+//
+// WORDPRESS_PUBLISH_ENABLED=false이면 이 함수들을 호출하지 않는다
+// (dry-run에서는 category/tag 이름만 사용하고 실제 API를 호출하지 않는다).
+// ─────────────────────────────────────────────────────────────
+
+export interface WordPressTermSuccess {
+  success: true;
+  id: number;
+  name: string;
+}
+
+export interface WordPressTermFailure {
+  success: false;
+  statusCode?: number;
+  errorMessage: string;
+}
+
+export type WordPressTermResult = WordPressTermSuccess | WordPressTermFailure;
+
+type TermKind = "categories" | "tags";
+
+async function findTermByName(kind: TermKind, name: string): Promise<WordPressTermResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return { success: false, errorMessage: "WordPress 환경변수가 설정되지 않았습니다." };
+  }
+
+  const endpoint = new URL(`${config.baseUrl.replace(/\/+$/, "")}/wp-json/wp/v2/${kind}`);
+  endpoint.searchParams.set("search", name);
+  endpoint.searchParams.set("per_page", "10");
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint.toString(), {
+      headers: { Authorization: buildAuthHeader(config) },
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, errorMessage: `WordPress API 네트워크 오류: ${message}` };
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      statusCode: response.status,
+      errorMessage: `WordPress ${kind} 검색 실패 (HTTP ${response.status})`,
+    };
+  }
+
+  const items = (await response.json()) as Array<{ id: number; name: string }>;
+  const exact = items.find((item) => item.name === name);
+
+  if (!exact) {
+    return { success: false, errorMessage: `일치하는 ${kind} 항목이 없습니다: ${name}` };
+  }
+
+  return { success: true, id: exact.id, name: exact.name };
+}
+
+async function createTerm(kind: TermKind, name: string): Promise<WordPressTermResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return { success: false, errorMessage: "WordPress 환경변수가 설정되지 않았습니다." };
+  }
+
+  const endpoint = `${config.baseUrl.replace(/\/+$/, "")}/wp-json/wp/v2/${kind}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: buildAuthHeader(config),
+      },
+      body: JSON.stringify({ name }),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, errorMessage: `WordPress API 네트워크 오류: ${message}` };
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      statusCode: response.status,
+      errorMessage: `WordPress ${kind} 생성 실패 (HTTP ${response.status})`,
+    };
+  }
+
+  const data = (await response.json()) as { id: number; name: string };
+  return { success: true, id: data.id, name: data.name };
+}
+
+async function findOrCreateTerm(kind: TermKind, name: string): Promise<WordPressTermResult> {
+  const found = await findTermByName(kind, name);
+  if (found.success) return found;
+  return createTerm(kind, name);
+}
+
+/** 이름으로 WordPress 카테고리를 검색한다 (없으면 실패를 반환한다). */
+export function findCategoryByName(name: string): Promise<WordPressTermResult> {
+  return findTermByName("categories", name);
+}
+
+/** WordPress 카테고리를 새로 생성한다. */
+export function createCategory(name: string): Promise<WordPressTermResult> {
+  return createTerm("categories", name);
+}
+
+/** 이름으로 카테고리를 찾고, 없으면 생성해 id를 반환한다. */
+export function findOrCreateCategory(name: string): Promise<WordPressTermResult> {
+  return findOrCreateTerm("categories", name);
+}
+
+/** 이름으로 WordPress 태그를 검색한다 (없으면 실패를 반환한다). */
+export function findTagByName(name: string): Promise<WordPressTermResult> {
+  return findTermByName("tags", name);
+}
+
+/** WordPress 태그를 새로 생성한다. */
+export function createTag(name: string): Promise<WordPressTermResult> {
+  return createTerm("tags", name);
+}
+
+/** 이름으로 태그를 찾고, 없으면 생성해 id를 반환한다. */
+export function findOrCreateTag(name: string): Promise<WordPressTermResult> {
+  return findOrCreateTerm("tags", name);
 }

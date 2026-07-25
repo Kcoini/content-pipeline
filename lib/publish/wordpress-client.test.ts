@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDraftPost, isWordPressConfigured } from "./wordpress-client";
+import {
+  createDraftPost,
+  isWordPressConfigured,
+  findOrCreateCategory,
+  findOrCreateTag,
+} from "./wordpress-client";
 
 const ENV_KEYS = ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"] as const;
 
@@ -133,5 +138,61 @@ describe("createDraftPost", () => {
     if (!result.success) {
       expect(result.errorMessage).toContain("network down");
     }
+  });
+});
+
+describe("findOrCreateCategory / findOrCreateTag", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 실패를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await findOrCreateCategory("복지");
+
+    expect(result.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("이름이 이미 있으면 검색만 하고 생성 요청은 보내지 않는다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([{ id: 5, name: "복지" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await findOrCreateCategory("복지");
+
+    expect(result).toEqual({ success: true, id: 5, name: "복지" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0][0] as string)).toContain("/wp-json/wp/v2/categories");
+  });
+
+  it("이름이 없으면 생성 요청을 보내고 결과를 반환한다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 9, name: "장기요양보험" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await findOrCreateTag("장기요양보험");
+
+    expect(result).toEqual({ success: true, id: 9, name: "장기요양보험" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, createInit] = fetchMock.mock.calls[1];
+    expect(JSON.parse(createInit.body as string)).toEqual({ name: "장기요양보험" });
   });
 });

@@ -97,6 +97,12 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     monetizationScore: row.monetization_score,
     policyRiskScore: row.policy_risk_score,
     formatMetadata: row.format_metadata ?? {},
+    wpCategoryNames: row.wp_category_names ?? [],
+    wpTagNames: row.wp_tag_names ?? [],
+    wpCategoryIds: row.wp_category_ids ?? [],
+    wpTagIds: row.wp_tag_ids ?? [],
+    wpMetadataStatus: row.wp_metadata_status ?? "not_ready",
+    wpMetadataGeneratedAt: row.wp_metadata_generated_at,
   };
 }
 
@@ -347,6 +353,103 @@ export async function approveArticle(input: ApproveArticleInput): Promise<Articl
     approvedBy: input.approvedBy,
     notes: "Article approved from review screen",
   });
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveWordPressMetadataInput {
+  articleId: string;
+  seoTitle: string;
+  metaDescription: string;
+  slug: string;
+  targetKeyword?: string;
+  secondaryKeywords?: string[];
+  internalLinkSuggestions?: InternalLinkSuggestion[];
+  categoryNames: string[];
+  tagNames: string[];
+  categoryIds?: number[];
+  tagIds?: number[];
+  /** 'generated' 또는 'failed' — 'reviewed'는 markWordPressMetadataReviewed로만 전환한다. */
+  status: "generated" | "failed";
+}
+
+/**
+ * WordPress 게시 준비용 metadata(SEO 제목/설명/slug/카테고리/태그 등)를 저장한다 (Phase 2-3).
+ * seo_title/meta_description/slug/target_keyword/secondary_keywords/internal_link_suggestions는
+ * Phase 2-1에서 추가된 컬럼을 재사용하고, wp_category_names 등은 Phase 2-3 신규 컬럼에 저장한다.
+ * format_metadata.wordpress에도 동일한 정보를 요약해 저장한다.
+ */
+export async function saveWordPressMetadata(input: SaveWordPressMetadataInput): Promise<Article> {
+  const existing = await getArticleById(input.articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(input.articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const wordpressFormatMetadata = {
+    category_names: input.categoryNames,
+    tag_names: input.tagNames,
+    slug: input.slug,
+    seo_title: input.seoTitle,
+    meta_description: input.metaDescription,
+    internal_links: input.internalLinkSuggestions ?? existing.internalLinkSuggestions,
+    ad_slots: existing.adSlots,
+  };
+
+  const formatMetadata = {
+    ...existing.formatMetadata,
+    wordpress: wordpressFormatMetadata,
+  };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      seo_title: input.seoTitle,
+      meta_description: input.metaDescription,
+      slug: input.slug,
+      target_keyword: input.targetKeyword ?? existing.targetKeyword,
+      secondary_keywords: input.secondaryKeywords ?? existing.secondaryKeywords,
+      internal_link_suggestions: (input.internalLinkSuggestions ??
+        existing.internalLinkSuggestions) as unknown as Record<string, unknown>[],
+      wp_category_names: input.categoryNames,
+      wp_tag_names: input.tagNames,
+      wp_category_ids: input.categoryIds ?? [],
+      wp_tag_ids: input.tagIds ?? [],
+      wp_metadata_status: input.status,
+      wp_metadata_generated_at: new Date().toISOString(),
+      format_metadata: formatMetadata,
+    })
+    .eq("id", input.articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress metadata 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/** WordPress metadata를 사람이 검토 완료했음을 표시한다 (wp_metadata_status='reviewed'). */
+export async function markWordPressMetadataReviewed(articleId: string): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({ wp_metadata_status: "reviewed" })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress metadata 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);
 }

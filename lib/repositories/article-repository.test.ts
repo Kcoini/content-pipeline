@@ -33,6 +33,12 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     monetization_score: null,
     policy_risk_score: null,
     format_metadata: {},
+    wp_category_names: [],
+    wp_tag_names: [],
+    wp_category_ids: [],
+    wp_tag_ids: [],
+    wp_metadata_status: "not_ready",
+    wp_metadata_generated_at: null,
     ...overrides,
   };
 }
@@ -66,6 +72,12 @@ describe("mapArticleRowToArticle", () => {
       monetizationScore: null,
       policyRiskScore: null,
       formatMetadata: {},
+      wpCategoryNames: [],
+      wpTagNames: [],
+      wpCategoryIds: [],
+      wpTagIds: [],
+      wpMetadataStatus: "not_ready",
+      wpMetadataGeneratedAt: null,
     });
   });
 

@@ -124,6 +124,9 @@ export type SourceRow = {
   key_points: string[];
 };
 
+/** Phase 2-3: WordPress metadata 생성/검토 상태 */
+export type WordPressMetadataStatus = "not_ready" | "generated" | "reviewed" | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -149,6 +152,13 @@ export type ArticleRow = {
   monetization_score: number | null;
   policy_risk_score: number | null;
   format_metadata: Record<string, unknown>;
+  /** Phase 2-3: WordPress 카테고리/태그/metadata 상태 */
+  wp_category_names: string[];
+  wp_tag_names: string[];
+  wp_category_ids: number[];
+  wp_tag_ids: number[];
+  wp_metadata_status: WordPressMetadataStatus;
+  wp_metadata_generated_at: string | null;
 };
 
 export type ArticleSourceRow = {

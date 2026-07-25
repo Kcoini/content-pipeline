@@ -91,6 +91,24 @@
 - [ ] `WORDPRESS_APP_PASSWORD`는 client bundle에 포함되지 않으며, 로그에도
       남지 않는다.
 
+## AC-12. WordPress Category, Tag, SEO Metadata (FR-13, Phase 2-3)
+- [ ] article이 존재하면 승인(reviewed) 여부와 무관하게 WordPress metadata를
+      생성할 수 있다.
+- [ ] `monetized_blog`는 `seo_title`, `meta_description`, `target_keyword`,
+      카테고리, 태그가 생성된다.
+- [ ] `general_news`는 간단한 카테고리(1~2개)/태그(3~5개)가 생성된다.
+- [ ] `source_based_explainer`는 설명형 metadata(태그 5~8개)가 생성된다.
+- [ ] slug는 안전하게 생성되며(특수문자 제거, 최대 길이 제한), 비어있으면
+      article id 기반 fallback을 사용한다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=false`이면 metadata 생성 시 WordPress
+      category/tag API를 호출하지 않는다.
+- [ ] dry-run publish의 `publish_logs.details`에 카테고리/태그 이름이
+      포함된다.
+- [ ] 실제 WordPress API key가 없어도 `npm run test`/`npm run build`가
+      실패하지 않는다.
+- [ ] 기존 WordPress draft publish(Phase 2-2), article generation,
+      review/approval 흐름이 깨지지 않는다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

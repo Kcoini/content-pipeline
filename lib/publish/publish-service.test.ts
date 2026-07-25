@@ -6,6 +6,8 @@ const getApprovalLogsByArticleId = vi.fn();
 const savePublishLog = vi.fn();
 const hasSuccessfulPublishLog = vi.fn();
 const createDraftPost = vi.fn();
+const findOrCreateCategory = vi.fn();
+const findOrCreateTag = vi.fn();
 const logEvent = vi.fn();
 
 vi.mock("@/lib/repositories/article-repository", () => ({
@@ -20,6 +22,8 @@ vi.mock("@/lib/repositories/publish-repository", () => ({
 }));
 vi.mock("./wordpress-client", () => ({
   createDraftPost: (...args: unknown[]) => createDraftPost(...args),
+  findOrCreateCategory: (...args: unknown[]) => findOrCreateCategory(...args),
+  findOrCreateTag: (...args: unknown[]) => findOrCreateTag(...args),
 }));
 vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
@@ -54,6 +58,12 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     monetizationScore: null,
     policyRiskScore: null,
     formatMetadata: {},
+    wpCategoryNames: [],
+    wpTagNames: [],
+    wpCategoryIds: [],
+    wpTagIds: [],
+    wpMetadataStatus: "not_ready",
+    wpMetadataGeneratedAt: null,
     ...overrides,
   };
 }
@@ -64,6 +74,8 @@ beforeEach(() => {
   savePublishLog.mockReset();
   hasSuccessfulPublishLog.mockReset();
   createDraftPost.mockReset();
+  findOrCreateCategory.mockReset();
+  findOrCreateTag.mockReset();
   logEvent.mockReset();
 
   getApprovalLogsByArticleId.mockResolvedValue([
@@ -153,6 +165,81 @@ describe("publishArticleToWordPressDraft", () => {
     expect(createDraftPost).not.toHaveBeenCalled();
     expect(savePublishLog).toHaveBeenCalledWith(
       expect.objectContaining({ status: "dry_run", target: "wordpress" })
+    );
+  });
+
+  it("dry-run publish details에 category/tag names가 포함된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", wpCategoryNames: ["복지"], wpTagNames: ["장기요양보험", "요양원"] })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "dry_run",
+        details: expect.objectContaining({
+          categoryNames: ["복지"],
+          tagNames: ["장기요양보험", "요양원"],
+        }),
+      })
+    );
+  });
+
+  it("WORDPRESS_PUBLISH_ENABLED=false이면 WordPress category/tag API를 호출하지 않는다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", wpCategoryNames: ["복지"], wpTagNames: ["장기요양보험"] })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(findOrCreateCategory).not.toHaveBeenCalled();
+    expect(findOrCreateTag).not.toHaveBeenCalled();
+  });
+
+  it("WORDPRESS_PUBLISH_ENABLED=true이고 category/tag id가 이미 있으면 동기화 없이 그대로 사용한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", wpCategoryIds: [5], wpTagIds: [7, 8] })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(findOrCreateCategory).not.toHaveBeenCalled();
+    expect(findOrCreateTag).not.toHaveBeenCalled();
+    expect(createDraftPost).toHaveBeenCalledWith(
+      expect.objectContaining({ categories: [5], tags: [7, 8] })
+    );
+  });
+
+  it("WORDPRESS_PUBLISH_ENABLED=true이고 id가 없지만 이름이 있으면 findOrCreateCategory/Tag로 동기화한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", wpCategoryNames: ["복지"], wpTagNames: ["장기요양보험"] })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    findOrCreateCategory.mockResolvedValue({ success: true, id: 11, name: "복지" });
+    findOrCreateTag.mockResolvedValue({ success: true, id: 22, name: "장기요양보험" });
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(findOrCreateCategory).toHaveBeenCalledWith("복지");
+    expect(findOrCreateTag).toHaveBeenCalledWith("장기요양보험");
+    expect(createDraftPost).toHaveBeenCalledWith(
+      expect.objectContaining({ categories: [11], tags: [22] })
     );
   });
 

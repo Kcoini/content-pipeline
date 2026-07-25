@@ -6,9 +6,85 @@
 import { getArticleById } from "@/lib/repositories/article-repository";
 import { getApprovalLogsByArticleId } from "@/lib/repositories/approval-repository";
 import { savePublishLog, hasSuccessfulPublishLog } from "@/lib/repositories/publish-repository";
-import { createDraftPost } from "./wordpress-client";
+import { createDraftPost, findOrCreateCategory, findOrCreateTag } from "./wordpress-client";
 import { logEvent } from "@/lib/harness/logger";
 import type { Article } from "@/lib/types/domain";
+
+interface ResolvedWordPressTerms {
+  categoryIds: number[];
+  tagIds: number[];
+}
+
+/**
+ * article의 wp_category_ids/wp_tag_ids가 이미 있으면 그대로 사용하고,
+ * 없고 이름(wp_category_names/wp_tag_names)만 있으면 WordPress에서 이름으로
+ * 찾거나 새로 생성해 id를 얻는다 (Phase 2-3). WORDPRESS_PUBLISH_ENABLED=true일
+ * 때만 호출된다 — dry-run에서는 이 함수 자체가 호출되지 않는다.
+ */
+async function resolveWordPressTerms(articleId: string, article: Article): Promise<ResolvedWordPressTerms> {
+  if (article.wpCategoryIds.length === 0 && article.wpTagIds.length === 0) {
+    if (article.wpCategoryNames.length === 0 && article.wpTagNames.length === 0) {
+      return { categoryIds: [], tagIds: [] };
+    }
+  }
+
+  let categoryIds = [...article.wpCategoryIds];
+  let tagIds = [...article.wpTagIds];
+
+  const needsCategorySync = categoryIds.length === 0 && article.wpCategoryNames.length > 0;
+  const needsTagSync = tagIds.length === 0 && article.wpTagNames.length > 0;
+
+  if (!needsCategorySync && !needsTagSync) {
+    return { categoryIds, tagIds };
+  }
+
+  await logEvent({
+    type: "wordpress_category_tag_sync_started",
+    status: "info",
+    message: `기사(${articleId})의 WordPress 카테고리/태그 동기화를 시작합니다.`,
+    articleId,
+    themeId: article.themeId,
+    targetType: "article",
+    targetId: articleId,
+  });
+
+  try {
+    if (needsCategorySync) {
+      const results = await Promise.all(article.wpCategoryNames.map((name) => findOrCreateCategory(name)));
+      categoryIds = results.filter((r) => r.success).map((r) => r.id);
+    }
+    if (needsTagSync) {
+      const results = await Promise.all(article.wpTagNames.map((name) => findOrCreateTag(name)));
+      tagIds = results.filter((r) => r.success).map((r) => r.id);
+    }
+
+    await logEvent({
+      type: "wordpress_category_tag_sync_completed",
+      status: "success",
+      message: `기사(${articleId})의 WordPress 카테고리/태그 동기화를 완료했습니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+      details: { categoryIds, tagIds },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    await logEvent({
+      type: "wordpress_category_tag_sync_failed",
+      status: "failed",
+      message: `WordPress 카테고리/태그 동기화 실패: ${message}. 카테고리/태그 없이 게시를 계속합니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+      details: { error: message },
+    });
+    // 동기화 실패는 게시 자체를 막지 않는다 — 카테고리/태그 없이 draft를 생성한다.
+  }
+
+  return { categoryIds, tagIds };
+}
 
 export const WORDPRESS_TARGET = "wordpress";
 
@@ -136,6 +212,16 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
   });
 
   if (!isWordPressPublishEnabled()) {
+    await logEvent({
+      type: "wordpress_category_tag_sync_skipped_dry_run",
+      status: "info",
+      message: `dry-run 모드이므로 기사(${articleId})의 WordPress 카테고리/태그 동기화를 건너뜁니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+
     await savePublishLog({
       articleId,
       target: WORDPRESS_TARGET,
@@ -145,6 +231,8 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
         articleId,
         articleMode: article.articleMode,
         wouldPublishTo: "wordpress",
+        categoryNames: article.wpCategoryNames,
+        tagNames: article.wpTagNames,
       },
     });
 
@@ -165,11 +253,15 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
     };
   }
 
+  const { categoryIds, tagIds } = await resolveWordPressTerms(articleId, article);
+
   const result = await createDraftPost({
     title,
     content: article.content,
     excerpt,
     slug: article.slug ?? undefined,
+    categories: categoryIds.length > 0 ? categoryIds : undefined,
+    tags: tagIds.length > 0 ? tagIds : undefined,
   });
 
   if (!result.success) {

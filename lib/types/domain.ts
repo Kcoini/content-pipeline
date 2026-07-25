@@ -106,6 +106,9 @@ export interface InternalLinkSuggestion {
   reason: string;
 }
 
+/** Phase 2-3: WordPress metadata 생성/검토 상태 */
+export type WordPressMetadataStatus = "not_ready" | "generated" | "reviewed" | "failed";
+
 export interface Article {
   id: string;
   themeId: string;
@@ -144,6 +147,18 @@ export interface Article {
   monetizationScore: number | null;
   /** monetized_blog 전용: AdSense 정책 위험도 점수 (0~100, 높을수록 위험) */
   policyRiskScore: number | null;
-  /** 모드별 부가 메타데이터 (자유 형식) */
+  /** 모드별 부가 메타데이터 (자유 형식). WordPress 전송용 정보는 formatMetadata.wordpress에 저장한다. */
   formatMetadata: Record<string, unknown>;
+  /** Phase 2-3: WordPress 카테고리 이름 추천 목록 (실제 API 미연결 시 이름만 존재) */
+  wpCategoryNames: string[];
+  /** Phase 2-3: WordPress 태그 이름 추천 목록 */
+  wpTagNames: string[];
+  /** Phase 2-3: 실제 WordPress API 연결 후 동기화된 카테고리 ID (미연결 시 빈 배열) */
+  wpCategoryIds: number[];
+  /** Phase 2-3: 실제 WordPress API 연결 후 동기화된 태그 ID (미연결 시 빈 배열) */
+  wpTagIds: number[];
+  /** Phase 2-3: WordPress metadata 생성/검토 상태 */
+  wpMetadataStatus: WordPressMetadataStatus;
+  /** Phase 2-3: WordPress metadata가 마지막으로 생성된 시각 */
+  wpMetadataGeneratedAt: string | null;
 }

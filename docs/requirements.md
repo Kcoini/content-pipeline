@@ -100,6 +100,16 @@ WordPress API를 호출하지 않고 dry-run으로 처리한다. 이미 성공�
 쪽 최종 공개 여부는 사람이 WordPress 관리자 화면에서 결정한다. 자세한 내용은
 `docs/phase-2-2-wordpress-draft-publish.md` 참고.
 
+### FR-13. WordPress Category, Tag, SEO Metadata (Phase 2-3)
+사용자는 기사(article)에 대해 언제든지(승인 여부와 무관하게) WordPress 게시
+준비용 metadata(카테고리, 태그, SEO 제목, 메타 설명, slug)를 생성할 수 있다.
+metadata 생성은 실제 WordPress API를 호출하지 않는 이름 기반 규칙으로
+수행되며, `WORDPRESS_PUBLISH_ENABLED` 값과 무관하게 항상 동작한다. 생성된
+metadata는 사람이 검토 완료로 표시할 수 있다(`wp_metadata_status='reviewed'`).
+`WORDPRESS_PUBLISH_ENABLED=true`로 실제 게시 시, 카테고리/태그 이름에
+대응하는 ID가 없으면 WordPress API로 이름을 찾거나 생성한 뒤 게시 payload에
+포함한다. 자세한 내용은 `docs/phase-2-3-wordpress-metadata.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

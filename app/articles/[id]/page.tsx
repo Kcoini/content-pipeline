@@ -6,7 +6,14 @@ import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
 import { getLogsByArticleId } from "@/lib/harness/logger";
 import { getPublishLogsByArticleId } from "@/lib/repositories/publish-repository";
 import type { ArticleStatus } from "@/lib/types/domain";
-import { approveArticleAction, updateArticleAction, publishToWordPressDraftAction } from "./actions";
+import {
+  approveArticleAction,
+  updateArticleAction,
+  publishToWordPressDraftAction,
+  generateWordPressMetadataAction,
+  reviewWordPressMetadataAction,
+} from "./actions";
+import type { WordPressMetadataStatus } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
 
@@ -22,6 +29,20 @@ const STATUS_STYLE: Record<ArticleStatus, string> = {
   draft: "bg-amber-100 text-amber-700",
   reviewed: "bg-green-100 text-green-700",
   published: "bg-blue-100 text-blue-700",
+};
+
+const WP_METADATA_STATUS_LABEL: Record<WordPressMetadataStatus, string> = {
+  not_ready: "준비 안 됨",
+  generated: "생성됨",
+  reviewed: "검토 완료",
+  failed: "생성 실패",
+};
+
+const WP_METADATA_STATUS_STYLE: Record<WordPressMetadataStatus, string> = {
+  not_ready: "bg-zinc-100 text-zinc-500",
+  generated: "bg-amber-100 text-amber-700",
+  reviewed: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
 };
 
 export default async function ArticleDetailPage({
@@ -130,37 +151,13 @@ export default async function ArticleDetailPage({
           </div>
         </section>
 
-        {/* Phase 2-1: 모드별 SEO/수익화 메타데이터 (해당 없으면 섹션 자체를 숨긴다) */}
-        {(article.seoTitle ||
-          article.metaDescription ||
-          article.targetKeyword ||
-          article.monetizationScore != null ||
-          article.policyRiskScore != null ||
-          article.adSlots.length > 0 ||
-          article.internalLinkSuggestions.length > 0) && (
+        {/* Phase 2-1: 모드별 수익화 지표 (SEO/카테고리/태그는 아래 WordPress Metadata 섹션에서 확인) */}
+        {(article.monetizationScore != null || article.policyRiskScore != null || article.searchIntent || article.readerPersona) && (
           <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-zinc-700">
-              수익형 블로그 메타데이터 ({ARTICLE_MODE_CONFIGS[article.articleMode]?.label})
+              수익형 블로그 지표 ({ARTICLE_MODE_CONFIGS[article.articleMode]?.label})
             </h2>
             <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-              <div>
-                <dt className="font-medium text-zinc-600">SEO 제목</dt>
-                <dd className="text-zinc-500">{article.seoTitle || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">메타 설명</dt>
-                <dd className="text-zinc-500">{article.metaDescription || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">타깃 키워드</dt>
-                <dd className="text-zinc-500">{article.targetKeyword || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">보조 키워드</dt>
-                <dd className="text-zinc-500">
-                  {article.secondaryKeywords.length > 0 ? article.secondaryKeywords.join(", ") : "해당 없음"}
-                </dd>
-              </div>
               <div>
                 <dt className="font-medium text-zinc-600">검색 의도</dt>
                 <dd className="text-zinc-500">{article.searchIntent || "해당 없음"}</dd>
@@ -182,35 +179,6 @@ export default async function ArticleDetailPage({
                 </dd>
               </div>
             </dl>
-
-            {article.adSlots.length > 0 && (
-              <div className="mt-3 text-xs">
-                <div className="font-medium text-zinc-600">광고 슬롯 marker (실제 광고 코드 아님)</div>
-                <ul className="mt-1 flex flex-wrap gap-1">
-                  {article.adSlots.map((slot) => (
-                    <li
-                      key={slot.position}
-                      className="rounded bg-zinc-100 px-2 py-0.5 font-mono text-zinc-600"
-                    >
-                      {slot.marker}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {article.internalLinkSuggestions.length > 0 && (
-              <div className="mt-3 text-xs">
-                <div className="font-medium text-zinc-600">내부 링크 추천</div>
-                <ul className="mt-1 list-inside list-disc text-zinc-500">
-                  {article.internalLinkSuggestions.map((link, index) => (
-                    <li key={index}>
-                      {link.title} — {link.reason}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </section>
         )}
 
@@ -280,6 +248,125 @@ export default async function ArticleDetailPage({
           </section>
         )}
 
+        {/* Phase 2-3: WordPress Metadata (카테고리/태그/SEO) */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">WordPress Metadata</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${WP_METADATA_STATUS_STYLE[article.wpMetadataStatus]}`}
+            >
+              {WP_METADATA_STATUS_LABEL[article.wpMetadataStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            article이 존재하면 승인(reviewed) 여부와 무관하게 metadata를 생성할 수 있습니다.
+            실제 WordPress API는 호출하지 않으며, 이름 기반으로만 카테고리/태그를 추천합니다.
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={generateWordPressMetadataAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+              >
+                {article.wpMetadataStatus === "not_ready" ? "WordPress metadata 생성" : "metadata 다시 생성"}
+              </button>
+            </form>
+            {(article.wpMetadataStatus === "generated" || article.wpMetadataStatus === "failed") && (
+              <form action={reviewWordPressMetadataAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+                >
+                  metadata 검토 완료
+                </button>
+              </form>
+            )}
+          </div>
+
+          {article.wpMetadataStatus !== "not_ready" && (
+            <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-600">SEO 제목</dt>
+                <dd className="text-zinc-500">{article.seoTitle || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">메타 설명</dt>
+                <dd className="text-zinc-500">{article.metaDescription || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">slug</dt>
+                <dd className="text-zinc-500 font-mono">{article.slug || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">타깃 키워드</dt>
+                <dd className="text-zinc-500">{article.targetKeyword || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">보조 키워드</dt>
+                <dd className="text-zinc-500">
+                  {article.secondaryKeywords.length > 0 ? article.secondaryKeywords.join(", ") : "해당 없음"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">카테고리</dt>
+                <dd className="flex flex-wrap gap-1 text-zinc-500">
+                  {article.wpCategoryNames.length > 0
+                    ? article.wpCategoryNames.map((name) => (
+                        <span key={name} className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">
+                          {name}
+                        </span>
+                      ))
+                    : "해당 없음"}
+                </dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="font-medium text-zinc-600">태그</dt>
+                <dd className="flex flex-wrap gap-1 text-zinc-500">
+                  {article.wpTagNames.length > 0
+                    ? article.wpTagNames.map((name) => (
+                        <span key={name} className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
+                          #{name}
+                        </span>
+                      ))
+                    : "해당 없음"}
+                </dd>
+              </div>
+              {article.internalLinkSuggestions.length > 0 && (
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">내부 링크 추천</dt>
+                  <dd className="mt-1">
+                    <ul className="list-inside list-disc text-zinc-500">
+                      {article.internalLinkSuggestions.map((link, index) => (
+                        <li key={index}>
+                          {link.title} — {link.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </dd>
+                </div>
+              )}
+              {article.adSlots.length > 0 && (
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">광고 슬롯 marker (실제 광고 코드 아님)</dt>
+                  <dd className="mt-1 flex flex-wrap gap-1">
+                    {article.adSlots.map((slot) => (
+                      <span
+                        key={slot.position}
+                        className="rounded bg-zinc-100 px-2 py-0.5 font-mono text-zinc-600"
+                      >
+                        {slot.marker}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          )}
+        </section>
+
         {/* Phase 2-2: WordPress 초안 생성 */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">WordPress 게시</h2>
@@ -287,6 +374,12 @@ export default async function ArticleDetailPage({
             승인(reviewed)된 기사만 WordPress에 draft(초안) post로 생성할 수 있습니다.
             자동 공개(publish)는 수행하지 않습니다.
           </p>
+
+          {isReviewed && article.wpMetadataStatus !== "reviewed" && !hasWordPressSuccess && (
+            <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              ⚠ WordPress metadata가 아직 검토 완료되지 않았습니다 (선택 사항이며 게시를 막지는 않습니다).
+            </div>
+          )}
 
           {!isReviewed ? (
             <p className="mt-3 text-xs text-zinc-500">

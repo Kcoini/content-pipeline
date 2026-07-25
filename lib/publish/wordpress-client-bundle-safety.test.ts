@@ -3,14 +3,14 @@
 // 서버 컴포넌트 전용 구조이지만, 향후 client component가 추가되더라도
 // WORDPRESS_APP_PASSWORD를 참조하거나 wordpress-client를 import하지 않아야 한다.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 
 function listFilesRecursive(dir: string, results: string[] = []): string[] {
-  let dirents: ReturnType<typeof readdirSync>;
+  let dirents: Dirent[];
   try {
     dirents = readdirSync(dir, { withFileTypes: true });
   } catch {
