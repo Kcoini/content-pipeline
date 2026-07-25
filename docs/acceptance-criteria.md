@@ -109,6 +109,22 @@
 - [ ] 기존 WordPress draft publish(Phase 2-2), article generation,
       review/approval 흐름이 깨지지 않는다.
 
+## AC-13. SEO Plugin Metadata Mapping (FR-14, Phase 2-4)
+- [ ] `SEO_PLUGIN_PROVIDER` 기본값은 `none`이다.
+- [ ] 잘못된 provider 값이면 `none`으로 fallback한다.
+- [ ] `none` mapper는 plugin 전용 write 대상(`rawPluginMeta`)을 만들지 않는다.
+- [ ] `yoast`/`rank_math`/`aioseo` mapper는 각각 해당 plugin용 `rawPluginMeta`
+      후보를 만든다.
+- [ ] `generateSeoPluginPayload`는 결과를 `articles.seo_plugin_payload`/
+      `seo_plugin_provider`/`seo_plugin_metadata_status`에 저장한다.
+- [ ] `SEO_PLUGIN_WRITE_ENABLED=false`이면 실제 plugin write를 시도하지 않는다.
+- [ ] WordPress dry-run의 `publish_logs.details`에 SEO plugin payload 요약
+      (provider/seoTitle/focusKeyword)이 포함된다.
+- [ ] 실제 WordPress/plugin 연결 정보가 없어도 `npm run lint`/`test`/`build`가
+      통과한다.
+- [ ] 기존 WordPress draft publish(Phase 2-2), WordPress metadata(Phase 2-3),
+      article generation, review/approval 흐름이 깨지지 않는다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

@@ -39,6 +39,12 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     wp_tag_ids: [],
     wp_metadata_status: "not_ready",
     wp_metadata_generated_at: null,
+    seo_plugin_provider: "none",
+    seo_plugin_payload: {},
+    seo_plugin_metadata_status: "not_ready",
+    seo_plugin_metadata_generated_at: null,
+    seo_plugin_write_status: "not_attempted",
+    seo_plugin_write_error: null,
     ...overrides,
   };
 }
@@ -78,6 +84,12 @@ describe("mapArticleRowToArticle", () => {
       wpTagIds: [],
       wpMetadataStatus: "not_ready",
       wpMetadataGeneratedAt: null,
+      seoPluginProvider: "none",
+      seoPluginPayload: {},
+      seoPluginMetadataStatus: "not_ready",
+      seoPluginMetadataGeneratedAt: null,
+      seoPluginWriteStatus: "not_attempted",
+      seoPluginWriteError: null,
     });
   });
 

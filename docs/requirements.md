@@ -110,6 +110,18 @@ metadata는 사람이 검토 완료로 표시할 수 있다(`wp_metadata_status=
 대응하는 ID가 없으면 WordPress API로 이름을 찾거나 생성한 뒤 게시 payload에
 포함한다. 자세한 내용은 `docs/phase-2-3-wordpress-metadata.md` 참고.
 
+### FR-14. SEO Plugin Metadata Mapping (Phase 2-4)
+사용자는 기사에 대해 WordPress SEO plugin(`none`/`yoast`/`rank_math`/`aioseo`)별
+metadata payload를 생성할 수 있다. provider는 인자 > `SEO_PLUGIN_PROVIDER`
+환경변수 > `none` 순으로 결정되며, 잘못된 값은 `none`으로 대체된다. metadata
+생성은 실제 plugin API를 호출하지 않으며, `WORDPRESS_PUBLISH_ENABLED`/
+`SEO_PLUGIN_WRITE_ENABLED` 값과 무관하게 항상 동작한다. 생성된 payload는
+사람이 검토 완료로 표시할 수 있다(`seo_plugin_metadata_status='reviewed'`).
+`SEO_PLUGIN_WRITE_ENABLED=true`이고 `WORDPRESS_PUBLISH_ENABLED=true`인 경우에도
+실제 plugin write는 safe stub으로 남아 있으며 항상 실패를 반환한다(커스텀
+endpoint 확인 후 구현 예정). 자세한 내용은
+`docs/phase-2-4-seo-plugin-metadata-mapping.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

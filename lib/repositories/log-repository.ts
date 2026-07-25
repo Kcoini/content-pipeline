@@ -66,7 +66,17 @@ export type LogEventType =
   | "wordpress_category_tag_sync_skipped_dry_run"
   | "wordpress_category_tag_sync_started"
   | "wordpress_category_tag_sync_completed"
-  | "wordpress_category_tag_sync_failed";
+  | "wordpress_category_tag_sync_failed"
+  // Phase 2-4: SEO plugin metadata mapping 이벤트
+  | "seo_plugin_metadata_generation_started"
+  | "seo_plugin_metadata_generation_completed"
+  | "seo_plugin_metadata_generation_failed"
+  | "seo_plugin_metadata_reviewed"
+  | "seo_plugin_write_skipped_provider_none"
+  | "seo_plugin_write_skipped_dry_run"
+  | "seo_plugin_write_started"
+  | "seo_plugin_write_completed"
+  | "seo_plugin_write_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

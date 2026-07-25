@@ -58,6 +58,12 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     wpTagIds: [],
     wpMetadataStatus: "not_ready",
     wpMetadataGeneratedAt: null,
+    seoPluginProvider: "none",
+    seoPluginPayload: {},
+    seoPluginMetadataStatus: "not_ready",
+    seoPluginMetadataGeneratedAt: null,
+    seoPluginWriteStatus: "not_attempted",
+    seoPluginWriteError: null,
     ...overrides,
   };
 }

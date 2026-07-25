@@ -2,7 +2,8 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ArticleRow } from "@/lib/supabase/database.types";
-import type { Article, ArticleStatus } from "@/lib/types/domain";
+import type { Article, ArticleStatus, SeoPluginProvider } from "@/lib/types/domain";
+import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import { assertApproved } from "@/lib/harness/approval-gate";
 import { saveApprovalLog } from "@/lib/repositories/approval-repository";
 import {
@@ -103,6 +104,12 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     wpTagIds: row.wp_tag_ids ?? [],
     wpMetadataStatus: row.wp_metadata_status ?? "not_ready",
     wpMetadataGeneratedAt: row.wp_metadata_generated_at,
+    seoPluginProvider: row.seo_plugin_provider ?? "none",
+    seoPluginPayload: row.seo_plugin_payload ?? {},
+    seoPluginMetadataStatus: row.seo_plugin_metadata_status ?? "not_ready",
+    seoPluginMetadataGeneratedAt: row.seo_plugin_metadata_generated_at,
+    seoPluginWriteStatus: row.seo_plugin_write_status ?? "not_attempted",
+    seoPluginWriteError: row.seo_plugin_write_error,
   };
 }
 
@@ -449,6 +456,101 @@ export async function markWordPressMetadataReviewed(articleId: string): Promise<
 
   if (error || !data) {
     throw new Error(`WordPress metadata 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveSeoPluginMetadataInput {
+  articleId: string;
+  provider: SeoPluginProvider;
+  payload: SeoPluginPayload;
+  /** 'generated' 또는 'failed' — 'reviewed'는 markSeoPluginMetadataReviewed로만 전환한다. */
+  status: "generated" | "failed";
+}
+
+/**
+ * SEO plugin(Yoast/Rank Math/AIOSEO 등) metadata mapping 결과를 저장한다 (Phase 2-4).
+ * 실제 plugin write는 하지 않으며, payload 저장/상태 갱신만 수행한다.
+ */
+export async function saveSeoPluginMetadata(input: SaveSeoPluginMetadataInput): Promise<Article> {
+  const existing = await getArticleById(input.articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(input.articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      seo_plugin_provider: input.provider,
+      seo_plugin_payload: input.payload as unknown as Record<string, unknown>,
+      seo_plugin_metadata_status: input.status,
+      seo_plugin_metadata_generated_at: new Date().toISOString(),
+    })
+    .eq("id", input.articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`SEO plugin metadata 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/** SEO plugin metadata를 사람이 검토 완료했음을 표시한다 (seo_plugin_metadata_status='reviewed'). */
+export async function markSeoPluginMetadataReviewed(articleId: string): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({ seo_plugin_metadata_status: "reviewed" })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`SEO plugin metadata 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/**
+ * SEO plugin 실제 write 시도 결과를 저장한다 (Phase 2-4, safe stub 결과 반영).
+ * lib/seo/seo-plugin-writer.ts의 applySeoPluginMetadata 결과를 기록할 때 사용한다.
+ */
+export async function updateSeoPluginWriteStatus(
+  articleId: string,
+  status: Article["seoPluginWriteStatus"],
+  errorMessage?: string | null
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      seo_plugin_write_status: status,
+      seo_plugin_write_error: errorMessage ?? null,
+    })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`SEO plugin write 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

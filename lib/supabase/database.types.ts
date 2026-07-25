@@ -127,6 +127,20 @@ export type SourceRow = {
 /** Phase 2-3: WordPress metadata 생성/검토 상태 */
 export type WordPressMetadataStatus = "not_ready" | "generated" | "reviewed" | "failed";
 
+/** Phase 2-4: 지원하는 WordPress SEO plugin */
+export type SeoPluginProvider = "none" | "yoast" | "rank_math" | "aioseo";
+
+/** Phase 2-4: SEO plugin metadata 생성/검토 상태 */
+export type SeoPluginMetadataStatus = "not_ready" | "generated" | "reviewed" | "failed";
+
+/** Phase 2-4: SEO plugin 실제 write 시도 상태 (safe stub) */
+export type SeoPluginWriteStatus =
+  | "not_attempted"
+  | "skipped_dry_run"
+  | "skipped_provider_none"
+  | "success"
+  | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -159,6 +173,13 @@ export type ArticleRow = {
   wp_tag_ids: number[];
   wp_metadata_status: WordPressMetadataStatus;
   wp_metadata_generated_at: string | null;
+  /** Phase 2-4: SEO plugin metadata mapping 상태 */
+  seo_plugin_provider: SeoPluginProvider;
+  seo_plugin_payload: Record<string, unknown>;
+  seo_plugin_metadata_status: SeoPluginMetadataStatus;
+  seo_plugin_metadata_generated_at: string | null;
+  seo_plugin_write_status: SeoPluginWriteStatus;
+  seo_plugin_write_error: string | null;
 };
 
 export type ArticleSourceRow = {

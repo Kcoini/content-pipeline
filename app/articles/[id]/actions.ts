@@ -16,6 +16,8 @@ import {
 import { logEvent } from "@/lib/harness/logger";
 import { publishArticleToWordPressDraft } from "@/lib/publish/publish-service";
 import { generateWordPressMetadata, reviewWordPressMetadata } from "@/lib/publish/wordpress-metadata-service";
+import { generateSeoPluginPayload, reviewSeoPluginMetadata } from "@/lib/seo/seo-plugin-metadata-service";
+import { isSeoPluginProvider } from "@/lib/seo/seo-plugin-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -136,6 +138,60 @@ export async function reviewWordPressMetadataAction(formData: FormData): Promise
 
   try {
     const result = await reviewWordPressMetadata(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * article_mode/키워드/제목/본문 기반 규칙으로 SEO plugin(none/yoast/rank_math/aioseo)
+ * metadata payload를 생성한다 (Phase 2-4). reviewed 여부와 무관하게 항상 호출 가능하다.
+ * 실제 plugin write는 하지 않으므로 SEO_PLUGIN_WRITE_ENABLED 값과 무관하게 동작한다.
+ */
+export async function generateSeoPluginMetadataAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const providerRaw = formData.get("provider");
+  const providerOverride = isSeoPluginProvider(providerRaw) ? providerRaw : undefined;
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generateSeoPluginPayload(articleId, providerOverride);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** SEO plugin metadata를 사람이 검토 완료했음을 표시한다 (seo_plugin_metadata_status='reviewed'). */
+export async function reviewSeoPluginMetadataAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await reviewSeoPluginMetadata(articleId);
     message = result.message;
     isError = !result.success;
   } catch (error) {

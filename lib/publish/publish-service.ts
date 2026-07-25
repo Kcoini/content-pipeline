@@ -3,12 +3,85 @@
 // status="draft"인 post로 생성한다. 자동 공개(publish)는 절대 수행하지 않는다.
 // WORDPRESS_PUBLISH_ENABLED=false이면 실제 API를 호출하지 않고 dry-run으로 처리한다.
 
-import { getArticleById } from "@/lib/repositories/article-repository";
+import { getArticleById, updateSeoPluginWriteStatus } from "@/lib/repositories/article-repository";
 import { getApprovalLogsByArticleId } from "@/lib/repositories/approval-repository";
 import { savePublishLog, hasSuccessfulPublishLog } from "@/lib/repositories/publish-repository";
 import { createDraftPost, findOrCreateCategory, findOrCreateTag } from "./wordpress-client";
+import { applySeoPluginMetadata } from "@/lib/seo/seo-plugin-writer";
 import { logEvent } from "@/lib/harness/logger";
 import type { Article } from "@/lib/types/domain";
+import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
+
+/**
+ * WordPress draft post 생성 성공 후 SEO plugin metadata write를 시도한다 (Phase 2-4).
+ * provider=none이면 write 대상이 없어 즉시 skipped_provider_none으로 기록하고,
+ * SEO_PLUGIN_WRITE_ENABLED=false이거나 WORDPRESS_PUBLISH_ENABLED가 아니면
+ * skipped_dry_run으로 기록한다 (lib/seo/seo-plugin-writer.ts의 safe stub 참고).
+ */
+async function handleSeoPluginWrite(articleId: string, article: Article, postId: string): Promise<void> {
+  const provider = article.seoPluginProvider;
+
+  if (provider === "none") {
+    await updateSeoPluginWriteStatus(articleId, "skipped_provider_none");
+    await logEvent({
+      type: "seo_plugin_write_skipped_provider_none",
+      status: "info",
+      message: `기사(${articleId})는 SEO plugin provider가 none이어서 metadata write를 건너뜁니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+    return;
+  }
+
+  await logEvent({
+    type: "seo_plugin_write_started",
+    status: "info",
+    message: `기사(${articleId})의 SEO plugin(${provider}) metadata write를 시작합니다.`,
+    articleId,
+    themeId: article.themeId,
+    targetType: "article",
+    targetId: articleId,
+  });
+
+  const result = await applySeoPluginMetadata(postId, provider, article.seoPluginPayload as unknown as SeoPluginPayload);
+
+  if (result.status === "success") {
+    await updateSeoPluginWriteStatus(articleId, "success");
+    await logEvent({
+      type: "seo_plugin_write_completed",
+      status: "success",
+      message: `기사(${articleId})의 SEO plugin(${provider}) metadata write를 완료했습니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+  } else if (result.status === "skipped_dry_run") {
+    await updateSeoPluginWriteStatus(articleId, "skipped_dry_run");
+    await logEvent({
+      type: "seo_plugin_write_skipped_dry_run",
+      status: "info",
+      message: `SEO_PLUGIN_WRITE_ENABLED=false 또는 dry-run 모드이므로 기사(${articleId})의 SEO plugin metadata write를 건너뜁니다.`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+  } else {
+    await updateSeoPluginWriteStatus(articleId, "failed", result.errorMessage);
+    await logEvent({
+      type: "seo_plugin_write_failed",
+      status: "failed",
+      message: `SEO plugin metadata write 실패: ${result.errorMessage}`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+  }
+}
 
 interface ResolvedWordPressTerms {
   categoryIds: number[];
@@ -233,6 +306,12 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
         wouldPublishTo: "wordpress",
         categoryNames: article.wpCategoryNames,
         tagNames: article.wpTagNames,
+        seoPlugin: {
+          provider: article.seoPluginProvider,
+          metadataStatus: article.seoPluginMetadataStatus,
+          seoTitle: (article.seoPluginPayload as { seoTitle?: string })?.seoTitle ?? null,
+          focusKeyword: (article.seoPluginPayload as { focusKeyword?: string })?.focusKeyword ?? null,
+        },
       },
     });
 
@@ -308,6 +387,8 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
     targetType: "article",
     targetId: articleId,
   });
+
+  await handleSeoPluginWrite(articleId, article, String(result.externalPostId));
 
   return {
     success: true,

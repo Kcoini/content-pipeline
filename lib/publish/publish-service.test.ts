@@ -2,16 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Article } from "@/lib/types/domain";
 
 const getArticleById = vi.fn();
+const updateSeoPluginWriteStatus = vi.fn();
 const getApprovalLogsByArticleId = vi.fn();
 const savePublishLog = vi.fn();
 const hasSuccessfulPublishLog = vi.fn();
 const createDraftPost = vi.fn();
 const findOrCreateCategory = vi.fn();
 const findOrCreateTag = vi.fn();
+const applySeoPluginMetadata = vi.fn();
 const logEvent = vi.fn();
 
 vi.mock("@/lib/repositories/article-repository", () => ({
   getArticleById: (...args: unknown[]) => getArticleById(...args),
+  updateSeoPluginWriteStatus: (...args: unknown[]) => updateSeoPluginWriteStatus(...args),
 }));
 vi.mock("@/lib/repositories/approval-repository", () => ({
   getApprovalLogsByArticleId: (...args: unknown[]) => getApprovalLogsByArticleId(...args),
@@ -24,6 +27,9 @@ vi.mock("./wordpress-client", () => ({
   createDraftPost: (...args: unknown[]) => createDraftPost(...args),
   findOrCreateCategory: (...args: unknown[]) => findOrCreateCategory(...args),
   findOrCreateTag: (...args: unknown[]) => findOrCreateTag(...args),
+}));
+vi.mock("@/lib/seo/seo-plugin-writer", () => ({
+  applySeoPluginMetadata: (...args: unknown[]) => applySeoPluginMetadata(...args),
 }));
 vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
@@ -64,18 +70,26 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     wpTagIds: [],
     wpMetadataStatus: "not_ready",
     wpMetadataGeneratedAt: null,
+    seoPluginProvider: "none",
+    seoPluginPayload: {},
+    seoPluginMetadataStatus: "not_ready",
+    seoPluginMetadataGeneratedAt: null,
+    seoPluginWriteStatus: "not_attempted",
+    seoPluginWriteError: null,
     ...overrides,
   };
 }
 
 beforeEach(() => {
   getArticleById.mockReset();
+  updateSeoPluginWriteStatus.mockReset();
   getApprovalLogsByArticleId.mockReset();
   savePublishLog.mockReset();
   hasSuccessfulPublishLog.mockReset();
   createDraftPost.mockReset();
   findOrCreateCategory.mockReset();
   findOrCreateTag.mockReset();
+  applySeoPluginMetadata.mockReset();
   logEvent.mockReset();
 
   getApprovalLogsByArticleId.mockResolvedValue([
@@ -83,6 +97,7 @@ beforeEach(() => {
   ]);
   hasSuccessfulPublishLog.mockResolvedValue(false);
   savePublishLog.mockResolvedValue({});
+  updateSeoPluginWriteStatus.mockResolvedValue({});
   logEvent.mockResolvedValue({});
 });
 
@@ -295,5 +310,62 @@ describe("publishArticleToWordPressDraft", () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toContain("찾을 수 없습니다");
+  });
+
+  it("dry-run details에 SEO plugin payload 요약(provider/seoTitle/focusKeyword)이 포함된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        status: "reviewed",
+        seoPluginProvider: "yoast",
+        seoPluginMetadataStatus: "generated",
+        seoPluginPayload: { seoTitle: "SEO 제목", focusKeyword: "타깃 키워드" },
+      })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "dry_run",
+        details: expect.objectContaining({
+          seoPlugin: { provider: "yoast", metadataStatus: "generated", seoTitle: "SEO 제목", focusKeyword: "타깃 키워드" },
+        }),
+      })
+    );
+  });
+
+  it("SEO plugin provider가 none이면 실제 API 게시 성공 시 write를 시도하지 않고 skipped_provider_none으로 기록한다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", seoPluginProvider: "none" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(applySeoPluginMetadata).not.toHaveBeenCalled();
+    expect(updateSeoPluginWriteStatus).toHaveBeenCalledWith("article-1", "skipped_provider_none");
+  });
+
+  it("SEO_PLUGIN_WRITE_ENABLED=false이면 provider가 있어도 실제 write를 시도하지 않는다 (stub이 skipped_dry_run 반환)", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", seoPluginProvider: "yoast" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    vi.stubEnv("SEO_PLUGIN_WRITE_ENABLED", "false");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+    applySeoPluginMetadata.mockResolvedValue({ status: "skipped_dry_run" });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(applySeoPluginMetadata).toHaveBeenCalled();
+    expect(updateSeoPluginWriteStatus).toHaveBeenCalledWith("article-1", "skipped_dry_run");
   });
 });

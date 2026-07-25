@@ -109,6 +109,20 @@ export interface InternalLinkSuggestion {
 /** Phase 2-3: WordPress metadata 생성/검토 상태 */
 export type WordPressMetadataStatus = "not_ready" | "generated" | "reviewed" | "failed";
 
+/** Phase 2-4: 지원하는 WordPress SEO plugin */
+export type SeoPluginProvider = "none" | "yoast" | "rank_math" | "aioseo";
+
+/** Phase 2-4: SEO plugin metadata 생성/검토 상태 */
+export type SeoPluginMetadataStatus = "not_ready" | "generated" | "reviewed" | "failed";
+
+/** Phase 2-4: SEO plugin 실제 write 시도 상태 (safe stub — 현재는 success가 되지 않는다) */
+export type SeoPluginWriteStatus =
+  | "not_attempted"
+  | "skipped_dry_run"
+  | "skipped_provider_none"
+  | "success"
+  | "failed";
+
 export interface Article {
   id: string;
   themeId: string;
@@ -161,4 +175,16 @@ export interface Article {
   wpMetadataStatus: WordPressMetadataStatus;
   /** Phase 2-3: WordPress metadata가 마지막으로 생성된 시각 */
   wpMetadataGeneratedAt: string | null;
+  /** Phase 2-4: 선택된 SEO plugin (기본값 none) */
+  seoPluginProvider: SeoPluginProvider;
+  /** Phase 2-4: plugin별 SEO metadata payload (mapping 결과) */
+  seoPluginPayload: Record<string, unknown>;
+  /** Phase 2-4: SEO plugin metadata 생성/검토 상태 */
+  seoPluginMetadataStatus: SeoPluginMetadataStatus;
+  /** Phase 2-4: SEO plugin metadata가 마지막으로 생성된 시각 */
+  seoPluginMetadataGeneratedAt: string | null;
+  /** Phase 2-4: 실제 SEO plugin write 시도 상태 (현재는 safe stub) */
+  seoPluginWriteStatus: SeoPluginWriteStatus;
+  /** Phase 2-4: SEO plugin write 실패 시 오류 메시지 */
+  seoPluginWriteError: string | null;
 }

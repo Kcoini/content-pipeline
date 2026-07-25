@@ -12,10 +12,13 @@ import {
   publishToWordPressDraftAction,
   generateWordPressMetadataAction,
   reviewWordPressMetadataAction,
+  generateSeoPluginMetadataAction,
+  reviewSeoPluginMetadataAction,
 } from "./actions";
-import type { WordPressMetadataStatus } from "@/lib/types/domain";
+import type { WordPressMetadataStatus, SeoPluginMetadataStatus, SeoPluginWriteStatus } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
+import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +46,35 @@ const WP_METADATA_STATUS_STYLE: Record<WordPressMetadataStatus, string> = {
   generated: "bg-amber-100 text-amber-700",
   reviewed: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
+};
+
+const SEO_PLUGIN_PROVIDER_OPTIONS = [
+  { value: "none", label: "없음 (none)" },
+  { value: "yoast", label: "Yoast SEO" },
+  { value: "rank_math", label: "Rank Math" },
+  { value: "aioseo", label: "All in One SEO" },
+] as const;
+
+const SEO_PLUGIN_METADATA_STATUS_LABEL: Record<SeoPluginMetadataStatus, string> = {
+  not_ready: "준비 안 됨",
+  generated: "생성됨",
+  reviewed: "검토 완료",
+  failed: "생성 실패",
+};
+
+const SEO_PLUGIN_METADATA_STATUS_STYLE: Record<SeoPluginMetadataStatus, string> = {
+  not_ready: "bg-zinc-100 text-zinc-500",
+  generated: "bg-amber-100 text-amber-700",
+  reviewed: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+const SEO_PLUGIN_WRITE_STATUS_LABEL: Record<SeoPluginWriteStatus, string> = {
+  not_attempted: "시도 안 함",
+  skipped_dry_run: "건너뜀 (dry-run)",
+  skipped_provider_none: "건너뜀 (provider 없음)",
+  success: "성공",
+  failed: "실패",
 };
 
 export default async function ArticleDetailPage({
@@ -85,6 +117,7 @@ export default async function ArticleDetailPage({
   const wordpressLogs = publishLogs.filter((log) => log.target === WORDPRESS_TARGET);
   const latestWordPressLog = wordpressLogs[0];
   const hasWordPressSuccess = wordpressLogs.some((log) => log.status === "success");
+  const seoPluginPayload = article.seoPluginPayload as unknown as Partial<SeoPluginPayload>;
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -364,6 +397,118 @@ export default async function ArticleDetailPage({
                 </div>
               )}
             </dl>
+          )}
+        </section>
+
+        {/* Phase 2-4: SEO Plugin Metadata (Yoast/Rank Math/AIOSEO) */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">SEO Plugin Metadata</h2>
+            <div className="flex gap-1">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${SEO_PLUGIN_METADATA_STATUS_STYLE[article.seoPluginMetadataStatus]}`}
+              >
+                {SEO_PLUGIN_METADATA_STATUS_LABEL[article.seoPluginMetadataStatus]}
+              </span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
+                write: {SEO_PLUGIN_WRITE_STATUS_LABEL[article.seoPluginWriteStatus]}
+              </span>
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Yoast/Rank Math/AIOSEO 등 WordPress SEO plugin에 전달할 metadata payload를
+            준비합니다. 실제 plugin write는 아직 구현되지 않았습니다 (커스텀 endpoint 필요).
+          </p>
+
+          <form action={generateSeoPluginMetadataAction} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="articleId" value={article.id} />
+            <label className="flex flex-col gap-1 text-xs text-zinc-600">
+              provider
+              <select
+                name="provider"
+                defaultValue={article.seoPluginProvider}
+                className="rounded border border-zinc-300 px-2 py-1 text-xs"
+              >
+                {SEO_PLUGIN_PROVIDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+            >
+              {article.seoPluginMetadataStatus === "not_ready" ? "SEO plugin metadata 생성" : "다시 생성"}
+            </button>
+            {(article.seoPluginMetadataStatus === "generated" || article.seoPluginMetadataStatus === "failed") && (
+              <button
+                type="submit"
+                formAction={reviewSeoPluginMetadataAction}
+                className="rounded border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+              >
+                검토 완료
+              </button>
+            )}
+          </form>
+
+          {article.seoPluginMetadataStatus !== "not_ready" && (
+            <>
+              <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium text-zinc-600">SEO title</dt>
+                  <dd className="text-zinc-500">
+                    {seoPluginPayload?.seoTitle || "해당 없음"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">meta description</dt>
+                  <dd className="text-zinc-500">
+                    {seoPluginPayload?.metaDescription || "해당 없음"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">focus keyword</dt>
+                  <dd className="text-zinc-500">
+                    {seoPluginPayload?.focusKeyword || "해당 없음"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">secondary keywords</dt>
+                  <dd className="text-zinc-500">
+                    {seoPluginPayload?.secondaryKeywords?.join(", ") || "해당 없음"}
+                  </dd>
+                </div>
+              </dl>
+
+              {Object.keys(seoPluginPayload?.rawPluginMeta ?? {}).length > 0 && (
+                <div className="mt-3 text-xs">
+                  <div className="font-medium text-zinc-600">
+                    rawPluginMeta 후보 (실제 정답으로 단정하지 않음 — 사이트별 확인 필요)
+                  </div>
+                  <ul className="mt-1 flex flex-col gap-0.5 font-mono text-zinc-500">
+                    {Object.entries(seoPluginPayload.rawPluginMeta ?? {}).map(
+                      ([key, value]) => (
+                        <li key={key}>
+                          {key}: {String(value)}
+                        </li>
+                      )
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {article.seoPluginProvider !== "none" && article.seoPluginMetadataStatus !== "reviewed" && (
+                <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  ⚠ SEO plugin metadata가 아직 검토 완료되지 않았습니다 (선택 사항이며 게시를 막지는 않습니다).
+                </div>
+              )}
+
+              {article.seoPluginWriteError && (
+                <p className="mt-3 text-xs text-red-600">write 오류: {article.seoPluginWriteError}</p>
+              )}
+            </>
           )}
         </section>
 
