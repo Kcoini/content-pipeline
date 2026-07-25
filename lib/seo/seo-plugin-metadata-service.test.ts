@@ -54,6 +54,18 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     seoPluginMetadataGeneratedAt: null,
     seoPluginWriteStatus: "not_attempted",
     seoPluginWriteError: null,
+    featuredImageStatus: "not_ready",
+    featuredImagePrompt: null,
+    featuredImageAltText: null,
+    featuredImageCaption: null,
+    featuredImageStyle: null,
+    featuredImageAspectRatio: "16:9",
+    featuredImageMetadata: {},
+    featuredImageGeneratedAt: null,
+    featuredImageReviewedAt: null,
+    featuredImageWordpressMediaId: null,
+    featuredImageWordpressUrl: null,
+    featuredImageError: null,
     ...overrides,
   };
 }

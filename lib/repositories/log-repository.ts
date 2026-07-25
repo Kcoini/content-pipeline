@@ -76,7 +76,14 @@ export type LogEventType =
   | "seo_plugin_write_skipped_dry_run"
   | "seo_plugin_write_started"
   | "seo_plugin_write_completed"
-  | "seo_plugin_write_failed";
+  | "seo_plugin_write_failed"
+  // Phase 2-5: Featured Image Preparation 이벤트
+  | "featured_image_preparation_started"
+  | "featured_image_preparation_completed"
+  | "featured_image_preparation_failed"
+  | "featured_image_reviewed"
+  | "featured_image_upload_skipped_not_implemented"
+  | "wordpress_featured_image_skipped_no_media";
 
 export type LogStatus = "success" | "failed" | "info";
 

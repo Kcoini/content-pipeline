@@ -125,6 +125,23 @@
 - [ ] 기존 WordPress draft publish(Phase 2-2), WordPress metadata(Phase 2-3),
       article generation, review/approval 흐름이 깨지지 않는다.
 
+## AC-14. Featured Image Preparation (FR-15, Phase 2-5)
+- [ ] article이 존재하면 승인(reviewed) 여부와 무관하게 featured image 정보를
+      준비할 수 있다.
+- [ ] `general_news`/`source_based_explainer`/`monetized_blog` 각각 모드에
+      맞는 이미지 prompt/style이 생성된다.
+- [ ] alt text와 caption이 생성된다.
+- [ ] 생성된 prompt에는 이미지 안에 텍스트를 넣으라는 지시가 포함되지 않으며,
+      오히려 "no text in image" 지시가 포함된다.
+- [ ] 실제 이미지 생성 API나 WordPress media upload를 호출하지 않는다.
+- [ ] WordPress dry-run의 `publish_logs.details`에 featured image 요약
+      (status/altText/caption/style/aspectRatio)이 포함된다.
+- [ ] `featured_image_wordpress_media_id`가 없으면 실제 게시 시에도
+      `featured_media`를 전송하지 않는다.
+- [ ] 실제 API key가 없어도 `npm run lint`/`test`/`build`가 통과한다.
+- [ ] 기존 WordPress draft publish, SEO metadata, SEO plugin metadata,
+      article generation, review/approval 흐름이 깨지지 않는다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

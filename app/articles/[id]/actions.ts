@@ -18,6 +18,7 @@ import { publishArticleToWordPressDraft } from "@/lib/publish/publish-service";
 import { generateWordPressMetadata, reviewWordPressMetadata } from "@/lib/publish/wordpress-metadata-service";
 import { generateSeoPluginPayload, reviewSeoPluginMetadata } from "@/lib/seo/seo-plugin-metadata-service";
 import { isSeoPluginProvider } from "@/lib/seo/seo-plugin-types";
+import { prepareFeaturedImage, reviewFeaturedImage } from "@/lib/images/featured-image-preparation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -192,6 +193,59 @@ export async function reviewSeoPluginMetadataAction(formData: FormData): Promise
 
   try {
     const result = await reviewSeoPluginMetadata(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * article_mode/제목/키워드 기반 규칙으로 대표 이미지(featured image) 준비 정보
+ * (prompt/alt text/caption/style)를 생성한다 (Phase 2-5). reviewed 여부와
+ * 무관하게 항상 호출 가능하다. 실제 이미지 생성 API나 WordPress media upload는
+ * 호출하지 않는다.
+ */
+export async function prepareFeaturedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await prepareFeaturedImage(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** 대표 이미지 준비 정보를 사람이 검토 완료했음을 표시한다 (featured_image_status='reviewed'). */
+export async function reviewFeaturedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await reviewFeaturedImage(articleId);
     message = result.message;
     isError = !result.success;
   } catch (error) {

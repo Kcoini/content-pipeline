@@ -122,6 +122,19 @@ metadata payload를 생성할 수 있다. provider는 인자 > `SEO_PLUGIN_PROVI
 endpoint 확인 후 구현 예정). 자세한 내용은
 `docs/phase-2-4-seo-plugin-metadata-mapping.md` 참고.
 
+### FR-15. Featured Image Preparation (Phase 2-5)
+사용자는 기사에 대해 승인 여부와 무관하게 대표 이미지(featured image) 준비
+정보(prompt, alt text, caption, style, aspect ratio)를 생성할 수 있다.
+article_mode(`general_news`/`source_based_explainer`/`monetized_blog`)별로
+서로 다른 이미지 전략과 기본 스타일이 적용되며, 이미지 안에는 텍스트를
+넣지 않는다는 정책이 항상 prompt에 포함된다. 실제 이미지 생성 API나
+WordPress media upload는 호출하지 않는다. 생성된 정보는 사람이 검토 완료로
+표시할 수 있다(`featured_image_status='reviewed'`). WordPress 게시(Phase 2-2)
+dry-run details에는 featured image 요약(상태/alt text/caption/style/비율)이
+포함되며, `featured_image_wordpress_media_id`가 없으면 실제 게시 시
+`featured_media`를 전송하지 않는다. 자세한 내용은
+`docs/phase-2-5-featured-image-preparation.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

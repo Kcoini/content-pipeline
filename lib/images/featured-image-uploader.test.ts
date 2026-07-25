@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import { resolveExistingFeaturedMediaId } from "./featured-image-uploader";
+import type { Article } from "@/lib/types/domain";
+
+function makeArticle(overrides: Partial<Article> = {}): Article {
+  return {
+    id: "article-1",
+    themeId: "theme-1",
+    title: "제목",
+    content: "본문".repeat(300),
+    status: "reviewed",
+    citedSourceIds: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    reviewedAt: null,
+    reviewedBy: null,
+    articleMode: "monetized_blog",
+    seoTitle: null,
+    metaDescription: null,
+    slug: null,
+    targetKeyword: null,
+    secondaryKeywords: [],
+    searchIntent: null,
+    readerPersona: null,
+    adSlots: [],
+    internalLinkSuggestions: [],
+    monetizationScore: null,
+    policyRiskScore: null,
+    formatMetadata: {},
+    wpCategoryNames: [],
+    wpTagNames: [],
+    wpCategoryIds: [],
+    wpTagIds: [],
+    wpMetadataStatus: "not_ready",
+    wpMetadataGeneratedAt: null,
+    seoPluginProvider: "none",
+    seoPluginPayload: {},
+    seoPluginMetadataStatus: "not_ready",
+    seoPluginMetadataGeneratedAt: null,
+    seoPluginWriteStatus: "not_attempted",
+    seoPluginWriteError: null,
+    featuredImageStatus: "not_ready",
+    featuredImagePrompt: null,
+    featuredImageAltText: null,
+    featuredImageCaption: null,
+    featuredImageStyle: null,
+    featuredImageAspectRatio: "16:9",
+    featuredImageMetadata: {},
+    featuredImageGeneratedAt: null,
+    featuredImageReviewedAt: null,
+    featuredImageWordpressMediaId: null,
+    featuredImageWordpressUrl: null,
+    featuredImageError: null,
+    ...overrides,
+  };
+}
+
+describe("resolveExistingFeaturedMediaId", () => {
+  it("featuredImageWordpressMediaId가 없으면 undefined를 반환한다 (실제 업로드 미구현 상태의 기본값)", () => {
+    expect(resolveExistingFeaturedMediaId(makeArticle())).toBeUndefined();
+  });
+
+  it("featuredImageWordpressMediaId가 있으면 그대로 반환한다", () => {
+    expect(resolveExistingFeaturedMediaId(makeArticle({ featuredImageWordpressMediaId: 7 }))).toBe(7);
+  });
+});

@@ -11,6 +11,12 @@ export interface CreateDraftPostInput {
   categories?: number[];
   tags?: number[];
   meta?: Record<string, unknown>;
+  /**
+   * Phase 2-5: WordPress media id (featured_media). 실제 이미지 업로드는 아직
+   * 구현하지 않았으므로 이 값이 채워지는 경우는 현재 없다 — 나중에 업로드
+   * 기능이 구현되면 그 결과를 그대로 전달할 수 있도록 구조만 준비한다.
+   */
+  featuredMedia?: number;
 }
 
 export interface CreateDraftPostSuccess {
@@ -86,6 +92,7 @@ export async function createDraftPost(input: CreateDraftPostInput): Promise<Crea
   if (input.categories && input.categories.length > 0) body.categories = input.categories;
   if (input.tags && input.tags.length > 0) body.tags = input.tags;
   if (input.meta) body.meta = input.meta;
+  if (input.featuredMedia !== undefined) body.featured_media = input.featuredMedia;
 
   let response: Response;
   try {

@@ -76,6 +76,18 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     seoPluginMetadataGeneratedAt: null,
     seoPluginWriteStatus: "not_attempted",
     seoPluginWriteError: null,
+    featuredImageStatus: "not_ready",
+    featuredImagePrompt: null,
+    featuredImageAltText: null,
+    featuredImageCaption: null,
+    featuredImageStyle: null,
+    featuredImageAspectRatio: "16:9",
+    featuredImageMetadata: {},
+    featuredImageGeneratedAt: null,
+    featuredImageReviewedAt: null,
+    featuredImageWordpressMediaId: null,
+    featuredImageWordpressUrl: null,
+    featuredImageError: null,
     ...overrides,
   };
 }
@@ -333,6 +345,79 @@ describe("publishArticleToWordPressDraft", () => {
         }),
       })
     );
+  });
+
+  it("dry-run details에 featured image summary(status/altText/caption/style/aspectRatio)가 포함된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        status: "reviewed",
+        featuredImageStatus: "prepared",
+        featuredImageAltText: "요양원 비교 일러스트",
+        featuredImageCaption: "핵심 기준을 정리했습니다.",
+        featuredImageStyle: "clickable but trustworthy blog thumbnail",
+        featuredImageAspectRatio: "16:9",
+      })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "dry_run",
+        details: expect.objectContaining({
+          featuredImage: {
+            status: "prepared",
+            altText: "요양원 비교 일러스트",
+            caption: "핵심 기준을 정리했습니다.",
+            style: "clickable but trustworthy blog thumbnail",
+            aspectRatio: "16:9",
+          },
+        }),
+      })
+    );
+  });
+
+  it("featured_image_wordpress_media_id가 없으면 실제 게시 시 featuredMedia를 보내지 않고 skip 이벤트를 기록한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", featuredImageWordpressMediaId: null })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(createDraftPost).toHaveBeenCalledWith(
+      expect.objectContaining({ featuredMedia: undefined })
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "featured_image_upload_skipped_not_implemented" })
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_featured_image_skipped_no_media" })
+    );
+  });
+
+  it("featured_image_wordpress_media_id가 있으면 실제 게시 시 featuredMedia로 전달한다 (구조만 준비, 업로드는 하지 않음)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", featuredImageWordpressMediaId: 42 })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ featuredMedia: 42 }));
   });
 
   it("SEO plugin provider가 none이면 실제 API 게시 성공 시 write를 시도하지 않고 skipped_provider_none으로 기록한다", async () => {

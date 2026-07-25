@@ -141,6 +141,9 @@ export type SeoPluginWriteStatus =
   | "success"
   | "failed";
 
+/** Phase 2-5: 대표 이미지(featured image) 준비/검토 상태 */
+export type FeaturedImageStatus = "not_ready" | "prepared" | "reviewed" | "failed" | "uploaded";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -180,6 +183,19 @@ export type ArticleRow = {
   seo_plugin_metadata_generated_at: string | null;
   seo_plugin_write_status: SeoPluginWriteStatus;
   seo_plugin_write_error: string | null;
+  /** Phase 2-5: 대표 이미지 준비 정보 */
+  featured_image_status: FeaturedImageStatus;
+  featured_image_prompt: string | null;
+  featured_image_alt_text: string | null;
+  featured_image_caption: string | null;
+  featured_image_style: string | null;
+  featured_image_aspect_ratio: string;
+  featured_image_metadata: Record<string, unknown>;
+  featured_image_generated_at: string | null;
+  featured_image_reviewed_at: string | null;
+  featured_image_wordpress_media_id: number | null;
+  featured_image_wordpress_url: string | null;
+  featured_image_error: string | null;
 };
 
 export type ArticleSourceRow = {

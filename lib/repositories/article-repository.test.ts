@@ -45,6 +45,18 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     seo_plugin_metadata_generated_at: null,
     seo_plugin_write_status: "not_attempted",
     seo_plugin_write_error: null,
+    featured_image_status: "not_ready",
+    featured_image_prompt: null,
+    featured_image_alt_text: null,
+    featured_image_caption: null,
+    featured_image_style: null,
+    featured_image_aspect_ratio: "16:9",
+    featured_image_metadata: {},
+    featured_image_generated_at: null,
+    featured_image_reviewed_at: null,
+    featured_image_wordpress_media_id: null,
+    featured_image_wordpress_url: null,
+    featured_image_error: null,
     ...overrides,
   };
 }
@@ -90,6 +102,18 @@ describe("mapArticleRowToArticle", () => {
       seoPluginMetadataGeneratedAt: null,
       seoPluginWriteStatus: "not_attempted",
       seoPluginWriteError: null,
+      featuredImageStatus: "not_ready",
+      featuredImagePrompt: null,
+      featuredImageAltText: null,
+      featuredImageCaption: null,
+      featuredImageStyle: null,
+      featuredImageAspectRatio: "16:9",
+      featuredImageMetadata: {},
+      featuredImageGeneratedAt: null,
+      featuredImageReviewedAt: null,
+      featuredImageWordpressMediaId: null,
+      featuredImageWordpressUrl: null,
+      featuredImageError: null,
     });
   });
 

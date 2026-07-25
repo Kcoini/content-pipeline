@@ -14,8 +14,15 @@ import {
   reviewWordPressMetadataAction,
   generateSeoPluginMetadataAction,
   reviewSeoPluginMetadataAction,
+  prepareFeaturedImageAction,
+  reviewFeaturedImageAction,
 } from "./actions";
-import type { WordPressMetadataStatus, SeoPluginMetadataStatus, SeoPluginWriteStatus } from "@/lib/types/domain";
+import type {
+  WordPressMetadataStatus,
+  SeoPluginMetadataStatus,
+  SeoPluginWriteStatus,
+  FeaturedImageStatus,
+} from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
@@ -75,6 +82,22 @@ const SEO_PLUGIN_WRITE_STATUS_LABEL: Record<SeoPluginWriteStatus, string> = {
   skipped_provider_none: "건너뜀 (provider 없음)",
   success: "성공",
   failed: "실패",
+};
+
+const FEATURED_IMAGE_STATUS_LABEL: Record<FeaturedImageStatus, string> = {
+  not_ready: "준비 안 됨",
+  prepared: "준비됨",
+  reviewed: "검토 완료",
+  failed: "준비 실패",
+  uploaded: "업로드됨",
+};
+
+const FEATURED_IMAGE_STATUS_STYLE: Record<FeaturedImageStatus, string> = {
+  not_ready: "bg-zinc-100 text-zinc-500",
+  prepared: "bg-amber-100 text-amber-700",
+  reviewed: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+  uploaded: "bg-blue-100 text-blue-700",
 };
 
 export default async function ArticleDetailPage({
@@ -507,6 +530,79 @@ export default async function ArticleDetailPage({
 
               {article.seoPluginWriteError && (
                 <p className="mt-3 text-xs text-red-600">write 오류: {article.seoPluginWriteError}</p>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* Phase 2-5: Featured Image Preparation */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">Featured Image Preparation</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${FEATURED_IMAGE_STATUS_STYLE[article.featuredImageStatus]}`}
+            >
+              {FEATURED_IMAGE_STATUS_LABEL[article.featuredImageStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            실제 이미지를 생성하거나 WordPress에 업로드하지 않습니다. 대표 이미지
+            prompt/alt text/caption/style만 준비합니다. 이미지 안에는 텍스트를
+            넣지 않도록 안내합니다.
+          </p>
+
+          <form action={prepareFeaturedImageAction} className="mt-3 flex flex-wrap gap-2">
+            <input type="hidden" name="articleId" value={article.id} />
+            <button
+              type="submit"
+              className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+            >
+              {article.featuredImageStatus === "not_ready" ? "대표 이미지 정보 준비" : "다시 생성"}
+            </button>
+            {(article.featuredImageStatus === "prepared" || article.featuredImageStatus === "failed") && (
+              <button
+                type="submit"
+                formAction={reviewFeaturedImageAction}
+                className="rounded border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+              >
+                검토 완료
+              </button>
+            )}
+          </form>
+
+          {article.featuredImageStatus !== "not_ready" && (
+            <>
+              <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">prompt</dt>
+                  <dd className="text-zinc-500">{article.featuredImagePrompt || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">alt text</dt>
+                  <dd className="text-zinc-500">{article.featuredImageAltText || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">caption</dt>
+                  <dd className="text-zinc-500">{article.featuredImageCaption || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">style</dt>
+                  <dd className="text-zinc-500">{article.featuredImageStyle || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">aspect ratio</dt>
+                  <dd className="text-zinc-500 font-mono">{article.featuredImageAspectRatio}</dd>
+                </div>
+              </dl>
+
+              {article.featuredImageStatus !== "reviewed" && article.featuredImageStatus !== "failed" && (
+                <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  ⚠ 대표 이미지 정보가 아직 검토 완료되지 않았습니다 (선택 사항이며 게시를 막지는 않습니다).
+                </div>
+              )}
+
+              {article.featuredImageError && (
+                <p className="mt-3 text-xs text-red-600">오류: {article.featuredImageError}</p>
               )}
             </>
           )}

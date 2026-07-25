@@ -123,6 +123,9 @@ export type SeoPluginWriteStatus =
   | "success"
   | "failed";
 
+/** Phase 2-5: 대표 이미지(featured image) 준비/검토 상태. 'uploaded'는 실제 업로드 구현 후 사용한다. */
+export type FeaturedImageStatus = "not_ready" | "prepared" | "reviewed" | "failed" | "uploaded";
+
 export interface Article {
   id: string;
   themeId: string;
@@ -187,4 +190,28 @@ export interface Article {
   seoPluginWriteStatus: SeoPluginWriteStatus;
   /** Phase 2-4: SEO plugin write 실패 시 오류 메시지 */
   seoPluginWriteError: string | null;
+  /** Phase 2-5: 대표 이미지 준비/검토 상태 (기본값 not_ready) */
+  featuredImageStatus: FeaturedImageStatus;
+  /** Phase 2-5: 이미지 생성 AI에 전달할 prompt (실제 이미지 생성은 하지 않음) */
+  featuredImagePrompt: string | null;
+  /** Phase 2-5: alt text (80~140자 권장, target keyword 자연스럽게 포함) */
+  featuredImageAltText: string | null;
+  /** Phase 2-5: caption (1문장, 글의 핵심 메시지와 연결) */
+  featuredImageCaption: string | null;
+  /** Phase 2-5: 이미지 스타일 (article_mode별 기본값) */
+  featuredImageStyle: string | null;
+  /** Phase 2-5: 이미지 비율 (기본값 16:9) */
+  featuredImageAspectRatio: string;
+  /** Phase 2-5: 모드/감정/시각 컨셉 등 부가 메타데이터 */
+  featuredImageMetadata: Record<string, unknown>;
+  /** Phase 2-5: 대표 이미지 정보가 마지막으로 생성된 시각 */
+  featuredImageGeneratedAt: string | null;
+  /** Phase 2-5: 대표 이미지 정보를 사람이 검토 완료한 시각 */
+  featuredImageReviewedAt: string | null;
+  /** Phase 2-5: 실제 업로드 후 WordPress media id (미구현 상태에서는 항상 null) */
+  featuredImageWordpressMediaId: number | null;
+  /** Phase 2-5: 실제 업로드 후 WordPress media URL (미구현 상태에서는 항상 null) */
+  featuredImageWordpressUrl: string | null;
+  /** Phase 2-5: 준비 실패 시 오류 메시지 */
+  featuredImageError: string | null;
 }

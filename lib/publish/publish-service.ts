@@ -8,9 +8,40 @@ import { getApprovalLogsByArticleId } from "@/lib/repositories/approval-reposito
 import { savePublishLog, hasSuccessfulPublishLog } from "@/lib/repositories/publish-repository";
 import { createDraftPost, findOrCreateCategory, findOrCreateTag } from "./wordpress-client";
 import { applySeoPluginMetadata } from "@/lib/seo/seo-plugin-writer";
+import { resolveExistingFeaturedMediaId } from "@/lib/images/featured-image-uploader";
 import { logEvent } from "@/lib/harness/logger";
 import type { Article } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
+
+/**
+ * article에 이미 WordPress media id가 저장되어 있으면 그대로 사용하고, 없으면
+ * undefined를 반환한다 (Phase 2-5). 실제 이미지 생성/업로드는 아직 구현하지
+ * 않았으므로 현재는 항상 skip 이벤트를 기록하고 undefined를 반환한다.
+ */
+async function resolveFeaturedMediaForPublish(articleId: string, article: Article): Promise<number | undefined> {
+  const mediaId = resolveExistingFeaturedMediaId(article);
+  if (mediaId !== undefined) return mediaId;
+
+  await logEvent({
+    type: "featured_image_upload_skipped_not_implemented",
+    status: "info",
+    message: `기사(${articleId})의 대표 이미지 업로드는 아직 구현되지 않아 건너뜁니다.`,
+    articleId,
+    themeId: article.themeId,
+    targetType: "article",
+    targetId: articleId,
+  });
+  await logEvent({
+    type: "wordpress_featured_image_skipped_no_media",
+    status: "info",
+    message: `기사(${articleId})에 WordPress media id가 없어 featured_media를 설정하지 않습니다.`,
+    articleId,
+    themeId: article.themeId,
+    targetType: "article",
+    targetId: articleId,
+  });
+  return undefined;
+}
 
 /**
  * WordPress draft post 생성 성공 후 SEO plugin metadata write를 시도한다 (Phase 2-4).
@@ -312,6 +343,13 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
           seoTitle: (article.seoPluginPayload as { seoTitle?: string })?.seoTitle ?? null,
           focusKeyword: (article.seoPluginPayload as { focusKeyword?: string })?.focusKeyword ?? null,
         },
+        featuredImage: {
+          status: article.featuredImageStatus,
+          altText: article.featuredImageAltText,
+          caption: article.featuredImageCaption,
+          style: article.featuredImageStyle,
+          aspectRatio: article.featuredImageAspectRatio,
+        },
       },
     });
 
@@ -333,6 +371,7 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
   }
 
   const { categoryIds, tagIds } = await resolveWordPressTerms(articleId, article);
+  const featuredMedia = await resolveFeaturedMediaForPublish(articleId, article);
 
   const result = await createDraftPost({
     title,
@@ -341,6 +380,7 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
     slug: article.slug ?? undefined,
     categories: categoryIds.length > 0 ? categoryIds : undefined,
     tags: tagIds.length > 0 ? tagIds : undefined,
+    featuredMedia,
   });
 
   if (!result.success) {

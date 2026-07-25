@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ArticleRow } from "@/lib/supabase/database.types";
 import type { Article, ArticleStatus, SeoPluginProvider } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
+import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
 import { assertApproved } from "@/lib/harness/approval-gate";
 import { saveApprovalLog } from "@/lib/repositories/approval-repository";
 import {
@@ -110,6 +111,18 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     seoPluginMetadataGeneratedAt: row.seo_plugin_metadata_generated_at,
     seoPluginWriteStatus: row.seo_plugin_write_status ?? "not_attempted",
     seoPluginWriteError: row.seo_plugin_write_error,
+    featuredImageStatus: row.featured_image_status ?? "not_ready",
+    featuredImagePrompt: row.featured_image_prompt,
+    featuredImageAltText: row.featured_image_alt_text,
+    featuredImageCaption: row.featured_image_caption,
+    featuredImageStyle: row.featured_image_style,
+    featuredImageAspectRatio: row.featured_image_aspect_ratio ?? "16:9",
+    featuredImageMetadata: row.featured_image_metadata ?? {},
+    featuredImageGeneratedAt: row.featured_image_generated_at,
+    featuredImageReviewedAt: row.featured_image_reviewed_at,
+    featuredImageWordpressMediaId: row.featured_image_wordpress_media_id,
+    featuredImageWordpressUrl: row.featured_image_wordpress_url,
+    featuredImageError: row.featured_image_error,
   };
 }
 
@@ -551,6 +564,89 @@ export async function updateSeoPluginWriteStatus(
 
   if (error || !data) {
     throw new Error(`SEO plugin write 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveFeaturedImageMetadataInput {
+  articleId: string;
+  metadata: FeaturedImageMetadata;
+  /** 'prepared' 또는 'failed' — 'reviewed'는 markFeaturedImageReviewed로만 전환한다. */
+  status: "prepared" | "failed";
+  error?: string;
+}
+
+/**
+ * 대표 이미지(featured image) 준비 정보를 저장한다 (Phase 2-5).
+ * 실제 이미지 생성/업로드는 하지 않으며, prompt/alt text/caption/style 등의
+ * "준비 정보"만 저장한다. format_metadata.featured_image에도 요약을 저장한다.
+ */
+export async function saveFeaturedImageMetadata(input: SaveFeaturedImageMetadataInput): Promise<Article> {
+  const existing = await getArticleById(input.articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(input.articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const formatMetadata = {
+    ...existing.formatMetadata,
+    featured_image: {
+      prompt: input.metadata.prompt,
+      alt_text: input.metadata.altText,
+      caption: input.metadata.caption,
+      style: input.metadata.style,
+      aspect_ratio: input.metadata.aspectRatio,
+    },
+  };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      featured_image_status: input.status,
+      featured_image_prompt: input.metadata.prompt || null,
+      featured_image_alt_text: input.metadata.altText || null,
+      featured_image_caption: input.metadata.caption || null,
+      featured_image_style: input.metadata.style || null,
+      featured_image_aspect_ratio: input.metadata.aspectRatio,
+      featured_image_metadata: input.metadata as unknown as Record<string, unknown>,
+      featured_image_generated_at: new Date().toISOString(),
+      featured_image_error: input.error ?? null,
+      format_metadata: formatMetadata,
+    })
+    .eq("id", input.articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`대표 이미지 준비 정보 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/** 대표 이미지 준비 정보를 사람이 검토 완료했음을 표시한다 (featured_image_status='reviewed'). */
+export async function markFeaturedImageReviewed(articleId: string): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      featured_image_status: "reviewed",
+      featured_image_reviewed_at: new Date().toISOString(),
+    })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`대표 이미지 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);
