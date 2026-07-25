@@ -76,6 +76,21 @@
 - [ ] 어떤 `article_mode`로 생성되었더라도 `status`는 `draft`로 저장되고,
       FR-9(사용자 승인) 없이는 `reviewed`로 전환되지 않는다.
 
+## AC-11. WordPress Draft Publish (FR-12, Phase 2-2)
+- [ ] `status='draft'`인 기사는 WordPress 초안 생성 버튼이 비활성화/숨김 처리된다.
+- [ ] `status='reviewed'`이고 `approval_logs`에 승인 기록이 있는 기사만 WordPress에
+      `status="draft"`인 post로 생성된다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=false`(기본값)이면 실제 WordPress API를 호출하지
+      않고 `publish_logs.status='dry_run'`으로 저장된다.
+- [ ] 이미 `publish_logs.status='success'`인 기록이 있으면 동일 기사에 대해
+      WordPress post를 중복 생성하지 않는다.
+- [ ] WordPress API 실패 시 `publish_logs.status='failed'`와 `error_message`가
+      저장되며, 화면에 실패 메시지가 표시된다.
+- [ ] WordPress API 성공 시 `publish_logs.status='success'`, `external_post_id`,
+      `post_url`이 저장되며, 화면에 post_url이 표시된다.
+- [ ] `WORDPRESS_APP_PASSWORD`는 client bundle에 포함되지 않으며, 로그에도
+      남지 않는다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

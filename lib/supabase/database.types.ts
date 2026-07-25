@@ -233,7 +233,8 @@ export type ApprovalLogRow = {
   created_at: string;
 };
 
-export type PublishLogStatus = "success" | "failed";
+/** Phase 2-2: dry_run은 WORDPRESS_PUBLISH_ENABLED=false일 때의 결과 상태다. */
+export type PublishLogStatus = "success" | "failed" | "dry_run";
 
 export type PublishLogRow = {
   id: string;
@@ -243,6 +244,12 @@ export type PublishLogRow = {
   details: Record<string, unknown>;
   published_at: string | null;
   created_at: string;
+  /** Phase 2-2: WordPress 등 외부 게시 대상의 post id */
+  external_post_id: string | null;
+  /** Phase 2-2: 게시된 글의 URL (성공 시에만 존재) */
+  post_url: string | null;
+  /** Phase 2-2: 실패 시 오류 메시지 */
+  error_message: string | null;
 };
 
 export interface Database {

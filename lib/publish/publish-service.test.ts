@@ -1,0 +1,212 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Article } from "@/lib/types/domain";
+
+const getArticleById = vi.fn();
+const getApprovalLogsByArticleId = vi.fn();
+const savePublishLog = vi.fn();
+const hasSuccessfulPublishLog = vi.fn();
+const createDraftPost = vi.fn();
+const logEvent = vi.fn();
+
+vi.mock("@/lib/repositories/article-repository", () => ({
+  getArticleById: (...args: unknown[]) => getArticleById(...args),
+}));
+vi.mock("@/lib/repositories/approval-repository", () => ({
+  getApprovalLogsByArticleId: (...args: unknown[]) => getApprovalLogsByArticleId(...args),
+}));
+vi.mock("@/lib/repositories/publish-repository", () => ({
+  savePublishLog: (...args: unknown[]) => savePublishLog(...args),
+  hasSuccessfulPublishLog: (...args: unknown[]) => hasSuccessfulPublishLog(...args),
+}));
+vi.mock("./wordpress-client", () => ({
+  createDraftPost: (...args: unknown[]) => createDraftPost(...args),
+}));
+vi.mock("@/lib/harness/logger", () => ({
+  logEvent: (...args: unknown[]) => logEvent(...args),
+}));
+
+const { publishArticleToWordPressDraft, resolveWordPressTitle, resolveWordPressExcerpt } = await import(
+  "./publish-service"
+);
+
+function makeArticle(overrides: Partial<Article> = {}): Article {
+  return {
+    id: "article-1",
+    themeId: "theme-1",
+    title: "기사 제목",
+    content: "본문 내용입니다.".repeat(50),
+    status: "reviewed",
+    citedSourceIds: ["source-1", "source-2", "source-3"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    reviewedAt: "2026-01-02T00:00:00.000Z",
+    reviewedBy: "local-user",
+    articleMode: "source_based_explainer",
+    seoTitle: null,
+    metaDescription: null,
+    slug: null,
+    targetKeyword: null,
+    secondaryKeywords: [],
+    searchIntent: null,
+    readerPersona: null,
+    adSlots: [],
+    internalLinkSuggestions: [],
+    monetizationScore: null,
+    policyRiskScore: null,
+    formatMetadata: {},
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  getArticleById.mockReset();
+  getApprovalLogsByArticleId.mockReset();
+  savePublishLog.mockReset();
+  hasSuccessfulPublishLog.mockReset();
+  createDraftPost.mockReset();
+  logEvent.mockReset();
+
+  getApprovalLogsByArticleId.mockResolvedValue([
+    { id: "approval-1", articleId: "article-1", themeId: "theme-1", targetType: "article", targetId: "article-1", action: "approve_article", status: "approved", approvedBy: "local-user", notes: null, createdAt: "2026-01-02T00:00:00.000Z" },
+  ]);
+  hasSuccessfulPublishLog.mockResolvedValue(false);
+  savePublishLog.mockResolvedValue({});
+  logEvent.mockResolvedValue({});
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("resolveWordPressTitle", () => {
+  it("monetized_blog이고 seoTitle이 있으면 seoTitle을 사용한다", () => {
+    const article = makeArticle({ articleMode: "monetized_blog", seoTitle: "SEO 제목" });
+    expect(resolveWordPressTitle(article)).toBe("SEO 제목");
+  });
+
+  it("monetized_blog이어도 seoTitle이 없으면 article.title을 사용한다", () => {
+    const article = makeArticle({ articleMode: "monetized_blog", seoTitle: null });
+    expect(resolveWordPressTitle(article)).toBe("기사 제목");
+  });
+
+  it("general_news/source_based_explainer는 항상 article.title을 사용한다", () => {
+    const article = makeArticle({ articleMode: "general_news", seoTitle: "무시되어야 함" });
+    expect(resolveWordPressTitle(article)).toBe("기사 제목");
+  });
+});
+
+describe("resolveWordPressExcerpt", () => {
+  it("metaDescription이 있으면 그대로 사용한다", () => {
+    const article = makeArticle({ metaDescription: "메타 설명" });
+    expect(resolveWordPressExcerpt(article)).toBe("메타 설명");
+  });
+
+  it("metaDescription이 없으면 본문 앞부분에서 생성한다", () => {
+    const article = makeArticle({ metaDescription: null, content: "본문 시작 부분입니다. ".repeat(20) });
+    const excerpt = resolveWordPressExcerpt(article);
+    expect(excerpt).toBeTruthy();
+    expect(excerpt!.length).toBeLessThanOrEqual(161);
+  });
+});
+
+describe("publishArticleToWordPressDraft", () => {
+  it("draft 상태 기사는 게시 대상이 아니다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "draft" }));
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("reviewed");
+    expect(createDraftPost).not.toHaveBeenCalled();
+    expect(savePublishLog).not.toHaveBeenCalled();
+  });
+
+  it("reviewed 상태 기사만 게시 가능하다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(true);
+    expect(result.dryRun).toBe(true);
+  });
+
+  it("approval_logs가 없으면 게시하지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    getApprovalLogsByArticleId.mockResolvedValue([]);
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("승인 기록");
+    expect(createDraftPost).not.toHaveBeenCalled();
+  });
+
+  it("WORDPRESS_PUBLISH_ENABLED=false이면 dry-run이 실행되고 실제 client는 호출되지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(true);
+    expect(result.dryRun).toBe(true);
+    expect(createDraftPost).not.toHaveBeenCalled();
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "dry_run", target: "wordpress" })
+    );
+  });
+
+  it("이미 success publish_logs가 있으면 중복 생성하지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    hasSuccessfulPublishLog.mockResolvedValue(true);
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("이미");
+    expect(createDraftPost).not.toHaveBeenCalled();
+    expect(savePublishLog).not.toHaveBeenCalled();
+  });
+
+  it("WordPress API 실패 시 publish_logs에 failed가 저장된다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({ success: false, errorMessage: "WordPress 인증 실패" });
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(false);
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", errorMessage: "WordPress 인증 실패" })
+    );
+  });
+
+  it("WordPress API 성공 시 publish_logs에 success와 external_post_id가 저장된다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 99,
+      postUrl: "https://example-blog.test/?p=99",
+      raw: { id: 99 },
+    });
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(true);
+    expect(result.postUrl).toBe("https://example-blog.test/?p=99");
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "success", externalPostId: "99", postUrl: "https://example-blog.test/?p=99" })
+    );
+  });
+
+  it("기존 article generation/review/approval 흐름과 독립적으로 동작한다 (article 조회만 사용)", async () => {
+    getArticleById.mockResolvedValue(undefined);
+
+    const result = await publishArticleToWordPressDraft("missing-article");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("찾을 수 없습니다");
+  });
+});

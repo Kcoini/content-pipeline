@@ -4,9 +4,11 @@ import { getThemeById } from "@/lib/repositories/theme-repository";
 import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
 import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
 import { getLogsByArticleId } from "@/lib/harness/logger";
+import { getPublishLogsByArticleId } from "@/lib/repositories/publish-repository";
 import type { ArticleStatus } from "@/lib/types/domain";
-import { approveArticleAction, updateArticleAction } from "./actions";
+import { approveArticleAction, updateArticleAction, publishToWordPressDraftAction } from "./actions";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
+import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +29,10 @@ export default async function ArticleDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; publishMessage?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, publishMessage } = await searchParams;
 
   const article = await getArticleById(id);
 
@@ -49,14 +51,19 @@ export default async function ArticleDetailPage({
     );
   }
 
-  const [theme, sources, latestEval, logs] = await Promise.all([
+  const [theme, sources, latestEval, logs, publishLogs] = await Promise.all([
     getThemeById(article.themeId),
     getSourcesByArticleId(article.id),
     getLatestEvalByArticleId(article.id),
     getLogsByArticleId(article.id, 10),
+    getPublishLogsByArticleId(article.id, 10),
   ]);
 
   const isDraft = article.status === "draft";
+  const isReviewed = article.status === "reviewed";
+  const wordpressLogs = publishLogs.filter((log) => log.target === WORDPRESS_TARGET);
+  const latestWordPressLog = wordpressLogs[0];
+  const hasWordPressSuccess = wordpressLogs.some((log) => log.status === "success");
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -68,6 +75,12 @@ export default async function ArticleDetailPage({
         {error && (
           <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {publishMessage && (
+          <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            {publishMessage}
           </div>
         )}
 
@@ -266,6 +279,78 @@ export default async function ArticleDetailPage({
             </form>
           </section>
         )}
+
+        {/* Phase 2-2: WordPress 초안 생성 */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">WordPress 게시</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            승인(reviewed)된 기사만 WordPress에 draft(초안) post로 생성할 수 있습니다.
+            자동 공개(publish)는 수행하지 않습니다.
+          </p>
+
+          {!isReviewed ? (
+            <p className="mt-3 text-xs text-zinc-500">
+              기사가 승인(reviewed)되어야 WordPress 초안 생성 버튼이 활성화됩니다.
+            </p>
+          ) : hasWordPressSuccess ? (
+            <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+              ✓ 이미 WordPress 초안 생성됨
+              {latestWordPressLog?.postUrl && (
+                <>
+                  {" — "}
+                  <a
+                    href={latestWordPressLog.postUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    {latestWordPressLog.postUrl}
+                  </a>
+                </>
+              )}
+            </div>
+          ) : (
+            <form action={publishToWordPressDraftAction} className="mt-3">
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+              >
+                WordPress 초안 생성
+              </button>
+            </form>
+          )}
+
+          {latestWordPressLog && (
+            <div className="mt-3 text-xs text-zinc-500">
+              <div className="font-medium text-zinc-600">최근 게시 상태</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    latestWordPressLog.status === "success"
+                      ? "bg-green-100 text-green-700"
+                      : latestWordPressLog.status === "dry_run"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-red-100 text-red-700"
+                  }`}
+                >
+                  {latestWordPressLog.status === "success"
+                    ? "성공"
+                    : latestWordPressLog.status === "dry_run"
+                      ? "dry-run 완료 (실제 WordPress에는 생성되지 않음)"
+                      : "실패"}
+                </span>
+                <span>{new Date(latestWordPressLog.createdAt).toLocaleString("ko-KR")}</span>
+              </div>
+              {latestWordPressLog.externalPostId && (
+                <p className="mt-1">external_post_id: {latestWordPressLog.externalPostId}</p>
+              )}
+              {latestWordPressLog.errorMessage && (
+                <p className="mt-1 text-red-600">오류: {latestWordPressLog.errorMessage}</p>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* 인용 출처 */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

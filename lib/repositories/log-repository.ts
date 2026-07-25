@@ -50,7 +50,14 @@ export type LogEventType =
   | "article_url_candidate_selected"
   | "article_url_candidate_imported"
   | "article_url_candidate_dismissed"
-  | "source_created_from_candidate";
+  | "source_created_from_candidate"
+  // Phase 2-2: WordPress draft publish 이벤트
+  | "wordpress_publish_started"
+  | "wordpress_publish_completed"
+  | "wordpress_publish_failed"
+  | "wordpress_publish_dry_run"
+  | "wordpress_publish_skipped_not_reviewed"
+  | "wordpress_publish_skipped_duplicate";
 
 export type LogStatus = "success" | "failed" | "info";
 

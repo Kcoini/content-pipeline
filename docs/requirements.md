@@ -91,6 +91,15 @@ AI 평가 결과와 무관하게, 기사 초안의 `status`를 `reviewed`(또는
 함께 생성/저장한다. 모드와 무관하게 FR-5(Draft 저장), FR-9(사용자 승인)는
 그대로 적용된다. 자세한 내용은 `docs/phase-2-1-article-modes.md` 참고.
 
+### FR-12. WordPress Draft Publish (Phase 2-2)
+사용자는 `status = 'reviewed'`인 기사를 WordPress에 `status="draft"`인 post로
+생성할 수 있다. `approval_logs`에 승인 기록이 없거나 기사가 `reviewed` 상태가
+아니면 게시하지 않는다. `WORDPRESS_PUBLISH_ENABLED=false`(기본값)이면 실제
+WordPress API를 호출하지 않고 dry-run으로 처리한다. 이미 성공적으로 게시된
+기사는 중복 생성하지 않는다. 자동 공개(publish)는 구현하지 않으며, WordPress
+쪽 최종 공개 여부는 사람이 WordPress 관리자 화면에서 결정한다. 자세한 내용은
+`docs/phase-2-2-wordpress-draft-publish.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성
