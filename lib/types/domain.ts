@@ -132,6 +132,12 @@ export type WordPressMediaSourceType = "none" | "generated_url" | "external_url"
 /** Phase 2-6: WordPress media upload 준비/시도 상태 (safe stub — 현재는 'uploaded'가 되지 않는다) */
 export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | "uploaded" | "failed" | "skipped";
 
+/** Phase 2-7: 이미지 생성 provider */
+export type ImageGenerationProvider = "mock" | "openai" | "custom";
+
+/** Phase 2-7: 이미지 생성 상태 */
+export type GeneratedImageStatus = "not_generated" | "queued" | "generating" | "generated" | "reviewed" | "failed";
+
 export interface Article {
   id: string;
   themeId: string;
@@ -238,4 +244,29 @@ export interface Article {
   featuredImageUploadError: string | null;
   /** Phase 2-6: 업로드가 마지막으로 시도(준비/dry-run)된 시각 */
   featuredImageUploadAttemptedAt: string | null;
+  /** Phase 2-7: 이미지 생성 상태 (기본값 not_generated) */
+  generatedImageStatus: GeneratedImageStatus;
+  /** Phase 2-7: 이미지를 생성한 provider (기본값 mock) */
+  generatedImageProvider: ImageGenerationProvider;
+  /** Phase 2-7: 실제 provider 호출 시 사용한 모델명 */
+  generatedImageModel: string | null;
+  /** Phase 2-7: 이미지 생성에 실제로 사용된 prompt */
+  generatedImagePrompt: string | null;
+  /** Phase 2-7: negative prompt (텍스트/워터마크/로고 등 피해야 할 요소) */
+  generatedImageNegativePrompt: string | null;
+  /** Phase 2-7: 생성된 이미지 URL (mock 또는 실제 provider 결과) */
+  generatedImageUrl: string | null;
+  /** Phase 2-7: 생성된 이미지의 로컬 파일 경로 (있는 경우) */
+  generatedImageLocalPath: string | null;
+  generatedImageWidth: number | null;
+  generatedImageHeight: number | null;
+  generatedImageFormat: string | null;
+  /** Phase 2-7: provider 응답 등 부가 메타데이터 */
+  generatedImageMetadata: Record<string, unknown>;
+  /** Phase 2-7: 생성 실패 시 오류 메시지 (안전하게 정리된 메시지만 저장) */
+  generatedImageError: string | null;
+  generatedImageRequestedAt: string | null;
+  generatedImageCompletedAt: string | null;
+  /** Phase 2-7: 생성 결과를 사람이 검토 완료한 시각 */
+  generatedImageReviewedAt: string | null;
 }

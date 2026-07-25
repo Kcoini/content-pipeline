@@ -150,6 +150,12 @@ export type WordPressMediaSourceType = "none" | "generated_url" | "external_url"
 /** Phase 2-6: WordPress media upload 준비/시도 상태 (safe stub) */
 export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | "uploaded" | "failed" | "skipped";
 
+/** Phase 2-7: 이미지 생성 provider */
+export type ImageGenerationProvider = "mock" | "openai" | "custom";
+
+/** Phase 2-7: 이미지 생성 상태 */
+export type GeneratedImageStatus = "not_generated" | "queued" | "generating" | "generated" | "reviewed" | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -212,6 +218,22 @@ export type ArticleRow = {
   featured_image_upload_payload: Record<string, unknown>;
   featured_image_upload_error: string | null;
   featured_image_upload_attempted_at: string | null;
+  /** Phase 2-7: 이미지 생성 결과 */
+  generated_image_status: GeneratedImageStatus;
+  generated_image_provider: ImageGenerationProvider;
+  generated_image_model: string | null;
+  generated_image_prompt: string | null;
+  generated_image_negative_prompt: string | null;
+  generated_image_url: string | null;
+  generated_image_local_path: string | null;
+  generated_image_width: number | null;
+  generated_image_height: number | null;
+  generated_image_format: string | null;
+  generated_image_metadata: Record<string, unknown>;
+  generated_image_error: string | null;
+  generated_image_requested_at: string | null;
+  generated_image_completed_at: string | null;
+  generated_image_reviewed_at: string | null;
 };
 
 export type ArticleSourceRow = {

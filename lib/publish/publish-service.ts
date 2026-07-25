@@ -382,6 +382,15 @@ export async function publishArticleToWordPressDraft(articleId: string): Promise
           wordpressMediaId: article.featuredImageWordpressMediaId,
           wouldAttachAsFeatured: article.featuredImageWordpressMediaId != null,
         },
+        generatedImage: {
+          status: article.generatedImageStatus,
+          provider: article.generatedImageProvider,
+          model: article.generatedImageModel,
+          imageUrl: article.generatedImageUrl,
+          width: article.generatedImageWidth,
+          height: article.generatedImageHeight,
+          format: article.generatedImageFormat,
+        },
       },
     });
 

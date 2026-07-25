@@ -18,6 +18,8 @@ import {
   reviewFeaturedImageAction,
   prepareWordPressMediaUploadAction,
   confirmWordPressMediaUploadDryRunAction,
+  generateFeaturedImageAction,
+  reviewGeneratedImageAction,
 } from "./actions";
 import type {
   WordPressMetadataStatus,
@@ -25,10 +27,12 @@ import type {
   SeoPluginWriteStatus,
   FeaturedImageStatus,
   WordPressMediaUploadStatus,
+  GeneratedImageStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
 import { isWordPressMediaUploadEnabled } from "@/lib/publish/wordpress-media-config";
+import { isImageGenerationEnabled } from "@/lib/images/image-generation-config";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 
 export const dynamic = "force-dynamic";
@@ -120,6 +124,24 @@ const MEDIA_UPLOAD_STATUS_STYLE: Record<WordPressMediaUploadStatus, string> = {
   uploaded: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
   skipped: "bg-zinc-100 text-zinc-500",
+};
+
+const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
+  not_generated: "생성 안 됨",
+  queued: "대기중",
+  generating: "생성중",
+  generated: "생성됨",
+  reviewed: "검토 완료",
+  failed: "생성 실패",
+};
+
+const GENERATED_IMAGE_STATUS_STYLE: Record<GeneratedImageStatus, string> = {
+  not_generated: "bg-zinc-100 text-zinc-500",
+  queued: "bg-zinc-100 text-zinc-500",
+  generating: "bg-blue-100 text-blue-700",
+  generated: "bg-amber-100 text-amber-700",
+  reviewed: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
 };
 
 export default async function ArticleDetailPage({
@@ -625,6 +647,112 @@ export default async function ArticleDetailPage({
 
               {article.featuredImageError && (
                 <p className="mt-3 text-xs text-red-600">오류: {article.featuredImageError}</p>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* Phase 2-7: Image Generation */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">Image Generation</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${GENERATED_IMAGE_STATUS_STYLE[article.generatedImageStatus]}`}
+            >
+              {GENERATED_IMAGE_STATUS_LABEL[article.generatedImageStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Featured Image Preparation에서 준비한 prompt/alt text/caption/style을
+            바탕으로 실제 또는 mock 이미지를 생성합니다. 실제 WordPress media
+            upload는 아직 수행하지 않습니다.
+          </p>
+          {!isImageGenerationEnabled() && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠ 실제 이미지 생성 provider는 비활성화되어 있어 mock 결과로 대체됩니다 (IMAGE_GENERATION_ENABLED=false)
+            </p>
+          )}
+
+          {article.featuredImageStatus === "not_ready" || !article.featuredImagePrompt ? (
+            <p className="mt-3 text-xs text-zinc-500">
+              먼저 위의 Featured Image Preparation에서 대표 이미지 정보를 준비하세요.
+            </p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <form action={generateFeaturedImageAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                >
+                  {article.generatedImageStatus === "not_generated" ? "이미지 생성" : "다시 생성"}
+                </button>
+              </form>
+              {(article.generatedImageStatus === "generated" || article.generatedImageStatus === "failed") && (
+                <form action={reviewGeneratedImageAction}>
+                  <input type="hidden" name="articleId" value={article.id} />
+                  <button
+                    type="submit"
+                    className="rounded border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+                  >
+                    생성 결과 검토 완료
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {article.generatedImageStatus !== "not_generated" && (
+            <>
+              <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium text-zinc-600">provider</dt>
+                  <dd className="text-zinc-500">{article.generatedImageProvider}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">model</dt>
+                  <dd className="text-zinc-500">{article.generatedImageModel || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">width × height</dt>
+                  <dd className="text-zinc-500 font-mono">
+                    {article.generatedImageWidth && article.generatedImageHeight
+                      ? `${article.generatedImageWidth} × ${article.generatedImageHeight}`
+                      : "해당 없음"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">format</dt>
+                  <dd className="text-zinc-500 font-mono">{article.generatedImageFormat || "해당 없음"}</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">image url</dt>
+                  <dd className="text-zinc-500 break-all">{article.generatedImageUrl || "해당 없음"}</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">prompt</dt>
+                  <dd className="text-zinc-500">{article.generatedImagePrompt || "해당 없음"}</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">negative prompt</dt>
+                  <dd className="text-zinc-500">{article.generatedImageNegativePrompt || "해당 없음"}</dd>
+                </div>
+              </dl>
+
+              {article.generatedImageUrl && (
+                <div className="mt-3">
+                  <div className="text-xs font-medium text-zinc-600">미리보기</div>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={article.generatedImageUrl}
+                    alt={article.featuredImageAltText || article.title}
+                    className="mt-1 max-h-64 rounded border border-zinc-200 object-cover"
+                  />
+                </div>
+              )}
+
+              {article.generatedImageError && (
+                <p className="mt-3 text-xs text-red-600">오류: {article.generatedImageError}</p>
               )}
             </>
           )}

@@ -159,6 +159,24 @@
 - [ ] 실제 API key가 없어도 `npm run lint`/`test`/`build`가 통과한다.
 - [ ] 기존 WordPress draft publish 흐름이 깨지지 않는다.
 
+## AC-16. Image Generation Integration (FR-17, Phase 2-7)
+- [ ] article에서 image generation request를 만들 수 있다.
+- [ ] mock provider가 `generated` 상태와 mock URL을 반환한다.
+- [ ] `IMAGE_GENERATION_ENABLED=false`이면 mock 또는 disabled-safe path가
+      동작하며 실제 API를 호출하지 않는다.
+- [ ] `featured_image_prompt`가 request로 반영된다.
+- [ ] negative prompt(text overlay, watermark, logo 등)가 포함된다.
+- [ ] 생성 성공 시 `articles.generated_image_*` 필드가 저장된다.
+- [ ] 생성 실패 시 `generated_image_status='failed'`가 저장되며, provider가
+      예외를 던져도 Runtime Error로 시스템이 터지지 않는다.
+- [ ] article 상세 UI에 generated image 상태와 미리보기가 표시된다.
+- [ ] generated image가 있으면 WordPress media upload preparation과 연결
+      가능한 payload(`featured_image_source_type='generated_url'` 등)가
+      만들어진다.
+- [ ] 기존 WordPress draft publish, featured image preparation 흐름이
+      깨지지 않는다.
+- [ ] 실제 API key가 없어도 `npm run lint`/`test`/`build`가 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

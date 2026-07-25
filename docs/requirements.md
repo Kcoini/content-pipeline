@@ -148,6 +148,20 @@ dry-run details에는 featured image upload 요약(상태/소스타입/파일명
 media_id`가 없으면 실제 게시 시에도 `featured_media`를 전송하지 않는다.
 자세한 내용은 `docs/phase-2-6-wordpress-media-upload-preparation.md` 참고.
 
+### FR-17. Image Generation Integration (Phase 2-7)
+사용자는 Phase 2-5에서 준비한 featured image prompt/alt text/caption/style을
+바탕으로 실제 또는 mock 이미지를 생성할 수 있다. 기본 provider는 `mock`이며
+(`IMAGE_GENERATION_PROVIDER=mock`), `IMAGE_GENERATION_ENABLED=false`(기본값)이면
+`openai`/`custom` provider도 mock으로 안전하게 대체된다. provider가 실패하거나
+예외를 던져도 시스템 전체가 Runtime Error로 터지지 않으며, 실패 시
+`generated_image_status='failed'`와 오류 메시지가 저장된다. 생성 결과는
+사람이 검토 완료로 표시할 수 있다(`generated_image_status='reviewed'`).
+`generated_image_url`/`local_path`가 있으면 Phase 2-6의 `featured_image_
+source_type`이 자동으로 `generated_url`/`local_file`로 갱신되어 WordPress
+media upload 준비와 연결된다. 실제 WordPress media upload와 `featured_media`
+설정은 이번 단계에서도 하지 않는다. 자세한 내용은
+`docs/phase-2-7-image-generation-integration.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

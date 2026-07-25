@@ -97,6 +97,21 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     featuredImageUploadPayload: {},
     featuredImageUploadError: null,
     featuredImageUploadAttemptedAt: null,
+    generatedImageStatus: "not_generated",
+    generatedImageProvider: "mock",
+    generatedImageModel: null,
+    generatedImagePrompt: null,
+    generatedImageNegativePrompt: null,
+    generatedImageUrl: null,
+    generatedImageLocalPath: null,
+    generatedImageWidth: null,
+    generatedImageHeight: null,
+    generatedImageFormat: null,
+    generatedImageMetadata: {},
+    generatedImageError: null,
+    generatedImageRequestedAt: null,
+    generatedImageCompletedAt: null,
+    generatedImageReviewedAt: null,
     ...overrides,
   };
 }
@@ -414,6 +429,41 @@ describe("publishArticleToWordPressDraft", () => {
             wordpressMediaId: null,
             wouldAttachAsFeatured: false,
           }),
+        }),
+      })
+    );
+  });
+
+  it("dry-run details에 generatedImage 요약(status/provider/model/imageUrl/width/height/format)이 포함된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        status: "reviewed",
+        generatedImageStatus: "generated",
+        generatedImageProvider: "mock",
+        generatedImageModel: "mock-image-generator-v1",
+        generatedImageUrl: "/mock/generated-images/article-1.webp",
+        generatedImageWidth: 1536,
+        generatedImageHeight: 864,
+        generatedImageFormat: "webp",
+      })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "dry_run",
+        details: expect.objectContaining({
+          generatedImage: {
+            status: "generated",
+            provider: "mock",
+            model: "mock-image-generator-v1",
+            imageUrl: "/mock/generated-images/article-1.webp",
+            width: 1536,
+            height: 864,
+            format: "webp",
+          },
         }),
       })
     );

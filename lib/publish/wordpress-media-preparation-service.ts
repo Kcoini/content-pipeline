@@ -28,12 +28,51 @@ function isDryRun(): boolean {
   return !(mediaUploadEnabled && publishEnabled);
 }
 
-function buildUploadPayload(article: Article, filename: string, mimeType: string): WordPressMediaUploadPayload {
+interface ResolvedMediaSource {
+  sourceType: Article["featuredImageSourceType"];
+  sourceUrl?: string;
+  localPath?: string;
+  /** Phase 2-7: generated image 정보로 source가 새로 채워진 경우 true */
+  updatedFromGeneratedImage: boolean;
+}
+
+/**
+ * featured_image_source_type이 아직 'none'이고 Phase 2-7에서 이미지가 생성되어
+ * 있으면, generated_image_url/local_path를 source로 사용할 수 있게 한다.
+ * 이미 다른 source가 설정되어 있으면 덮어쓰지 않는다.
+ */
+function resolveMediaSource(article: Article): ResolvedMediaSource {
+  if (article.featuredImageSourceType !== "none") {
+    return {
+      sourceType: article.featuredImageSourceType,
+      sourceUrl: article.featuredImageSourceUrl ?? undefined,
+      localPath: article.featuredImageLocalPath ?? undefined,
+      updatedFromGeneratedImage: false,
+    };
+  }
+
+  if (article.generatedImageUrl) {
+    return { sourceType: "generated_url", sourceUrl: article.generatedImageUrl, updatedFromGeneratedImage: true };
+  }
+
+  if (article.generatedImageLocalPath) {
+    return { sourceType: "local_file", localPath: article.generatedImageLocalPath, updatedFromGeneratedImage: true };
+  }
+
+  return { sourceType: "none", updatedFromGeneratedImage: false };
+}
+
+function buildUploadPayload(
+  article: Article,
+  source: ResolvedMediaSource,
+  filename: string,
+  mimeType: string
+): WordPressMediaUploadPayload {
   return {
     articleId: article.id,
-    sourceType: article.featuredImageSourceType,
-    sourceUrl: article.featuredImageSourceUrl ?? undefined,
-    localPath: article.featuredImageLocalPath ?? undefined,
+    sourceType: source.sourceType,
+    sourceUrl: source.sourceUrl,
+    localPath: source.localPath,
     filename,
     mimeType,
     altText: article.featuredImageAltText || "",
@@ -71,11 +110,27 @@ export async function prepareWordPressMediaUpload(articleId: string): Promise<Pr
   try {
     const filename = article.featuredImageFilename || getDefaultImageFilename(article);
     const mimeType = article.featuredImageMimeType || DEFAULT_MIME_TYPE;
-    const payload = buildUploadPayload(article, filename, mimeType);
+    const source = resolveMediaSource(article);
+    const payload = buildUploadPayload(article, source, filename, mimeType);
+
+    if (source.updatedFromGeneratedImage) {
+      await logEvent({
+        type: "wordpress_media_source_updated_from_generated_image",
+        status: "info",
+        message: `기사(${articleId})의 featured image source가 생성된 이미지(${source.sourceType})로 갱신되었습니다.`,
+        articleId,
+        themeId: article.themeId,
+        targetType: "article",
+        targetId: articleId,
+        details: { sourceType: source.sourceType, sourceUrl: source.sourceUrl ?? null, localPath: source.localPath ?? null },
+      });
+    }
 
     await saveWordPressMediaUploadPayload({
       articleId,
-      sourceType: payload.sourceType,
+      sourceType: source.sourceType,
+      sourceUrl: source.updatedFromGeneratedImage ? source.sourceUrl : undefined,
+      localPath: source.updatedFromGeneratedImage ? source.localPath : undefined,
       filename,
       mimeType,
       payload,
@@ -99,12 +154,14 @@ export async function prepareWordPressMediaUpload(articleId: string): Promise<Pr
 
     try {
       const fallbackFilename = article.featuredImageFilename || getDefaultImageFilename(article);
+      const fallbackMimeType = article.featuredImageMimeType || DEFAULT_MIME_TYPE;
+      const fallbackSource = resolveMediaSource(article);
       await saveWordPressMediaUploadPayload({
         articleId,
-        sourceType: article.featuredImageSourceType,
+        sourceType: fallbackSource.sourceType,
         filename: fallbackFilename,
-        mimeType: article.featuredImageMimeType || DEFAULT_MIME_TYPE,
-        payload: buildUploadPayload(article, fallbackFilename, article.featuredImageMimeType || DEFAULT_MIME_TYPE),
+        mimeType: fallbackMimeType,
+        payload: buildUploadPayload(article, fallbackSource, fallbackFilename, fallbackMimeType),
         status: "failed",
         error: message,
       });

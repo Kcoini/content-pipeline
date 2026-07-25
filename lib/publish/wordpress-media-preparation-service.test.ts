@@ -81,6 +81,21 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     featuredImageUploadPayload: {},
     featuredImageUploadError: null,
     featuredImageUploadAttemptedAt: null,
+    generatedImageStatus: "not_generated",
+    generatedImageProvider: "mock",
+    generatedImageModel: null,
+    generatedImagePrompt: null,
+    generatedImageNegativePrompt: null,
+    generatedImageUrl: null,
+    generatedImageLocalPath: null,
+    generatedImageWidth: null,
+    generatedImageHeight: null,
+    generatedImageFormat: null,
+    generatedImageMetadata: {},
+    generatedImageError: null,
+    generatedImageRequestedAt: null,
+    generatedImageCompletedAt: null,
+    generatedImageReviewedAt: null,
     ...overrides,
   };
 }
@@ -130,6 +145,41 @@ describe("prepareWordPressMediaUpload", () => {
 
     expect(result.payload!.altText).toBe("요양원 요양병원 선택 기준을 비교하는 일러스트");
     expect(result.payload!.caption).toBe("요양시설 선택 전 확인할 기준을 정리했습니다.");
+  });
+
+  it("generated image가 있으면(source_type=none) generated_image_url을 source로 사용하는 payload가 만들어진다 (Phase 2-7 연결)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        featuredImageSourceType: "none",
+        generatedImageUrl: "/mock/generated-images/article-1.webp",
+      })
+    );
+
+    const result = await prepareWordPressMediaUpload("article-1");
+
+    expect(result.payload!.sourceType).toBe("generated_url");
+    expect(result.payload!.sourceUrl).toBe("/mock/generated-images/article-1.webp");
+    expect(saveWordPressMediaUploadPayload).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceType: "generated_url", sourceUrl: "/mock/generated-images/article-1.webp" })
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_media_source_updated_from_generated_image" })
+    );
+  });
+
+  it("이미 다른 source_type이 설정되어 있으면 generated image로 덮어쓰지 않는다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        featuredImageSourceType: "external_url",
+        featuredImageSourceUrl: "https://example.com/existing.jpg",
+        generatedImageUrl: "/mock/generated-images/article-1.webp",
+      })
+    );
+
+    const result = await prepareWordPressMediaUpload("article-1");
+
+    expect(result.payload!.sourceType).toBe("external_url");
+    expect(result.payload!.sourceUrl).toBe("https://example.com/existing.jpg");
   });
 
   it("filename이 slug 기반으로 생성된다", async () => {

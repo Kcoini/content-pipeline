@@ -23,6 +23,7 @@ import {
   prepareWordPressMediaUpload,
   confirmWordPressMediaUploadDryRun,
 } from "@/lib/publish/wordpress-media-preparation-service";
+import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -305,6 +306,58 @@ export async function confirmWordPressMediaUploadDryRunAction(formData: FormData
 
   try {
     const result = await confirmWordPressMediaUploadDryRun(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Phase 2-5에서 준비한 featured image prompt/alt text/caption/style을 바탕으로
+ * 실제 또는 mock 이미지를 생성한다 (Phase 2-7). provider가 실패해도 Runtime
+ * Error로 터지지 않고 사용자 메시지로 반환된다.
+ */
+export async function generateFeaturedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generateFeaturedImage(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** 생성된 이미지를 사람이 검토 완료했음을 표시한다 (generated_image_status='reviewed'). */
+export async function reviewGeneratedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await reviewGeneratedImage(articleId);
     message = result.message;
     isError = !result.success;
   } catch (error) {

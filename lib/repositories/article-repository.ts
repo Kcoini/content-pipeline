@@ -8,6 +8,8 @@ import type {
   SeoPluginProvider,
   WordPressMediaSourceType,
   WordPressMediaUploadStatus,
+  ImageGenerationProvider,
+  GeneratedImageStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -139,6 +141,21 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     featuredImageUploadPayload: row.featured_image_upload_payload ?? {},
     featuredImageUploadError: row.featured_image_upload_error,
     featuredImageUploadAttemptedAt: row.featured_image_upload_attempted_at,
+    generatedImageStatus: row.generated_image_status ?? "not_generated",
+    generatedImageProvider: row.generated_image_provider ?? "mock",
+    generatedImageModel: row.generated_image_model,
+    generatedImagePrompt: row.generated_image_prompt,
+    generatedImageNegativePrompt: row.generated_image_negative_prompt,
+    generatedImageUrl: row.generated_image_url,
+    generatedImageLocalPath: row.generated_image_local_path,
+    generatedImageWidth: row.generated_image_width,
+    generatedImageHeight: row.generated_image_height,
+    generatedImageFormat: row.generated_image_format,
+    generatedImageMetadata: row.generated_image_metadata ?? {},
+    generatedImageError: row.generated_image_error,
+    generatedImageRequestedAt: row.generated_image_requested_at,
+    generatedImageCompletedAt: row.generated_image_completed_at,
+    generatedImageReviewedAt: row.generated_image_reviewed_at,
   };
 }
 
@@ -671,6 +688,9 @@ export async function markFeaturedImageReviewed(articleId: string): Promise<Arti
 export interface SaveWordPressMediaUploadPayloadInput {
   articleId: string;
   sourceType: WordPressMediaSourceType;
+  /** Phase 2-7: generated image URL/local path로부터 source가 갱신된 경우에만 전달한다. */
+  sourceUrl?: string;
+  localPath?: string;
   filename: string;
   mimeType: string;
   payload: WordPressMediaUploadPayload;
@@ -682,7 +702,8 @@ export interface SaveWordPressMediaUploadPayloadInput {
 /**
  * WordPress media upload 준비 정보(payload)를 저장한다 (Phase 2-6).
  * 실제 이미지 생성/업로드는 하지 않으며, WordPress media endpoint에 전달할
- * "준비된 payload"만 저장한다.
+ * "준비된 payload"만 저장한다. Phase 2-7: generated image의 URL/local path로
+ * source가 갱신된 경우 sourceUrl/localPath도 함께 저장한다.
  */
 export async function saveWordPressMediaUploadPayload(
   input: SaveWordPressMediaUploadPayloadInput
@@ -694,17 +715,21 @@ export async function saveWordPressMediaUploadPayload(
 
   const supabase = createServerSupabaseClient();
 
+  const update: Partial<ArticleRow> = {
+    featured_image_source_type: input.sourceType,
+    featured_image_filename: input.filename,
+    featured_image_mime_type: input.mimeType,
+    featured_image_upload_status: input.status,
+    featured_image_upload_payload: input.payload as unknown as Record<string, unknown>,
+    featured_image_upload_error: input.error ?? null,
+    featured_image_upload_attempted_at: new Date().toISOString(),
+  };
+  if (input.sourceUrl !== undefined) update.featured_image_source_url = input.sourceUrl;
+  if (input.localPath !== undefined) update.featured_image_local_path = input.localPath;
+
   const { data, error } = await supabase
     .from("articles")
-    .update({
-      featured_image_source_type: input.sourceType,
-      featured_image_filename: input.filename,
-      featured_image_mime_type: input.mimeType,
-      featured_image_upload_status: input.status,
-      featured_image_upload_payload: input.payload as unknown as Record<string, unknown>,
-      featured_image_upload_error: input.error ?? null,
-      featured_image_upload_attempted_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq("id", input.articleId)
     .select()
     .single();
@@ -742,6 +767,136 @@ export async function updateWordPressMediaUploadStatus(
 
   if (error || !data) {
     throw new Error(`WordPress media upload 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface MarkGeneratedImageGeneratingInput {
+  articleId: string;
+  provider: ImageGenerationProvider;
+  model: string | null;
+  prompt: string;
+  negativePrompt: string | null;
+}
+
+/**
+ * 이미지 생성을 시작하기 전 상태를 'generating'으로 저장한다 (Phase 2-7).
+ * requested_at을 이 시점에 기록한다.
+ */
+export async function markGeneratedImageGenerating(input: MarkGeneratedImageGeneratingInput): Promise<Article> {
+  const existing = await getArticleById(input.articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(input.articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      generated_image_status: "generating",
+      generated_image_provider: input.provider,
+      generated_image_model: input.model,
+      generated_image_prompt: input.prompt,
+      generated_image_negative_prompt: input.negativePrompt,
+      generated_image_requested_at: new Date().toISOString(),
+    })
+    .eq("id", input.articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`이미지 생성 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveGeneratedImageResultInput {
+  articleId: string;
+  status: GeneratedImageStatus;
+  provider: ImageGenerationProvider;
+  model?: string | null;
+  imageUrl?: string | null;
+  localPath?: string | null;
+  width?: number | null;
+  height?: number | null;
+  format?: string | null;
+  metadata: Record<string, unknown>;
+  error?: string | null;
+}
+
+/** 이미지 생성 결과(성공/실패)를 저장한다. format_metadata.generated_image에도 요약을 저장한다. */
+export async function saveGeneratedImageResult(input: SaveGeneratedImageResultInput): Promise<Article> {
+  const existing = await getArticleById(input.articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(input.articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const formatMetadata = {
+    ...existing.formatMetadata,
+    generated_image: {
+      status: input.status,
+      provider: input.provider,
+      model: input.model ?? null,
+      image_url: input.imageUrl ?? null,
+      width: input.width ?? null,
+      height: input.height ?? null,
+      format: input.format ?? null,
+    },
+  };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      generated_image_status: input.status,
+      generated_image_provider: input.provider,
+      generated_image_model: input.model ?? null,
+      generated_image_url: input.imageUrl ?? null,
+      generated_image_local_path: input.localPath ?? null,
+      generated_image_width: input.width ?? null,
+      generated_image_height: input.height ?? null,
+      generated_image_format: input.format ?? null,
+      generated_image_metadata: input.metadata,
+      generated_image_error: input.error ?? null,
+      generated_image_completed_at: new Date().toISOString(),
+      format_metadata: formatMetadata,
+    })
+    .eq("id", input.articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`이미지 생성 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/** 생성된 이미지를 사람이 검토 완료했음을 표시한다 (generated_image_status='reviewed'). */
+export async function markGeneratedImageReviewed(articleId: string): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      generated_image_status: "reviewed",
+      generated_image_reviewed_at: new Date().toISOString(),
+    })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`생성된 이미지 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

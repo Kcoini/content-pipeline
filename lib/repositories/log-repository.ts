@@ -91,7 +91,14 @@ export type LogEventType =
   | "wordpress_media_upload_dry_run"
   | "wordpress_media_upload_skipped_disabled"
   | "wordpress_featured_media_prepared"
-  | "wordpress_featured_media_skipped_no_media_id";
+  | "wordpress_featured_media_skipped_no_media_id"
+  // Phase 2-7: Image Generation Integration 이벤트
+  | "image_generation_started"
+  | "image_generation_completed"
+  | "image_generation_failed"
+  | "image_generation_skipped_disabled"
+  | "generated_image_reviewed"
+  | "wordpress_media_source_updated_from_generated_image";
 
 export type LogStatus = "success" | "failed" | "info";
 
