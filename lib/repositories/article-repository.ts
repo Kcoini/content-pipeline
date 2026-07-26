@@ -16,6 +16,7 @@ import type {
   WordPressFinalDraftReviewStatus,
   PublishQualityGateStatus,
   PublicPublishApprovalStatus,
+  PublicPublishStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -194,6 +195,13 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     publicPublishApprovedBy: row.public_publish_approved_by,
     publicPublishApprovalError: row.public_publish_approval_error,
     publicPublishApprovalNotes: row.public_publish_approval_notes,
+    publicPublishStatus: row.public_publish_status ?? "not_published",
+    publicPublished: row.public_published ?? false,
+    publicPublishedAt: row.public_published_at,
+    publicPublishPostId: row.public_publish_post_id,
+    publicPublishUrl: row.public_publish_url,
+    publicPublishError: row.public_publish_error,
+    publicPublishAttemptedAt: row.public_publish_attempted_at,
   };
 }
 
@@ -1257,6 +1265,56 @@ export async function savePublicPublishApprovalResult(
 
   if (error || !data) {
     throw new Error(`공개 게시 승인 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SavePublicPublishResultInput {
+  status: PublicPublishStatus;
+  published?: boolean;
+  /** 실제 공개(publish) 완료 시각. */
+  publishedAt?: string | null;
+  postId?: number | null;
+  postUrl?: string | null;
+  errorMessage?: string | null;
+}
+
+/**
+ * WordPress Public Publish Test 결과를 저장한다 (Phase 2-17).
+ * public_publish_attempted_at은 성공/실패/차단과 무관하게 항상 현재 시각으로
+ * 갱신한다 (마지막으로 시도된 시각을 추적하기 위함).
+ */
+export async function savePublicPublishResult(
+  articleId: string,
+  input: SavePublicPublishResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    public_publish_status: input.status,
+    public_publish_attempted_at: new Date().toISOString(),
+  };
+  if (input.published !== undefined) update.public_published = input.published;
+  if (input.publishedAt !== undefined) update.public_published_at = input.publishedAt;
+  if (input.postId !== undefined) update.public_publish_post_id = input.postId;
+  if (input.postUrl !== undefined) update.public_publish_url = input.postUrl;
+  if (input.errorMessage !== undefined) update.public_publish_error = input.errorMessage;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress Public Publish 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

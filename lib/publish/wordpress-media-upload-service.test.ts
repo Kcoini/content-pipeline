@@ -130,6 +130,13 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     publicPublishApprovedBy: null,
     publicPublishApprovalError: null,
     publicPublishApprovalNotes: null,
+    publicPublishStatus: "not_published",
+    publicPublished: false,
+    publicPublishedAt: null,
+    publicPublishPostId: null,
+    publicPublishUrl: null,
+    publicPublishError: null,
+    publicPublishAttemptedAt: null,
     ...overrides,
   };
 }

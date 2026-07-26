@@ -32,6 +32,7 @@ import {
 import { reviewWordPressFinalDraft } from "@/lib/publish/wordpress-final-draft-review-service";
 import { runPublishQualityGate } from "@/lib/publish/publish-quality-gate-service";
 import { approvePublicPublish, revokePublicPublishApproval } from "@/lib/publish/public-publish-approval-service";
+import { publishApprovedArticleToWordPress } from "@/lib/publish/wordpress-public-publish-service";
 import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -655,6 +656,47 @@ export async function revokePublicPublishApprovalAction(formData: FormData): Pro
  * 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
  */
 export async function checkPublicPublishApprovalStatusAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
+}
+
+/**
+ * 승인된 article 1개를 WordPress에 실제 공개(publish)한다 (Phase 2-17).
+ * Publish Quality Gate/Human Approval을 모두 통과하고 WordPress draft post가
+ * 존재하는 경우에만 실행되며, guard를 통과하지 못하면 WordPress API를 호출
+ * 하지 않는다. 여러 article을 한 번에 처리하지 않고 항상 article 1개만
+ * 처리한다.
+ */
+export async function publishApprovedArticleToWordPressAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await publishApprovedArticleToWordPress(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * WordPress public publish 상태를 다시 확인한다 (Phase 2-17). 별도의 API
+ * 호출 없이 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
+ */
+export async function checkPublicPublishStatusAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
 
   revalidatePath(`/articles/${articleId}`);

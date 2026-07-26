@@ -11,7 +11,9 @@ vi.mock("@/lib/repositories/publish-repository", () => ({
   getSuccessfulWordPressDraft: (...args: unknown[]) => getSuccessfulWordPressDraft(...args),
 }));
 
-const { assertCanPublicPublish, PublicPublishNotAllowedError } = await import("./public-publish-guards");
+const { assertCanPublicPublish, checkPublicPublishGuard, PublicPublishNotAllowedError } = await import(
+  "./public-publish-guards"
+);
 
 function makeApprovedArticle(overrides: Partial<Article> = {}): Article {
   return {
@@ -118,6 +120,13 @@ function makeApprovedArticle(overrides: Partial<Article> = {}): Article {
     publicPublishApprovedBy: "editor-kim",
     publicPublishApprovalError: null,
     publicPublishApprovalNotes: null,
+    publicPublishStatus: "not_published",
+    publicPublished: false,
+    publicPublishedAt: null,
+    publicPublishPostId: null,
+    publicPublishUrl: null,
+    publicPublishError: null,
+    publicPublishAttemptedAt: null,
     ...overrides,
   };
 }
@@ -163,5 +172,44 @@ describe("assertCanPublicPublish", () => {
     getArticleById.mockResolvedValue(undefined);
 
     await expect(assertCanPublicPublish("missing")).rejects.toThrow(PublicPublishNotAllowedError);
+  });
+});
+
+describe("checkPublicPublishGuard", () => {
+  it("모든 조건을 만족하면 canPublish=true와 WordPress post id/url을 반환한다", async () => {
+    getArticleById.mockResolvedValue(makeApprovedArticle());
+
+    const result = await checkPublicPublishGuard("article-1");
+
+    expect(result.canPublish).toBe(true);
+    expect(result.wordpressPostId).toBe("42");
+    expect(result.wordpressPostUrl).toBe("https://example-blog.test/?p=42");
+  });
+
+  it("이미 공개된 기사(public_published=true)는 alreadyPublished=true로 차단된다", async () => {
+    getArticleById.mockResolvedValue(makeApprovedArticle({ publicPublished: true }));
+
+    const result = await checkPublicPublishGuard("article-1");
+
+    expect(result.canPublish).toBe(false);
+    expect(result.alreadyPublished).toBe(true);
+  });
+
+  it("publish_blocked_reason이 존재하면 차단된다", async () => {
+    getArticleById.mockResolvedValue(makeApprovedArticle({ publishBlockedReason: "출처 없음" }));
+
+    const result = await checkPublicPublishGuard("article-1");
+
+    expect(result.canPublish).toBe(false);
+    expect(result.reasons.some((reason) => reason.includes("publish_blocked_reason"))).toBe(true);
+  });
+
+  it("article.status가 reviewed/published가 아니면 차단된다", async () => {
+    getArticleById.mockResolvedValue(makeApprovedArticle({ status: "draft" }));
+
+    const result = await checkPublicPublishGuard("article-1");
+
+    expect(result.canPublish).toBe(false);
+    expect(result.reasons.some((reason) => reason.includes("article.status"))).toBe(true);
   });
 });

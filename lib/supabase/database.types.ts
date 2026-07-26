@@ -189,6 +189,9 @@ export type PublishQualityGateStatus = "not_checked" | "ready_to_publish" | "nee
 /** Phase 2-16: Human Approval Before Public Publish 상태 */
 export type PublicPublishApprovalStatus = "not_requested" | "approved" | "revoked" | "blocked" | "failed";
 
+/** Phase 2-17: WordPress Public Publish Test 상태 */
+export type PublicPublishStatus = "not_published" | "published" | "blocked" | "failed" | "skipped_already_published";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -305,6 +308,14 @@ export type ArticleRow = {
   public_publish_approved_by: string | null;
   public_publish_approval_error: string | null;
   public_publish_approval_notes: string | null;
+  /** Phase 2-17: WordPress Public Publish Test 결과 */
+  public_publish_status: PublicPublishStatus;
+  public_published: boolean;
+  public_published_at: string | null;
+  public_publish_post_id: number | null;
+  public_publish_url: string | null;
+  public_publish_error: string | null;
+  public_publish_attempted_at: string | null;
 };
 
 export type ArticleSourceRow = {

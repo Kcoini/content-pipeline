@@ -113,6 +113,13 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     public_publish_approved_by: null,
     public_publish_approval_error: null,
     public_publish_approval_notes: null,
+    public_publish_status: "not_published",
+    public_published: false,
+    public_published_at: null,
+    public_publish_post_id: null,
+    public_publish_url: null,
+    public_publish_error: null,
+    public_publish_attempted_at: null,
     ...overrides,
   };
 }
@@ -226,6 +233,13 @@ describe("mapArticleRowToArticle", () => {
       publicPublishApprovedBy: null,
       publicPublishApprovalError: null,
       publicPublishApprovalNotes: null,
+      publicPublishStatus: "not_published",
+      publicPublished: false,
+      publicPublishedAt: null,
+      publicPublishPostId: null,
+      publicPublishUrl: null,
+      publicPublishError: null,
+      publicPublishAttemptedAt: null,
     });
   });
 

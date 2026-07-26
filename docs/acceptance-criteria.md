@@ -430,6 +430,32 @@
       제공된다. 실제 "공개 게시" 버튼은 존재하지 않는다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-26. WordPress Public Publish Test (FR-27, Phase 2-17)
+- [ ] `publish_ready=false`이면 WordPress API를 호출하지 않고 blocked
+      처리한다.
+- [ ] `publish_quality_gate_status`가 `ready_to_publish`가 아니면 blocked
+      처리한다.
+- [ ] `public_publish_approval_status`가 `approved`가 아니면 blocked
+      처리한다.
+- [ ] `public_publish_approved=false`이면 blocked 처리한다.
+- [ ] WordPress draft post id가 없으면 blocked 처리한다.
+- [ ] guard를 통과한 경우에만 `publishWordPressPost`가 호출된다.
+- [ ] `publishWordPressPost`의 payload는 `status='publish'`만 포함한다.
+- [ ] 성공 시 `articles.public_publish_status='published'`로 저장된다.
+- [ ] 성공 시 `public_published=true`가 된다.
+- [ ] 성공 시 `public_publish_url`이 저장된다.
+- [ ] 이미 published된 기사는 `skipped_already_published`로 처리되고
+      WordPress API를 다시 호출하지 않는다.
+- [ ] 실패 시 안전한 오류 메시지가 저장된다.
+- [ ] `publish_logs`에 `target='wordpress_public_publish'`로 저장된다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] Authorization header/Application Password/Basic Auth 문자열/API key가
+      로그에 저장되지 않는다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`에 저장되지 않는다.
+- [ ] 공개 게시는 단일 article에 대해서만 실행되며 일괄 publish 기능은
+      존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

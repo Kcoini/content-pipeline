@@ -35,7 +35,10 @@ import {
   approvePublicPublishAction,
   revokePublicPublishApprovalAction,
   checkPublicPublishApprovalStatusAction,
+  publishApprovedArticleToWordPressAction,
+  checkPublicPublishStatusAction,
 } from "./actions";
+import { ConfirmSubmitButton } from "./confirm-submit-button";
 import type {
   WordPressMetadataStatus,
   SeoPluginMetadataStatus,
@@ -49,6 +52,7 @@ import type {
   WordPressFinalDraftReviewStatus,
   PublishQualityGateStatus,
   PublicPublishApprovalStatus,
+  PublicPublishStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
@@ -262,6 +266,22 @@ const PUBLIC_PUBLISH_APPROVAL_STATUS_STYLE: Record<PublicPublishApprovalStatus, 
   revoked: "bg-amber-100 text-amber-700",
   blocked: "bg-red-100 text-red-700",
   failed: "bg-red-100 text-red-700",
+};
+
+const PUBLIC_PUBLISH_STATUS_LABEL: Record<PublicPublishStatus, string> = {
+  not_published: "공개 게시 안 함",
+  published: "공개 게시됨",
+  blocked: "공개 게시 차단됨",
+  failed: "공개 게시 실패",
+  skipped_already_published: "이미 공개됨 (건너뜀)",
+};
+
+const PUBLIC_PUBLISH_STATUS_STYLE: Record<PublicPublishStatus, string> = {
+  not_published: "bg-zinc-100 text-zinc-500",
+  published: "bg-green-100 text-green-700",
+  blocked: "bg-red-100 text-red-700",
+  failed: "bg-red-100 text-red-700",
+  skipped_already_published: "bg-amber-100 text-amber-700",
 };
 
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
@@ -1763,6 +1783,138 @@ export default async function ArticleDetailPage({
                       className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                     >
                       승인 상태 새로고침
+                    </button>
+                  </form>
+                </div>
+              </>
+            );
+          })()}
+        </section>
+
+        {/* Phase 2-17: WordPress Public Publish Test */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">WordPress Public Publish Test</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${PUBLIC_PUBLISH_STATUS_STYLE[article.publicPublishStatus]}`}
+            >
+              {PUBLIC_PUBLISH_STATUS_LABEL[article.publicPublishStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Publish Quality Gate와 Human Approval을 모두 통과한 기사 1개에
+            한해, WordPress draft post를 <strong>실제 공개(publish) 상태로
+            변경</strong>하는 테스트입니다. 자동 공개가 아니며, 아래 버튼을
+            직접 눌러야만 실행됩니다. 여러 기사를 한 번에 공개하는 기능은
+            제공하지 않습니다.
+          </p>
+
+          {(() => {
+            const canPublishNow =
+              article.publishReady &&
+              article.publishQualityGateStatus === "ready_to_publish" &&
+              article.publicPublishApprovalStatus === "approved" &&
+              article.publicPublishApproved &&
+              hasWordPressSuccess &&
+              !article.publicPublished;
+
+            return (
+              <>
+                <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="font-medium text-zinc-600">publish_ready</dt>
+                    <dd className={article.publishReady ? "font-medium text-green-700" : "text-zinc-500"}>
+                      {article.publishReady ? "예" : "아니오"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">publish_quality_gate_status</dt>
+                    <dd className="text-zinc-500">{article.publishQualityGateStatus}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">public_publish_approval_status</dt>
+                    <dd className="text-zinc-500">{article.publicPublishApprovalStatus}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">public_publish_approved</dt>
+                    <dd className={article.publicPublishApproved ? "font-medium text-green-700" : "text-zinc-500"}>
+                      {article.publicPublishApproved ? "예" : "아니오"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">WordPress draft post id</dt>
+                    <dd className="text-zinc-500">{latestWordPressLog?.externalPostId ?? "해당 없음"}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">public_published</dt>
+                    <dd className={article.publicPublished ? "font-medium text-green-700" : "text-zinc-500"}>
+                      {article.publicPublished ? "예" : "아니오"}
+                    </dd>
+                  </div>
+                  {article.publicPublishedAt && (
+                    <div>
+                      <dt className="font-medium text-zinc-600">공개 게시 시각</dt>
+                      <dd className="text-zinc-500">
+                        {new Date(article.publicPublishedAt).toLocaleString("ko-KR")}
+                      </dd>
+                    </div>
+                  )}
+                  {article.publicPublishUrl && (
+                    <div className="sm:col-span-2">
+                      <dt className="font-medium text-zinc-600">공개된 글 URL</dt>
+                      <dd className="text-zinc-500 break-all">
+                        <a
+                          href={article.publicPublishUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 underline"
+                        >
+                          {article.publicPublishUrl}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+
+                {article.publicPublishError && (
+                  <p className="mt-3 text-xs text-red-600">오류: {article.publicPublishError}</p>
+                )}
+
+                {article.publicPublished && (
+                  <p className="mt-3 text-xs font-medium text-green-700">
+                    ✓ 이 기사는 이미 WordPress에 실제 공개(publish)되어 있습니다.
+                    다시 공개 게시를 실행해도 중복 공개되지 않습니다.
+                  </p>
+                )}
+
+                {!canPublishNow && !article.publicPublished && (
+                  <p className="mt-3 text-xs font-medium text-amber-700">
+                    ⚠ 아직 공개 게시할 수 없습니다. publish_ready=true,
+                    publish_quality_gate_status=ready_to_publish,
+                    public_publish_approval_status=approved,
+                    public_publish_approved=true, WordPress draft post 존재
+                    조건을 모두 만족해야 합니다.
+                  </p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <form action={publishApprovedArticleToWordPressAction}>
+                    <input type="hidden" name="articleId" value={article.id} />
+                    <ConfirmSubmitButton
+                      disabled={!canPublishNow}
+                      confirmMessage="이 작업은 WordPress 글을 실제 공개 상태로 변경합니다. 계속할까요?"
+                      className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      WordPress 공개 게시 테스트 실행 (실제 공개 게시)
+                    </ConfirmSubmitButton>
+                  </form>
+                  <form action={checkPublicPublishStatusAction}>
+                    <input type="hidden" name="articleId" value={article.id} />
+                    <button
+                      type="submit"
+                      className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                    >
+                      공개 게시 상태 새로고침
                     </button>
                   </form>
                 </div>

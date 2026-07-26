@@ -321,6 +321,24 @@ Phase 2-15 Publish Quality Gate를 통과한(`publish_quality_gate_status=
 publish를 실행하지 않음). 자세한 내용은
 `docs/phase-2-16-human-approval-before-public-publish.md` 참고.
 
+### FR-27. WordPress Public Publish Test (Phase 2-17)
+Phase 2-15 Publish Quality Gate와 Phase 2-16 Human Approval Before Public
+Publish를 모두 통과한 article 1개에 한해서만, WordPress draft post를
+실제 `publish` 상태로 변경할 수 있다. 이 기능은 자동 공개 게시가 아니며,
+사람이 article 상세 페이지에서 버튼을 직접 클릭하고 confirm 대화상자를
+거쳤을 때만 실행된다. `publish_ready != true`, `publish_quality_gate_status
+!= 'ready_to_publish'`, `public_publish_approval_status != 'approved'`,
+`public_publish_approved != true`, WordPress draft post id가 없거나
+`publish_blocked_reason`이 존재하는 경우 WordPress API를 절대 호출하지
+않고 차단한다. 이미 공개된 article은 중복 publish하지 않고
+`skipped_already_published`로 처리한다. 여러 article을 한 번에
+처리하는 일괄 publish 기능은 제공하지 않는다. 결과는
+`articles.public_publish_*`/`public_published` 컬럼과 `publish_logs`(target=
+`wordpress_public_publish`)에 저장되며, 기사 본문 전체·인증 정보·
+WordPress raw response 전체는 저장하지 않는다. `pipeline_logs`는
+`event_name` 컬럼 기준으로 `wordpress_public_publish_*` 이벤트를 기록한다.
+자세한 내용은 `docs/phase-2-17-wordpress-public-publish-test.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

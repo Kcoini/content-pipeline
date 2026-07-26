@@ -176,7 +176,15 @@ export type LogEventType =
   | "public_publish_approval_failed"
   | "public_publish_approval_duplicate"
   | "public_publish_approval_revoked"
-  | "public_publish_approval_revoke_failed";
+  | "public_publish_approval_revoke_failed"
+  // Phase 2-17: WordPress Public Publish Test 이벤트
+  | "wordpress_public_publish_started"
+  | "wordpress_public_publish_completed"
+  | "wordpress_public_publish_failed"
+  | "wordpress_public_publish_blocked"
+  | "wordpress_public_publish_skipped_already_published"
+  | "wordpress_public_publish_guard_passed"
+  | "wordpress_public_publish_guard_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

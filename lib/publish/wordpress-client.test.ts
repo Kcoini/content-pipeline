@@ -10,6 +10,7 @@ import {
   getMediaItem,
   updateSeoPluginMetadata,
   verifySeoPluginMetadata,
+  publishWordPressPost,
 } from "./wordpress-client";
 
 const ENV_KEYS = ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"] as const;
@@ -658,6 +659,183 @@ describe("updateDraftFeaturedMedia", () => {
     );
 
     const result = await updateDraftFeaturedMedia(1, 1);
+
+    const serialized = JSON.stringify(result).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("dummy-app-password-for-tests");
+    expect(serialized).not.toContain("basic ");
+  });
+});
+
+describe("publishWordPressPost", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 실패를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await publishWordPressPost(42);
+
+    expect(result.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("payload에 status='publish'만 전송한다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 42,
+          link: "https://example-blog.test/2026/07/26/post/",
+          status: "publish",
+          slug: "post",
+          modified: "2026-07-26T00:00:00.000Z",
+          date: "2026-07-26T00:00:00.000Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await publishWordPressPost(42);
+
+    expect(result.success).toBe(true);
+    const [endpoint, init] = fetchMock.mock.calls[0];
+    expect(String(endpoint)).toContain("/wp-json/wp/v2/posts/42");
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({ status: "publish" });
+  });
+
+  it("Authorization header를 사용하고 password를 평문으로 보내지 않는다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 1,
+          link: "https://example-blog.test/?p=1",
+          status: "publish",
+          slug: "post",
+          modified: "2026-07-26T00:00:00.000Z",
+          date: "2026-07-26T00:00:00.000Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishWordPressPost(1);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toMatch(/^Basic /);
+    expect(headers.Authorization).not.toContain("dummy-app-password-for-tests");
+  });
+
+  it("성공 시 status=publish와 함께 postId/link/slug/modified/date를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 99,
+            link: "https://example-blog.test/2026/07/26/post/",
+            status: "publish",
+            slug: "post",
+            modified: "2026-07-26T00:00:00.000Z",
+            date: "2026-07-26T00:00:00.000Z",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const result = await publishWordPressPost(99);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.postId).toBe(99);
+      expect(result.status).toBe("publish");
+      expect(result.link).toBe("https://example-blog.test/2026/07/26/post/");
+    }
+  });
+
+  it("WordPress 응답 status가 publish가 아니면 실패로 처리한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 1,
+            link: "https://example-blog.test/?p=1",
+            status: "draft",
+            slug: "post",
+            modified: "2026-07-26T00:00:00.000Z",
+            date: "2026-07-26T00:00:00.000Z",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const result = await publishWordPressPost(1);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("HTTP 오류 응답이면 statusCode/reasonCandidate를 포함한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("forbidden", { status: 403, statusText: "Forbidden" }))
+    );
+
+    const result = await publishWordPressPost(1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.statusCode).toBe(403);
+      expect(result.reasonCandidate.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 안전한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await publishWordPressPost(1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errorMessage).toContain("network down");
+    }
+  });
+
+  it("반환값에 Authorization header/password가 포함되지 않는다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 1,
+            link: "https://example-blog.test/?p=1",
+            status: "publish",
+            slug: "post",
+            modified: "2026-07-26T00:00:00.000Z",
+            date: "2026-07-26T00:00:00.000Z",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const result = await publishWordPressPost(1);
 
     const serialized = JSON.stringify(result).toLowerCase();
     expect(serialized).not.toContain("authorization");
