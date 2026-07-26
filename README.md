@@ -52,12 +52,12 @@ npm install
 커밋되지 않는다).
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-# AI 모델 호출용 API Key (evals/article-quality.eval.yaml의 model 설정 참고)
-ANTHROPIC_API_KEY=...
+cp .env.example .env.local
 ```
+
+`.env.local`은 `.gitignore`에 의해 git에 커밋되지 않는다. 전체 환경변수
+목록과 설명은 [`docs/environment-variables.md`](docs/environment-variables.md)를
+참고한다.
 
 ### 3. DB 스키마 적용
 Supabase 프로젝트의 SQL Editor에서 `db/schema.sql`을 실행한다.
@@ -84,6 +84,23 @@ http://localhost:3000 에서 확인한다.
 기록된다 (FR-10). 계약 검사를 통과하지 못하면 해당 단계에서 파이프라인이
 즉시 중단된다.
 
+## Phase 2: WordPress 발행 MVP
+
+Phase 2(2-1 ~ 2-17)에서 WordPress 기반 수익형 블로그 자동 발행 기능을
+추가했다. 글쓰기 모드 선택 → WordPress draft 생성 → media/SEO metadata
+반영 → 다단계 품질 검증(Final Draft Review → Publish Quality Gate) →
+사람의 명시적 승인(Human Approval) → 승인된 article 1개에 한한 실제
+공개 게시(Public Publish)까지 이어지는 흐름이다. **자동/일괄 공개 게시는
+어떤 경우에도 지원하지 않으며**, 사람이 승인 버튼을 직접 눌러야만 다음
+단계로 진행된다.
+
+- 전체 요약: [`docs/phase-2-final-summary.md`](docs/phase-2-final-summary.md)
+- 운영 가이드(실제 발행 순서): [`docs/wordpress-publishing-operation-guide.md`](docs/wordpress-publishing-operation-guide.md)
+- 환경변수: [`docs/environment-variables.md`](docs/environment-variables.md)
+- 보안 체크리스트: [`docs/security-checklist.md`](docs/security-checklist.md)
+- Release 체크리스트: [`docs/phase-2-release-checklist.md`](docs/phase-2-release-checklist.md)
+- 확인용 SQL 모음: [`docs/phase-2-verification-sql.md`](docs/phase-2-verification-sql.md)
+
 ## GitHub 운영 방법
 
 ### 브랜치 전략
@@ -109,4 +126,12 @@ GitHub Actions에서 `lint`, `typecheck`(`tsc --noEmit`), `test`를 실행한다
 - `docs/requirements.md` - 요구사항 정의
 - `docs/acceptance-criteria.md` - 기능별 성공 기준
 - `docs/phase-1-plan.md` - Phase 1 구현 계획
+- `docs/phase-2-final-summary.md` - Phase 2 전체 요약
+- `docs/wordpress-publishing-operation-guide.md` - 운영 가이드
+- `docs/environment-variables.md` - 환경변수 정리
+- `docs/supabase-migrations-checklist.md` - Supabase migration 체크리스트
+- `docs/wordpress-custom-plugin-guide.md` - WordPress custom plugin 가이드
+- `docs/security-checklist.md` - 보안 체크리스트
+- `docs/phase-2-release-checklist.md` - Phase 2 release 체크리스트
+- `docs/phase-2-verification-sql.md` - 확인용 SQL 모음
 - `AGENTS.md` / `CLAUDE.md` - 에이전트 작업 가이드
