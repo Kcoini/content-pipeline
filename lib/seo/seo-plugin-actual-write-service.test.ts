@@ -132,6 +132,13 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     wordpressFinalDraftReviewSummary: {},
     wordpressFinalDraftReviewError: null,
     wordpressFinalDraftReviewedAt: null,
+    publishQualityGateStatus: "not_checked",
+    publishQualityGateScore: null,
+    publishQualityGateSummary: {},
+    publishQualityGateError: null,
+    publishQualityGateCheckedAt: null,
+    publishReady: false,
+    publishBlockedReason: null,
     ...overrides,
   };
 }

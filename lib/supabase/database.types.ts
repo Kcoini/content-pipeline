@@ -183,6 +183,9 @@ export type SeoPluginCustomEndpointStatus =
 /** Phase 2-14: WordPress final draft payload review 상태 */
 export type WordPressFinalDraftReviewStatus = "not_reviewed" | "reviewed" | "missing_wordpress_draft" | "failed";
 
+/** Phase 2-15: Publish Quality Gate 상태 */
+export type PublishQualityGateStatus = "not_checked" | "ready_to_publish" | "needs_revision" | "blocked" | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -284,6 +287,14 @@ export type ArticleRow = {
   wordpress_final_draft_review_summary: Record<string, unknown>;
   wordpress_final_draft_review_error: string | null;
   wordpress_final_draft_reviewed_at: string | null;
+  /** Phase 2-15: Publish Quality Gate 결과 */
+  publish_quality_gate_status: PublishQualityGateStatus;
+  publish_quality_gate_score: number | null;
+  publish_quality_gate_summary: Record<string, unknown>;
+  publish_quality_gate_error: string | null;
+  publish_quality_gate_checked_at: string | null;
+  publish_ready: boolean;
+  publish_blocked_reason: string | null;
 };
 
 export type ArticleSourceRow = {

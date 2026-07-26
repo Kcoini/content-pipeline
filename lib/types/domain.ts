@@ -159,6 +159,9 @@ export type SeoPluginCustomEndpointStatus =
 /** Phase 2-14: WordPress final draft payload review 상태 */
 export type WordPressFinalDraftReviewStatus = "not_reviewed" | "reviewed" | "missing_wordpress_draft" | "failed";
 
+/** Phase 2-15: Publish Quality Gate 상태 */
+export type PublishQualityGateStatus = "not_checked" | "ready_to_publish" | "needs_revision" | "blocked" | "failed";
+
 /** Phase 2-7: 이미지 생성 provider */
 export type ImageGenerationProvider = "mock" | "openai" | "custom";
 
@@ -334,4 +337,18 @@ export interface Article {
   wordpressFinalDraftReviewError: string | null;
   /** Phase 2-14: 검토가 마지막으로 시도된 시각 */
   wordpressFinalDraftReviewedAt: string | null;
+  /** Phase 2-15: Publish Quality Gate 상태 */
+  publishQualityGateStatus: PublishQualityGateStatus;
+  /** Phase 2-15: checklist 통과 점수(0~100) */
+  publishQualityGateScore: number | null;
+  /** Phase 2-15: checklist 항목별 결과 요약 (본문 전체는 포함하지 않음) */
+  publishQualityGateSummary: Record<string, unknown>;
+  /** Phase 2-15: 게이트 실행 자체가 실패했을 때의 안전한 오류 메시지 */
+  publishQualityGateError: string | null;
+  /** Phase 2-15: 게이트가 마지막으로 실행된 시각 */
+  publishQualityGateCheckedAt: string | null;
+  /** Phase 2-15: ready_to_publish일 때만 true (실제 공개는 여전히 수행하지 않음) */
+  publishReady: boolean;
+  /** Phase 2-15: blocked 상태일 때의 안전한 사유 요약 */
+  publishBlockedReason: string | null;
 }

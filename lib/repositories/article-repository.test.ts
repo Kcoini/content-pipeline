@@ -100,6 +100,13 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     wordpress_final_draft_review_summary: {},
     wordpress_final_draft_review_error: null,
     wordpress_final_draft_reviewed_at: null,
+    publish_quality_gate_status: "not_checked",
+    publish_quality_gate_score: null,
+    publish_quality_gate_summary: {},
+    publish_quality_gate_error: null,
+    publish_quality_gate_checked_at: null,
+    publish_ready: false,
+    publish_blocked_reason: null,
     ...overrides,
   };
 }
@@ -200,6 +207,13 @@ describe("mapArticleRowToArticle", () => {
       wordpressFinalDraftReviewSummary: {},
       wordpressFinalDraftReviewError: null,
       wordpressFinalDraftReviewedAt: null,
+      publishQualityGateStatus: "not_checked",
+      publishQualityGateScore: null,
+      publishQualityGateSummary: {},
+      publishQualityGateError: null,
+      publishQualityGateCheckedAt: null,
+      publishReady: false,
+      publishBlockedReason: null,
     });
   });
 

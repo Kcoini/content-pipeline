@@ -365,6 +365,39 @@
       "공개 게시" 버튼은 존재하지 않는다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-24. Publish Quality Gate (FR-25, Phase 2-15)
+- [ ] target_keyword가 없으면 `target_keyword_present` 항목이 blocked로
+      기록되고 전체 상태가 blocked가 된다.
+- [ ] 인용 출처가 없으면 `source_citation_exists` 항목이 blocked로 기록된다.
+- [ ] WordPress draft post id가 없으면 `wordpress_draft_exists` 항목이
+      blocked로 기록된다.
+- [ ] article.status가 reviewed/published가 아니면 `status_reviewed` 항목이
+      blocked로 기록된다.
+- [ ] monetized_blog에서 SEO title/meta description이 없으면 blocked 또는
+      fail로 기록된다.
+- [ ] Rank Math custom endpoint가 success/verified면 `seo_metadata_custom_
+      endpoint` 항목이 pass로 기록된다.
+- [ ] monetized_blog에서 featured image가 없으면 `featured_image_present`
+      항목이 fail로 기록된다.
+- [ ] monetized_blog에서 AD_SLOT marker가 누락되면 warning으로 기록된다.
+- [ ] 광고 클릭 유도/수익 보장성 문구가 있으면 blocked로 처리된다.
+- [ ] score가 85 이상이고 fail 항목이 없으면 ready_to_publish가 된다.
+- [ ] `publish_ready`는 ready_to_publish 상태일 때만 true다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`/`articles.publish_
+      quality_gate_summary`에 저장되지 않는다.
+- [ ] Authorization header/Application Password/Basic Auth 문자열/API key가
+      로그에 저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준(`publish_quality_gate_*`)으로
+      저장된다.
+- [ ] `publish_logs`에 `target='publish_quality_gate'`로 저장된다.
+- [ ] 실행 중 예외가 발생해도 Runtime Error로 터지지 않고 안전한 실패를
+      반환한다.
+- [ ] article 상세 페이지에 게이트 상태/score/publish_ready/차단 사유/
+      checklist 전체가 표시되고 "Publish Quality Gate 실행"/"결과 새로고침"
+      버튼이 제공된다. 공개 게시 버튼은 존재하지 않으며, publish_ready=true
+      여도 실제 공개는 수행되지 않고 안내 문구만 표시된다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

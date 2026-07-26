@@ -162,7 +162,13 @@ export type LogEventType =
   | "wordpress_final_draft_review_started"
   | "wordpress_final_draft_review_completed"
   | "wordpress_final_draft_review_failed"
-  | "wordpress_final_draft_review_skipped_missing_draft";
+  | "wordpress_final_draft_review_skipped_missing_draft"
+  // Phase 2-15: Publish Quality Gate 이벤트
+  | "publish_quality_gate_started"
+  | "publish_quality_gate_completed"
+  | "publish_quality_gate_needs_revision"
+  | "publish_quality_gate_blocked"
+  | "publish_quality_gate_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

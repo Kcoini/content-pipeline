@@ -285,6 +285,23 @@ post가 없으면(`publish_logs.target='wordpress'`, `status='success'`,
 `wordpress_final_draft_review_*` 이벤트를 기록한다. 자세한 내용은
 `docs/phase-2-14-wordpress-final-draft-payload-review.md` 참고.
 
+### FR-25. Publish Quality Gate (Phase 2-15)
+WordPress 공개 게시 전에 반드시 통과해야 하는 품질검사 게이트를 실행할 수
+있다. article/WordPress draft/SEO metadata/featured image/출처 인용/
+AD_SLOT marker/콘텐츠 안전성/로깅 안전성을 종합한 28개 checklist 항목
+(`pass`/`warning`/`fail`/`blocked`, severity 포함)을 점검해 점수(0~100)와
+`publish_ready` 여부를 산출한다. critical severity의 `blocked` 항목이
+하나라도 있으면 전체 상태가 `blocked`로 확정되며, `publish_ready`는
+`ready_to_publish` 상태일 때만 `true`가 된다. 이 게이트는 검증만 수행하며
+공개(publish, WordPress post status를 `publish`로 변경하는 동작)는 어떤
+경우에도 수행하지 않는다. 결과는 `articles.publish_quality_gate_*`/
+`publish_ready`/`publish_blocked_reason` 컬럼과 `publish_logs`(target=
+`publish_quality_gate`)에 저장되며, 기사 본문 전체·인증 정보(Authorization
+header/Application Password/Basic Auth 문자열/API key)는 저장하지 않는다.
+`pipeline_logs`는 `event_name` 컬럼 기준으로 `publish_quality_gate_*`
+이벤트를 기록한다. 자세한 내용은
+`docs/phase-2-15-publish-quality-gate.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

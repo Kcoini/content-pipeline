@@ -14,6 +14,7 @@ import type {
   SeoPluginActualWriteStatus,
   SeoPluginCustomEndpointStatus,
   WordPressFinalDraftReviewStatus,
+  PublishQualityGateStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -179,6 +180,13 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     wordpressFinalDraftReviewSummary: row.wordpress_final_draft_review_summary ?? {},
     wordpressFinalDraftReviewError: row.wordpress_final_draft_review_error,
     wordpressFinalDraftReviewedAt: row.wordpress_final_draft_reviewed_at,
+    publishQualityGateStatus: row.publish_quality_gate_status ?? "not_checked",
+    publishQualityGateScore: row.publish_quality_gate_score,
+    publishQualityGateSummary: row.publish_quality_gate_summary ?? {},
+    publishQualityGateError: row.publish_quality_gate_error,
+    publishQualityGateCheckedAt: row.publish_quality_gate_checked_at,
+    publishReady: row.publish_ready ?? false,
+    publishBlockedReason: row.publish_blocked_reason,
   };
 }
 
@@ -1149,6 +1157,51 @@ export async function saveWordPressFinalDraftReviewResult(
 
   if (error || !data) {
     throw new Error(`WordPress final draft review 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SavePublishQualityGateResultInput {
+  status: PublishQualityGateStatus;
+  score?: number | null;
+  summary?: Record<string, unknown>;
+  errorMessage?: string | null;
+  publishReady?: boolean;
+  blockedReason?: string | null;
+}
+
+/** Publish Quality Gate 실행 결과를 저장한다 (Phase 2-15). */
+export async function savePublishQualityGateResult(
+  articleId: string,
+  input: SavePublishQualityGateResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    publish_quality_gate_status: input.status,
+    publish_quality_gate_checked_at: new Date().toISOString(),
+  };
+  if (input.score !== undefined) update.publish_quality_gate_score = input.score;
+  if (input.summary !== undefined) update.publish_quality_gate_summary = input.summary;
+  if (input.errorMessage !== undefined) update.publish_quality_gate_error = input.errorMessage;
+  if (input.publishReady !== undefined) update.publish_ready = input.publishReady;
+  if (input.blockedReason !== undefined) update.publish_blocked_reason = input.blockedReason;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Publish Quality Gate 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

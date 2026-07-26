@@ -30,6 +30,7 @@ import {
   writeRankMathSeoViaCustomEndpoint,
 } from "@/lib/seo/seo-plugin-actual-write-service";
 import { reviewWordPressFinalDraft } from "@/lib/publish/wordpress-final-draft-review-service";
+import { runPublishQualityGate } from "@/lib/publish/publish-quality-gate-service";
 import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -547,6 +548,44 @@ export async function reviewWordPressFinalDraftAction(formData: FormData): Promi
  * 호출 없이 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
  */
 export async function checkWordPressFinalDraftReviewStatusAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
+}
+
+/**
+ * Publish Quality Gate를 실행한다 (Phase 2-15). 실제 공개(publish)는 어떤
+ * 경우에도 수행하지 않으며, 검증 결과(articles.publish_quality_gate_*)만 저장한다.
+ */
+export async function runPublishQualityGateAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await runPublishQualityGate(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Publish Quality Gate 결과를 다시 확인한다 (Phase 2-15). 별도의 API 호출 없이
+ * 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
+ */
+export async function checkPublishQualityGateStatusAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
 
   revalidatePath(`/articles/${articleId}`);

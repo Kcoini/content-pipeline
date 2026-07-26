@@ -30,6 +30,8 @@ import {
   generateFeaturedImageAction,
   reviewGeneratedImageAction,
   testWordPressConnectionAction,
+  runPublishQualityGateAction,
+  checkPublishQualityGateStatusAction,
 } from "./actions";
 import type {
   WordPressMetadataStatus,
@@ -42,6 +44,7 @@ import type {
   SeoPluginActualWriteStatus,
   SeoPluginCustomEndpointStatus,
   WordPressFinalDraftReviewStatus,
+  PublishQualityGateStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
@@ -216,6 +219,29 @@ const CHECKLIST_ITEM_STYLE: Record<string, string> = {
   passed: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
   warning: "bg-amber-100 text-amber-700",
+};
+
+const PUBLISH_QUALITY_GATE_STATUS_LABEL: Record<PublishQualityGateStatus, string> = {
+  not_checked: "검사 안 함",
+  ready_to_publish: "공개 준비 완료",
+  needs_revision: "수정 필요",
+  blocked: "차단됨",
+  failed: "검사 실패",
+};
+
+const PUBLISH_QUALITY_GATE_STATUS_STYLE: Record<PublishQualityGateStatus, string> = {
+  not_checked: "bg-zinc-100 text-zinc-500",
+  ready_to_publish: "bg-green-100 text-green-700",
+  needs_revision: "bg-amber-100 text-amber-700",
+  blocked: "bg-red-100 text-red-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+const QUALITY_GATE_ITEM_STYLE: Record<string, string> = {
+  pass: "bg-green-100 text-green-700",
+  warning: "bg-amber-100 text-amber-700",
+  fail: "bg-orange-100 text-orange-700",
+  blocked: "bg-red-100 text-red-700",
 };
 
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
@@ -1486,6 +1512,111 @@ export default async function ArticleDetailPage({
                 className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
               >
                 검토 상태 확인
+              </button>
+            </form>
+          </div>
+        </section>
+
+        {/* Phase 2-15: Publish Quality Gate */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">Publish Quality Gate</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${PUBLISH_QUALITY_GATE_STATUS_STYLE[article.publishQualityGateStatus]}`}
+            >
+              {PUBLISH_QUALITY_GATE_STATUS_LABEL[article.publishQualityGateStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            WordPress 공개 게시 전에 반드시 통과해야 하는 품질검사 게이트입니다.
+            article/WordPress draft/SEO metadata/featured image/출처 인용/AD_SLOT
+            marker/콘텐츠 안전성/로깅 안전성을 종합 점검하며, 이 단계는 검증만
+            수행하고 실제 공개 게시는 절대 수행하지 않습니다.
+          </p>
+
+          {!hasWordPressSuccess && (
+            <p className="mt-2 text-xs font-medium text-amber-700">
+              ⚠ 아직 생성된 WordPress draft가 없습니다 (먼저 WordPress 초안 생성을 실행하세요).
+            </p>
+          )}
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">score</dt>
+              <dd className="text-zinc-500">
+                {article.publishQualityGateScore != null ? `${article.publishQualityGateScore} / 100` : "해당 없음"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">publish_ready</dt>
+              <dd className={article.publishReady ? "font-medium text-green-700" : "text-zinc-500"}>
+                {article.publishReady ? "예" : "아니오"}
+              </dd>
+            </div>
+            {article.publishQualityGateCheckedAt && (
+              <div>
+                <dt className="font-medium text-zinc-600">마지막 검사 시간</dt>
+                <dd className="text-zinc-500">
+                  {new Date(article.publishQualityGateCheckedAt).toLocaleString("ko-KR")}
+                </dd>
+              </div>
+            )}
+            {article.publishBlockedReason && (
+              <div className="sm:col-span-2">
+                <dt className="font-medium text-zinc-600">차단 사유</dt>
+                <dd className="text-red-600">{article.publishBlockedReason}</dd>
+              </div>
+            )}
+          </dl>
+
+          {article.publishQualityGateError && (
+            <p className="mt-3 text-xs text-red-600">오류: {article.publishQualityGateError}</p>
+          )}
+
+          {article.publishReady && (
+            <p className="mt-3 text-xs font-medium text-indigo-700">
+              ℹ 이 결과는 검증 완료를 의미할 뿐입니다. 다음 단계에서 사용자 승인을 거쳐야
+              공개 게시가 가능합니다 (이 화면에서는 공개 게시를 수행하지 않습니다).
+            </p>
+          )}
+
+          {Array.isArray((article.publishQualityGateSummary as { checklist?: unknown })?.checklist) && (
+            <ul className="mt-3 flex flex-col gap-1">
+              {(
+                (article.publishQualityGateSummary as {
+                  checklist: Array<{ key: string; label: string; status: string; message: string; severity: string }>;
+                }).checklist
+              ).map((item) => (
+                <li key={item.key} className="flex items-start gap-2 rounded px-2 py-1 text-xs">
+                  <span
+                    className={`mt-0.5 inline-block shrink-0 rounded-full px-1.5 py-0.5 font-medium ${QUALITY_GATE_ITEM_STYLE[item.status] ?? "bg-zinc-100 text-zinc-500"}`}
+                  >
+                    {item.label}
+                  </span>
+                  <span className="text-zinc-600">{item.message}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={runPublishQualityGateAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                disabled={!hasWordPressSuccess}
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Publish Quality Gate 실행
+              </button>
+            </form>
+            <form action={checkPublishQualityGateStatusAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                결과 새로고침
               </button>
             </form>
           </div>
