@@ -120,7 +120,21 @@ export type LogEventType =
   | "wordpress_actual_publish_skipped_not_reviewed"
   | "wordpress_actual_publish_dry_run"
   | "wordpress_media_upload_skipped_deferred"
-  | "seo_plugin_write_skipped_deferred";
+  | "seo_plugin_write_skipped_deferred"
+  // Phase 2-10: WordPress Media Upload Actual Test 이벤트
+  | "wordpress_media_upload_skipped_no_source"
+  | "wordpress_media_source_invalid"
+  | "wordpress_media_metadata_update_completed"
+  | "wordpress_media_metadata_update_failed"
+  // Phase 2-11: WordPress Featured Media Draft Publish Test 이벤트
+  | "wordpress_featured_media_attach_started"
+  | "wordpress_featured_media_attach_completed"
+  | "wordpress_featured_media_attach_failed"
+  | "wordpress_featured_media_attach_skipped_no_media_id"
+  | "wordpress_featured_media_existing_draft_found"
+  | "wordpress_featured_media_existing_draft_not_found"
+  | "wordpress_media_item_validation_completed"
+  | "wordpress_media_item_validation_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

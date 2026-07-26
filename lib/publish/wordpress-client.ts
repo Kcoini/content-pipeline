@@ -157,6 +157,156 @@ export async function createDraftPost(input: CreateDraftPostInput): Promise<Crea
 }
 
 // ─────────────────────────────────────────────────────────────
+// Phase 2-11: 기존 WordPress draft post에 featured_media 연결
+//
+// POST /wp-json/wp/v2/posts/{postId}에 { status: "draft", featured_media }만
+// 전송한다. status는 항상 "draft"로 고정해 실수로 공개되지 않도록 한다.
+// ─────────────────────────────────────────────────────────────
+
+export interface UpdateDraftFeaturedMediaSuccess {
+  success: true;
+  postId: number;
+  link: string;
+  status: string;
+  featuredMedia: number;
+}
+
+export interface UpdateDraftFeaturedMediaFailure {
+  success: false;
+  statusCode?: number;
+  errorMessage: string;
+  reasonCandidate: string[];
+}
+
+export type UpdateDraftFeaturedMediaResult = UpdateDraftFeaturedMediaSuccess | UpdateDraftFeaturedMediaFailure;
+
+/**
+ * 기존 WordPress draft post의 featured_media만 갱신한다 (Phase 2-11).
+ * status는 입력값과 무관하게 항상 "draft"로 고정해 전송한다 — 공개(publish)는
+ * 절대 수행하지 않는다.
+ */
+export async function updateDraftFeaturedMedia(
+  postId: number,
+  mediaId: number
+): Promise<UpdateDraftFeaturedMediaResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return {
+      success: false,
+      errorMessage: "WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD가 설정되지 않았습니다.",
+      reasonCandidate: ["Application Password가 설정되지 않았습니다."],
+    };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/wp-json/wp/v2/posts/${postId}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Authorization header는 절대 로그로 출력하지 않는다.
+        Authorization: buildAuthHeader(config),
+      },
+      body: JSON.stringify({ status: "draft", featured_media: mediaId }),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const errorMessage = `WordPress API 네트워크 오류: ${message}`;
+    return {
+      success: false,
+      errorMessage,
+      reasonCandidate: ["사이트 접근 불가", "SSL 문제", "방화벽 또는 보안 플러그인 문제"],
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      statusCode: response.status,
+      errorMessage: `WordPress featured_media 갱신 실패 (HTTP ${response.status} ${response.statusText})`,
+      reasonCandidate: getLikelyCausesForStatus(response.status),
+    };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      errorMessage: `WordPress 응답 파싱 실패: ${message}`,
+      reasonCandidate: ["원인을 특정할 수 없는 오류입니다."],
+    };
+  }
+
+  const resultPostId = typeof data.id === "number" ? data.id : Number(data.id);
+  if (!resultPostId || Number.isNaN(resultPostId)) {
+    return {
+      success: false,
+      errorMessage: "WordPress 응답에 post id가 없습니다.",
+      reasonCandidate: ["원인을 특정할 수 없는 오류입니다."],
+    };
+  }
+
+  const link = typeof data.link === "string" ? data.link : "";
+  const status = typeof data.status === "string" ? data.status : "draft";
+  const featuredMedia = typeof data.featured_media === "number" ? data.featured_media : mediaId;
+
+  return { success: true, postId: resultPostId, link, status, featuredMedia };
+}
+
+export interface MediaItemCheckResult {
+  exists: boolean;
+  statusCode?: number;
+  errorMessage?: string;
+}
+
+/**
+ * featured_media로 연결하기 전 WordPress media item이 실제로 존재하는지 확인한다
+ * (Phase 2-11, 선택적 사전 검증). Authorization header/password는 어떤 경우에도
+ * 반환값에 포함하지 않는다.
+ */
+export async function getMediaItem(mediaId: number): Promise<MediaItemCheckResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return { exists: false, errorMessage: "WordPress 환경변수가 설정되지 않았습니다." };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/wp-json/wp/v2/media/${mediaId}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      headers: { Authorization: buildAuthHeader(config) },
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { exists: false, errorMessage: `WordPress API 네트워크 오류: ${message}` };
+  }
+
+  if (response.status === 404) {
+    return { exists: false, statusCode: 404, errorMessage: "WordPress media item을 찾을 수 없습니다 (HTTP 404)." };
+  }
+
+  if (!response.ok) {
+    return {
+      exists: false,
+      statusCode: response.status,
+      errorMessage: `WordPress media item 확인 실패 (HTTP ${response.status})`,
+    };
+  }
+
+  return { exists: true };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Phase 2-3: category/tag 동기화 (구조만 준비 — 실제 연결은 다음 단계)
 //
 // WORDPRESS_PUBLISH_ENABLED=false이면 이 함수들을 호출하지 않는다
@@ -436,15 +586,24 @@ export async function testWordPressConnection(): Promise<WordPressConnectionTest
 }
 
 // ─────────────────────────────────────────────────────────────
-// Phase 2-6: WordPress media upload (safe stub — 실제 업로드는 구현하지 않는다)
+// Phase 2-6/2-10: WordPress media upload
 //
-// 실제 이미지 파일 read/download/multipart upload는 이번 단계에서 구현하지
-// 않는다. WORDPRESS_MEDIA_UPLOAD_ENABLED/WORDPRESS_PUBLISH_ENABLED 값에 따라
-// skipped/dry_run만 반환하며, 나중에 실제 업로드를 구현할 때 이 함수 내부만
-// 교체하면 되도록 인터페이스만 준비한다.
+// WORDPRESS_MEDIA_UPLOAD_ENABLED=false(기본값)이면 skipped, WORDPRESS_PUBLISH_
+// ENABLED=false이면 dry_run을 반환해 실제 API를 호출하지 않는다. 두 플래그가
+// 모두 true이면 Phase 2-10에서 구현한 실제 업로드(POST /wp-json/wp/v2/media)를
+// 시도한다. Authorization header/Application Password/image binary는 어떤
+// 경우에도 반환값이나 로그에 포함하지 않는다.
 // ─────────────────────────────────────────────────────────────
 
+export type UploadMediaSourceType = "generated_url" | "external_url" | "local_file";
+
 export interface UploadMediaInput {
+  /** 실제 업로드 시 이미지를 어디서 가져올지. 생략하면(구식 호출) 실제 업로드 단계에서 실패로 처리된다. */
+  sourceType?: UploadMediaSourceType;
+  /** sourceType이 generated_url/external_url일 때 사용하는 절대 URL (http/https만 허용). */
+  sourceUrl?: string;
+  /** sourceType이 local_file일 때 사용하는 서버 로컬 파일 경로. */
+  localPath?: string;
   filename: string;
   mimeType: string;
   altText: string;
@@ -455,21 +614,129 @@ export interface UploadMediaInput {
 
 export type UploadMediaStatus = "dry_run" | "skipped" | "uploaded" | "failed";
 
+export type MediaMetadataUpdateStatus = "success" | "failed" | "not_attempted";
+
 export interface UploadMediaResult {
   status: UploadMediaStatus;
   wordpressMediaId?: number;
   wordpressUrl?: string;
+  mimeType?: string;
+  mediaType?: string;
+  titleRendered?: string;
+  /** alt_text/caption/description/title 메타데이터 업데이트 시도 결과 (업로드 성공 이후에만 채워짐). */
+  metadataUpdateStatus?: MediaMetadataUpdateStatus;
+  statusCode?: number;
   error?: string;
+  reasonCandidate?: string[];
+}
+
+const ALLOWED_MEDIA_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+function getMediaUploadReasonCandidates(statusCode: number | undefined, errorMessage: string): string[] {
+  if (statusCode !== undefined) {
+    return getLikelyCausesForStatus(statusCode);
+  }
+  if (errorMessage.includes("네트워크 오류")) {
+    return ["사이트 접근 불가", "SSL 문제", "방화벽 또는 보안 플러그인 문제"];
+  }
+  return ["원인을 특정할 수 없는 오류입니다."];
+}
+
+/** 이미지 source(URL 또는 로컬 파일)에서 binary를 준비한다. mock/상대경로 URL은 차단한다. */
+async function prepareImageBinary(
+  input: UploadMediaInput
+): Promise<{ success: true; data: Buffer } | { success: false; errorMessage: string; reasonCandidate: string[] }> {
+  if (input.sourceType === "local_file") {
+    if (!input.localPath) {
+      return { success: false, errorMessage: "로컬 이미지 경로가 없습니다.", reasonCandidate: ["featured_image_local_path가 비어 있습니다."] };
+    }
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const data = await readFile(input.localPath);
+      return { success: true, data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, errorMessage: `로컬 이미지 파일을 읽을 수 없습니다: ${message}`, reasonCandidate: ["파일 경로가 올바르지 않거나 접근 권한이 없습니다."] };
+    }
+  }
+
+  if (input.sourceType === "generated_url" || input.sourceType === "external_url") {
+    if (!input.sourceUrl) {
+      return { success: false, errorMessage: "이미지 URL이 없습니다.", reasonCandidate: ["source URL이 비어 있습니다."] };
+    }
+    if (!/^https?:\/\//i.test(input.sourceUrl)) {
+      return {
+        success: false,
+        errorMessage: "mock 또는 상대경로 이미지는 실제 업로드할 수 없습니다.",
+        reasonCandidate: ["이미지 URL이 http/https 절대 경로가 아닙니다 (mock 이미지일 수 있습니다)."],
+      };
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(input.sourceUrl, { cache: "no-store" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, errorMessage: `이미지 다운로드 네트워크 오류: ${message}`, reasonCandidate: ["이미지 URL에 접근할 수 없습니다."] };
+    }
+    if (!response.ok) {
+      return {
+        success: false,
+        errorMessage: `이미지 다운로드 실패 (HTTP ${response.status})`,
+        reasonCandidate: ["이미지 URL이 유효하지 않거나 접근 권한이 없습니다."],
+      };
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return { success: true, data: Buffer.from(arrayBuffer) };
+  }
+
+  return {
+    success: false,
+    errorMessage: "이미지 source가 지정되지 않았습니다.",
+    reasonCandidate: ["sourceType이 generated_url/external_url/local_file 중 하나여야 합니다."],
+  };
 }
 
 /**
- * WordPress media endpoint(`/wp-json/wp/v2/media`)에 이미지를 업로드한다 (safe stub).
+ * 업로드된 media item의 alt_text/caption/description/title을 갱신한다 (best-effort).
+ * 실패해도 업로드 성공 자체는 무효화하지 않는다 — 호출자가 warning으로만 처리한다.
+ */
+async function updateMediaMetadata(
+  config: WordPressConfig,
+  baseUrl: string,
+  mediaId: number,
+  input: UploadMediaInput
+): Promise<MediaMetadataUpdateStatus> {
+  try {
+    const response = await fetch(`${baseUrl}/wp-json/wp/v2/media/${mediaId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: buildAuthHeader(config),
+      },
+      body: JSON.stringify({
+        alt_text: input.altText,
+        caption: input.caption,
+        description: input.description || input.title,
+        title: input.title,
+      }),
+      cache: "no-store",
+    });
+    return response.ok ? "success" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+
+/**
+ * WordPress media endpoint(`/wp-json/wp/v2/media`)에 이미지를 실제로 업로드한다 (Phase 2-10).
  *
  * - `WORDPRESS_MEDIA_UPLOAD_ENABLED=false`(기본값)이면 업로드 기능 자체가
  *   꺼져 있으므로 `skipped`를 반환한다.
  * - `WORDPRESS_PUBLISH_ENABLED=true`가 아니면(dry-run 모드) `dry_run`을 반환한다.
- * - 두 조건이 모두 충족되어도 실제 파일 처리/multipart 업로드는 아직 구현되지
- *   않았으므로 `failed`를 반환한다 (커스텀 구현 전까지의 안전장치).
+ * - 두 조건이 모두 충족되면 실제로 이미지를 준비해 업로드를 시도한다.
+ * - Authorization header/Application Password/image binary는 어떤 경우에도
+ *   반환값에 포함하지 않는다.
  */
 export async function uploadMediaToWordPress(input: UploadMediaInput): Promise<UploadMediaResult> {
   const mediaUploadEnabled = process.env.WORDPRESS_MEDIA_UPLOAD_ENABLED === "true";
@@ -482,10 +749,93 @@ export async function uploadMediaToWordPress(input: UploadMediaInput): Promise<U
     return { status: "dry_run" };
   }
 
-  // 실제 파일 read/download/multipart upload는 이번 단계에서 구현하지 않는다.
-  void input;
+  const config = getWordPressConfig();
+  if (!config) {
+    return {
+      status: "failed",
+      error: "WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD가 설정되지 않았습니다.",
+      reasonCandidate: ["Application Password가 설정되지 않았습니다."],
+    };
+  }
+
+  if (!ALLOWED_MEDIA_MIME_TYPES.includes(input.mimeType)) {
+    return {
+      status: "failed",
+      error: `허용되지 않는 이미지 형식입니다 (${input.mimeType}). image/jpeg, image/png, image/webp만 허용됩니다.`,
+      reasonCandidate: ["허용되지 않는 MIME 타입입니다."],
+    };
+  }
+
+  const binaryResult = await prepareImageBinary(input);
+  if (!binaryResult.success) {
+    return { status: "failed", error: binaryResult.errorMessage, reasonCandidate: binaryResult.reasonCandidate };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/wp-json/wp/v2/media`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": input.mimeType,
+        "Content-Disposition": `attachment; filename="${input.filename}"`,
+        // Authorization header는 절대 로그로 출력하지 않는다.
+        Authorization: buildAuthHeader(config),
+      },
+      body: new Uint8Array(binaryResult.data),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const errorMessage = `WordPress API 네트워크 오류: ${message}`;
+    return { status: "failed", error: errorMessage, reasonCandidate: getMediaUploadReasonCandidates(undefined, errorMessage) };
+  }
+
+  if (!response.ok) {
+    const errorMessage = `WordPress media 업로드 실패 (HTTP ${response.status} ${response.statusText})`;
+    return {
+      status: "failed",
+      statusCode: response.status,
+      error: errorMessage,
+      reasonCandidate: getMediaUploadReasonCandidates(response.status, errorMessage),
+    };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { status: "failed", error: `WordPress 응답 파싱 실패: ${message}` };
+  }
+
+  const mediaId = typeof data.id === "number" ? data.id : Number(data.id);
+  if (!mediaId || Number.isNaN(mediaId)) {
+    return { status: "failed", error: "WordPress 응답에 media id가 없습니다." };
+  }
+
+  const sourceUrl =
+    typeof data.source_url === "string"
+      ? data.source_url
+      : typeof data.link === "string"
+        ? data.link
+        : "";
+  const mimeType = typeof data.mime_type === "string" ? data.mime_type : input.mimeType;
+  const mediaType = typeof data.media_type === "string" ? data.media_type : undefined;
+  const titleField = data.title as { rendered?: unknown } | undefined;
+  const titleRendered = typeof titleField?.rendered === "string" ? titleField.rendered : undefined;
+
+  const metadataUpdateStatus = await updateMediaMetadata(config, baseUrl, mediaId, input);
+
   return {
-    status: "failed",
-    error: "실제 WordPress media upload는 아직 구현되지 않았습니다 (파일 처리 로직이 필요합니다).",
+    status: "uploaded",
+    wordpressMediaId: mediaId,
+    wordpressUrl: sourceUrl,
+    mimeType,
+    mediaType,
+    titleRendered,
+    metadataUpdateStatus,
   };
 }

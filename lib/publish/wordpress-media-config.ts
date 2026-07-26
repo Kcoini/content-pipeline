@@ -15,6 +15,29 @@ export function getAllowedMimeTypes(): readonly string[] {
   return ALLOWED_MIME_TYPES;
 }
 
+export function isAllowedMimeType(mimeType: string): boolean {
+  return (ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
+const EXTENSION_MIME_MAP: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
+
+/** 파일명 확장자로부터 MIME type을 추론한다. 알 수 없으면 image/webp를 기본값으로 사용한다 (Phase 2-10). */
+export function inferMimeTypeFromFilename(filename: string): string {
+  const match = /\.([a-zA-Z0-9]+)$/.exec(filename);
+  const ext = match?.[1]?.toLowerCase();
+  return (ext && EXTENSION_MIME_MAP[ext]) || "image/webp";
+}
+
+/** http(s) 절대 URL인지 확인한다. mock 이미지(`/mock/...`)나 상대경로는 실제 업로드 대상이 아니다 (Phase 2-10). */
+export function isRealHttpUrl(url: string | null | undefined): url is string {
+  return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
 const DEFAULT_MAX_UPLOAD_SIZE_MB = 5;
 
 /** 업로드 허용 최대 용량(MB). WORDPRESS_MEDIA_MAX_SIZE_MB로 재정의할 수 있다 (기본 5MB). */

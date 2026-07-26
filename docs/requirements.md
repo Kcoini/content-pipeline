@@ -194,6 +194,40 @@ write는 `WORDPRESS_MEDIA_UPLOAD_ENABLED`/`SEO_PLUGIN_WRITE_ENABLED` 값과
 무관하게 이번 단계에서 시도하지 않고 `skipped_deferred`로 기록한다. 자세한 내용은
 `docs/phase-2-9-wordpress-draft-publish-stabilization.md` 참고.
 
+### FR-20. WordPress Media Upload Actual Test (Phase 2-10)
+`WORDPRESS_MEDIA_UPLOAD_ENABLED=true`이면 article의 featured image를 실제
+WordPress Media Library(`POST /wp-json/wp/v2/media`)에 업로드할 수 있다. 이미지
+source는 `generated_image_url`(생성 완료 상태) → `featured_image_source_url` →
+`featured_image_local_path` 순으로 결정되며, http/https 절대 URL이 아닌
+mock/상대경로 이미지는 실제 업로드 대상에서 제외되고 안전하게 skip/invalid로
+처리된다. `image/jpeg`/`image/png`/`image/webp`만 허용하며, 그 외 형식은
+업로드를 시도하지 않고 실패로 처리한다. 업로드 성공 후 alt text/caption을
+갱신하되 이 갱신이 실패해도 업로드 성공 자체는 무효화되지 않는다(warning).
+업로드 결과는 `articles.featured_image_upload_status`/
+`featured_image_wordpress_media_id`/`featured_image_wordpress_url`과
+`publish_logs`(target=`wordpress_media`)에 저장되며, 기사 본문·이미지
+binary·인증 정보는 절대 저장하지 않는다. `pipeline_logs`는 `event_name`
+컬럼 기준으로 `wordpress_media_upload_*` 이벤트를 기록한다. 자세한 내용은
+`docs/phase-2-10-wordpress-media-upload-actual-test.md` 참고.
+
+### FR-21. WordPress Featured Media Draft Publish Test (Phase 2-11)
+Phase 2-10에서 업로드된 `articles.featured_image_wordpress_media_id`를
+WordPress draft post의 `featured_media` 필드에 연결할 수 있다. 새 draft
+생성 시에는 media id가 있으면 자동으로 포함되고(`create_draft` 모드), 이미
+성공적으로 생성된 draft(`publish_logs.target='wordpress'`, `status='success'`,
+`external_post_id`가 있는 기록)가 있으면 새 글을 만들지 않고 `POST /wp-json/
+wp/v2/posts/{id}`로 `{status:"draft", featured_media}`만 갱신한다(`update_
+existing_draft` 모드) — status는 입력값과 무관하게 항상 `draft`로 고정된다.
+media id가 없으면 실제 API를 호출하지 않고 `skipped_no_media_id`로 처리하며,
+기존 draft가 없으면 연결을 시도하지 않고 안내 메시지만 반환한다(중복 draft
+생성 방지). 연결 결과는 `articles.wordpress_featured_media_attach_status`/
+`_attached_at`/`_attach_error`와 `publish_logs`(target=`wordpress_featured_
+media`)에 저장되며, 기사 본문·인증 정보·WordPress 원본 오류 응답 전체는
+저장하지 않는다. `pipeline_logs`는 `event_name` 컬럼 기준으로
+`wordpress_featured_media_*`/`wordpress_media_item_validation_*` 이벤트를
+기록한다. 자세한 내용은
+`docs/phase-2-11-wordpress-featured-media-draft-publish-test.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

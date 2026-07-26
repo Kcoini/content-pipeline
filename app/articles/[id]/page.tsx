@@ -18,6 +18,10 @@ import {
   reviewFeaturedImageAction,
   prepareWordPressMediaUploadAction,
   confirmWordPressMediaUploadDryRunAction,
+  uploadFeaturedImageToWordPressAction,
+  checkWordPressMediaUploadStatusAction,
+  attachFeaturedMediaToDraftAction,
+  checkWordPressFeaturedMediaAttachStatusAction,
   generateFeaturedImageAction,
   reviewGeneratedImageAction,
   testWordPressConnectionAction,
@@ -29,6 +33,7 @@ import type {
   FeaturedImageStatus,
   WordPressMediaUploadStatus,
   GeneratedImageStatus,
+  WordPressFeaturedMediaAttachStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
@@ -125,6 +130,20 @@ const MEDIA_UPLOAD_STATUS_STYLE: Record<WordPressMediaUploadStatus, string> = {
   uploaded: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
   skipped: "bg-zinc-100 text-zinc-500",
+};
+
+const FEATURED_MEDIA_ATTACH_STATUS_LABEL: Record<WordPressFeaturedMediaAttachStatus, string> = {
+  not_attached: "연결 안 됨",
+  attached: "연결됨",
+  skipped_no_media_id: "건너뜀 (media id 없음)",
+  failed: "연결 실패",
+};
+
+const FEATURED_MEDIA_ATTACH_STATUS_STYLE: Record<WordPressFeaturedMediaAttachStatus, string> = {
+  not_attached: "bg-zinc-100 text-zinc-500",
+  attached: "bg-green-100 text-green-700",
+  skipped_no_media_id: "bg-amber-100 text-amber-700",
+  failed: "bg-red-100 text-red-700",
 };
 
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
@@ -759,10 +778,10 @@ export default async function ArticleDetailPage({
           )}
         </section>
 
-        {/* Phase 2-6: WordPress Media Upload Preparation */}
+        {/* Phase 2-6 / 2-10: WordPress Media Upload Preparation + Actual Test */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-zinc-700">WordPress Media Upload Preparation</h2>
+            <h2 className="text-sm font-semibold text-zinc-700">WordPress Media Upload</h2>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${MEDIA_UPLOAD_STATUS_STYLE[article.featuredImageUploadStatus]}`}
             >
@@ -771,14 +790,18 @@ export default async function ArticleDetailPage({
           </div>
           <p className="mt-1 text-xs text-zinc-500">
             Phase 2-5에서 준비한 대표 이미지 정보를 바탕으로 WordPress media
-            업로드 payload를 준비합니다. 실제 이미지 생성이나 WordPress media
-            upload는 아직 실행하지 않습니다.
+            업로드 payload를 준비하고, WORDPRESS_MEDIA_UPLOAD_ENABLED=true일 때
+            실제 WordPress Media Library에 이미지 1개를 업로드하는 테스트를
+            수행합니다. mock URL이나 상대경로 이미지는 실제 업로드되지 않습니다.
           </p>
-          {!isWordPressMediaUploadEnabled() && (
-            <p className="mt-1 text-xs font-medium text-amber-700">
-              ⚠ 실제 업로드는 아직 비활성화됨 (WORDPRESS_MEDIA_UPLOAD_ENABLED=false)
-            </p>
-          )}
+          <p className="mt-1 text-xs font-medium">
+            WORDPRESS_MEDIA_UPLOAD_ENABLED:{" "}
+            {isWordPressMediaUploadEnabled() ? (
+              <span className="text-green-700">true (실제 업로드 시도)</span>
+            ) : (
+              <span className="text-amber-700">false (실제 업로드 건너뜀)</span>
+            )}
+          </p>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={prepareWordPressMediaUploadAction}>
@@ -801,6 +824,24 @@ export default async function ArticleDetailPage({
                 </button>
               </form>
             )}
+            <form action={uploadFeaturedImageToWordPressAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+              >
+                WordPress 이미지 업로드 테스트
+              </button>
+            </form>
+            <form action={checkWordPressMediaUploadStatusAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                업로드 상태 확인
+              </button>
+            </form>
           </div>
 
           {article.featuredImageUploadStatus !== "not_ready" && (
@@ -811,7 +852,11 @@ export default async function ArticleDetailPage({
               </div>
               <div>
                 <dt className="font-medium text-zinc-600">source url</dt>
-                <dd className="text-zinc-500">{article.featuredImageSourceUrl || "해당 없음"}</dd>
+                <dd className="text-zinc-500 break-all">{article.featuredImageSourceUrl || "해당 없음"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">local path</dt>
+                <dd className="text-zinc-500 break-all">{article.featuredImageLocalPath || "해당 없음"}</dd>
               </div>
               <div>
                 <dt className="font-medium text-zinc-600">filename</dt>
@@ -825,10 +870,18 @@ export default async function ArticleDetailPage({
                 <dt className="font-medium text-zinc-600">WordPress media id</dt>
                 <dd className="text-zinc-500">{article.featuredImageWordpressMediaId ?? "해당 없음 (아직 없음)"}</dd>
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <dt className="font-medium text-zinc-600">WordPress media url</dt>
-                <dd className="text-zinc-500">{article.featuredImageWordpressUrl || "해당 없음"}</dd>
+                <dd className="text-zinc-500 break-all">{article.featuredImageWordpressUrl || "해당 없음"}</dd>
               </div>
+              {article.featuredImageUploadAttemptedAt && (
+                <div>
+                  <dt className="font-medium text-zinc-600">마지막 시도 시간</dt>
+                  <dd className="text-zinc-500">
+                    {new Date(article.featuredImageUploadAttemptedAt).toLocaleString("ko-KR")}
+                  </dd>
+                </div>
+              )}
             </dl>
           )}
 
@@ -1009,6 +1062,86 @@ export default async function ArticleDetailPage({
               )}
             </div>
           )}
+        </section>
+
+        {/* Phase 2-11: WordPress Featured Media Draft Publish Test */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">WordPress Featured Media</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${FEATURED_MEDIA_ATTACH_STATUS_STYLE[article.wordpressFeaturedMediaAttachStatus]}`}
+            >
+              {FEATURED_MEDIA_ATTACH_STATUS_LABEL[article.wordpressFeaturedMediaAttachStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Phase 2-10에서 업로드된 WordPress media id를 기존 WordPress draft
+            post의 featured_media로 연결합니다. 공개 게시는 수행하지 않으며
+            post status는 항상 draft로 유지됩니다.
+          </p>
+          {!article.featuredImageWordpressMediaId && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠ 연결할 WordPress media id가 없습니다 (먼저 WordPress 이미지 업로드 테스트를 완료하세요).
+            </p>
+          )}
+          {!hasWordPressSuccess && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠ 아직 생성된 WordPress draft가 없습니다 (WordPress 초안 생성 시 media id가 있으면 자동으로 포함됩니다).
+            </p>
+          )}
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">featured_image_wordpress_media_id</dt>
+              <dd className="text-zinc-500">{article.featuredImageWordpressMediaId ?? "해당 없음"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">featured_image_wordpress_url</dt>
+              <dd className="text-zinc-500 break-all">{article.featuredImageWordpressUrl || "해당 없음"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">기존 WordPress post id</dt>
+              <dd className="text-zinc-500">{latestWordPressLog?.externalPostId ?? "해당 없음"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">기존 WordPress post_url</dt>
+              <dd className="text-zinc-500 break-all">{latestWordPressLog?.postUrl || "해당 없음"}</dd>
+            </div>
+            {article.wordpressFeaturedMediaAttachedAt && (
+              <div>
+                <dt className="font-medium text-zinc-600">마지막 시도 시간</dt>
+                <dd className="text-zinc-500">
+                  {new Date(article.wordpressFeaturedMediaAttachedAt).toLocaleString("ko-KR")}
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {article.wordpressFeaturedMediaAttachError && (
+            <p className="mt-3 text-xs text-red-600">오류: {article.wordpressFeaturedMediaAttachError}</p>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={attachFeaturedMediaToDraftAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                disabled={!article.featuredImageWordpressMediaId}
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                대표 이미지 초안 글에 연결
+              </button>
+            </form>
+            <form action={checkWordPressFeaturedMediaAttachStatusAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                상태 다시 확인
+              </button>
+            </form>
+          </div>
         </section>
 
         {/* 인용 출처 */}

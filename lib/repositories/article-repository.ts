@@ -10,6 +10,7 @@ import type {
   WordPressMediaUploadStatus,
   ImageGenerationProvider,
   GeneratedImageStatus,
+  WordPressFeaturedMediaAttachStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -156,6 +157,9 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     generatedImageRequestedAt: row.generated_image_requested_at,
     generatedImageCompletedAt: row.generated_image_completed_at,
     generatedImageReviewedAt: row.generated_image_reviewed_at,
+    wordpressFeaturedMediaAttachStatus: row.wordpress_featured_media_attach_status ?? "not_attached",
+    wordpressFeaturedMediaAttachedAt: row.wordpress_featured_media_attached_at,
+    wordpressFeaturedMediaAttachError: row.wordpress_featured_media_attach_error,
   };
 }
 
@@ -907,9 +911,11 @@ export interface SaveFeaturedImageUploadResultInput {
   wordpressMediaId?: number | null;
   wordpressUrl?: string | null;
   errorMessage?: string | null;
+  /** 업로드 성공 시 'uploaded'로 갱신한다 (Phase 2-10). */
+  sourceType?: WordPressMediaSourceType;
 }
 
-/** 실제(또는 시도된) featured image 업로드 결과를 저장한다 (Phase 2-8). */
+/** 실제(또는 시도된) featured image 업로드 결과를 저장한다 (Phase 2-8, Phase 2-10에서 sourceType 추가). */
 export async function saveFeaturedImageUploadResult(
   articleId: string,
   input: SaveFeaturedImageUploadResultInput
@@ -928,6 +934,7 @@ export async function saveFeaturedImageUploadResult(
   if (input.wordpressMediaId !== undefined) update.featured_image_wordpress_media_id = input.wordpressMediaId;
   if (input.wordpressUrl !== undefined) update.featured_image_wordpress_url = input.wordpressUrl;
   if (input.errorMessage !== undefined) update.featured_image_upload_error = input.errorMessage;
+  if (input.sourceType !== undefined) update.featured_image_source_type = input.sourceType;
 
   const { data, error } = await supabase
     .from("articles")
@@ -938,6 +945,43 @@ export async function saveFeaturedImageUploadResult(
 
   if (error || !data) {
     throw new Error(`대표 이미지 업로드 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveWordPressFeaturedMediaAttachResultInput {
+  status: WordPressFeaturedMediaAttachStatus;
+  errorMessage?: string | null;
+}
+
+/** WordPress draft post에 featured_media를 연결한 시도 결과를 저장한다 (Phase 2-11). */
+export async function saveWordPressFeaturedMediaAttachResult(
+  articleId: string,
+  input: SaveWordPressFeaturedMediaAttachResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    wordpress_featured_media_attach_status: input.status,
+    wordpress_featured_media_attached_at: new Date().toISOString(),
+  };
+  if (input.errorMessage !== undefined) update.wordpress_featured_media_attach_error = input.errorMessage;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress featured_media 연결 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

@@ -132,6 +132,9 @@ export type WordPressMediaSourceType = "none" | "generated_url" | "external_url"
 /** Phase 2-6: WordPress media upload 준비/시도 상태 (safe stub — 현재는 'uploaded'가 되지 않는다) */
 export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | "uploaded" | "failed" | "skipped";
 
+/** Phase 2-11: WordPress draft post에 featured_media(대표 이미지)를 연결한 시도 상태 */
+export type WordPressFeaturedMediaAttachStatus = "not_attached" | "attached" | "skipped_no_media_id" | "failed";
+
 /** Phase 2-7: 이미지 생성 provider */
 export type ImageGenerationProvider = "mock" | "openai" | "custom";
 
@@ -269,4 +272,10 @@ export interface Article {
   generatedImageCompletedAt: string | null;
   /** Phase 2-7: 생성 결과를 사람이 검토 완료한 시각 */
   generatedImageReviewedAt: string | null;
+  /** Phase 2-11: WordPress draft post에 featured_media 연결 시도 상태 */
+  wordpressFeaturedMediaAttachStatus: WordPressFeaturedMediaAttachStatus;
+  /** Phase 2-11: featured_media 연결이 마지막으로 시도된 시각 */
+  wordpressFeaturedMediaAttachedAt: string | null;
+  /** Phase 2-11: featured_media 연결 실패 시 안전한 오류 메시지 */
+  wordpressFeaturedMediaAttachError: string | null;
 }

@@ -156,6 +156,9 @@ export type ImageGenerationProvider = "mock" | "openai" | "custom";
 /** Phase 2-7: 이미지 생성 상태 */
 export type GeneratedImageStatus = "not_generated" | "queued" | "generating" | "generated" | "reviewed" | "failed";
 
+/** Phase 2-11: WordPress draft post에 featured_media 연결 시도 상태 */
+export type WordPressFeaturedMediaAttachStatus = "not_attached" | "attached" | "skipped_no_media_id" | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -234,6 +237,10 @@ export type ArticleRow = {
   generated_image_requested_at: string | null;
   generated_image_completed_at: string | null;
   generated_image_reviewed_at: string | null;
+  /** Phase 2-11: WordPress draft post에 featured_media 연결 시도 상태 */
+  wordpress_featured_media_attach_status: WordPressFeaturedMediaAttachStatus;
+  wordpress_featured_media_attached_at: string | null;
+  wordpress_featured_media_attach_error: string | null;
 };
 
 export type ArticleSourceRow = {
@@ -319,7 +326,7 @@ export type ApprovalLogRow = {
 };
 
 /** Phase 2-2: dry_run은 WORDPRESS_PUBLISH_ENABLED=false일 때의 결과 상태다. */
-export type PublishLogStatus = "success" | "failed" | "dry_run";
+export type PublishLogStatus = "success" | "failed" | "dry_run" | "skipped";
 
 export type PublishLogRow = {
   id: string;

@@ -201,7 +201,15 @@ export async function confirmWordPressMediaUploadDryRun(articleId: string): Prom
     return { success: false, message: "먼저 'WordPress 이미지 업로드 준비'를 실행하세요." };
   }
 
+  const sourceType =
+    payload.sourceType === "generated_url" || payload.sourceType === "external_url" || payload.sourceType === "local_file"
+      ? payload.sourceType
+      : undefined;
+
   const result = await uploadMediaToWordPress({
+    sourceType,
+    sourceUrl: payload.sourceUrl ?? undefined,
+    localPath: payload.localPath ?? undefined,
     filename: payload.filename,
     mimeType: payload.mimeType || DEFAULT_MIME_TYPE,
     altText: payload.altText || "",

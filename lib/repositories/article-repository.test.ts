@@ -81,6 +81,9 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     generated_image_requested_at: null,
     generated_image_completed_at: null,
     generated_image_reviewed_at: null,
+    wordpress_featured_media_attach_status: "not_attached",
+    wordpress_featured_media_attached_at: null,
+    wordpress_featured_media_attach_error: null,
     ...overrides,
   };
 }
@@ -162,6 +165,9 @@ describe("mapArticleRowToArticle", () => {
       generatedImageRequestedAt: null,
       generatedImageCompletedAt: null,
       generatedImageReviewedAt: null,
+      wordpressFeaturedMediaAttachStatus: "not_attached",
+      wordpressFeaturedMediaAttachedAt: null,
+      wordpressFeaturedMediaAttachError: null,
     });
   });
 

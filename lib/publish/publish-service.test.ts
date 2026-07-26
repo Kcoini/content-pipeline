@@ -119,6 +119,9 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     generatedImageRequestedAt: null,
     generatedImageCompletedAt: null,
     generatedImageReviewedAt: null,
+    wordpressFeaturedMediaAttachStatus: "not_attached",
+    wordpressFeaturedMediaAttachedAt: null,
+    wordpressFeaturedMediaAttachError: null,
     ...overrides,
   };
 }
@@ -589,6 +592,37 @@ describe("publishArticleToWordPressDraft", () => {
     expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ featuredMedia: 42 }));
     expect(logEvent).toHaveBeenCalledWith(
       expect.objectContaining({ type: "wordpress_featured_media_prepared" })
+    );
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.objectContaining({
+          featuredMedia: expect.objectContaining({ included: true, mediaId: 42, mode: "create_draft" }),
+        }),
+      })
+    );
+  });
+
+  it("featured_image_wordpress_media_id가 없으면 featured_media를 보내지 않고 details_json에도 included=false로 기록한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", featuredImageWordpressMediaId: null })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ featuredMedia: undefined }));
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.objectContaining({
+          featuredMedia: expect.objectContaining({ included: false, mediaId: null }),
+        }),
+      })
     );
   });
 

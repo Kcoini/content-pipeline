@@ -94,6 +94,9 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     generatedImageRequestedAt: null,
     generatedImageCompletedAt: null,
     generatedImageReviewedAt: null,
+    wordpressFeaturedMediaAttachStatus: "not_attached",
+    wordpressFeaturedMediaAttachedAt: null,
+    wordpressFeaturedMediaAttachError: null,
     ...overrides,
   };
 }

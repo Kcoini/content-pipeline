@@ -666,6 +666,12 @@ export async function publishArticleToWordPressDraft(
       tagCount: tagIds.length,
       mediaUpload: { status: "skipped_deferred" },
       seoPluginWrite: { status: "skipped_deferred" },
+      featuredMedia: {
+        included: featuredMedia !== undefined,
+        mediaId: featuredMedia ?? null,
+        mediaUrl: featuredMedia !== undefined ? (article.featuredImageWordpressUrl ?? null) : null,
+        mode: "create_draft",
+      },
     },
   });
 

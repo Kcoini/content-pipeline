@@ -6,6 +6,8 @@ import {
   findOrCreateTag,
   uploadMediaToWordPress,
   testWordPressConnection,
+  updateDraftFeaturedMedia,
+  getMediaItem,
 } from "./wordpress-client";
 
 const ENV_KEYS = ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"] as const;
@@ -238,9 +240,10 @@ describe("uploadMediaToWordPress", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("두 플래그가 모두 true여도 실제 업로드는 구현되지 않아 failed를 반환한다 (safe stub)", async () => {
+  it("두 플래그가 모두 true이고 env가 없으면 실제 fetch 호출 없이 failed를 반환한다", async () => {
     vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
     vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    clearWordPressEnv();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -249,6 +252,183 @@ describe("uploadMediaToWordPress", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sourceType이 없으면(source 미지정) 실제 fetch 호출 없이 failed를 반환한다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress(input);
+
+    expect(result.status).toBe("failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("허용되지 않는 mime type이면 실제 fetch 호출 없이 failed를 반환한다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress({
+      ...input,
+      mimeType: "image/gif",
+      sourceType: "external_url",
+      sourceUrl: "https://images.example.com/photo.gif",
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("허용되지 않는 이미지 형식");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("mock/상대경로 이미지 URL은 실제 업로드를 차단한다 (fetch 호출 없음)", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress({
+      ...input,
+      sourceType: "generated_url",
+      sourceUrl: "/mock/generated-images/article-1.webp",
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("mock 또는 상대경로");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("external_url(http/https)이면 이미지를 다운로드해 media endpoint로 업로드한다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+
+    const imageBytes = new Uint8Array([1, 2, 3, 4]);
+    const fetchMock = vi
+      .fn()
+      // 1) 이미지 다운로드
+      .mockResolvedValueOnce(new Response(imageBytes, { status: 200 }))
+      // 2) media endpoint 업로드
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 55,
+            source_url: "https://example-blog.test/wp-content/uploads/photo.webp",
+            link: "https://example-blog.test/photo",
+            mime_type: "image/webp",
+            media_type: "image",
+            title: { rendered: "title" },
+          }),
+          { status: 201, headers: { "content-type": "application/json" } }
+        )
+      )
+      // 3) metadata 업데이트
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress({
+      ...input,
+      sourceType: "external_url",
+      sourceUrl: "https://images.example.com/photo.webp",
+    });
+
+    expect(result.status).toBe("uploaded");
+    expect(result.wordpressMediaId).toBe(55);
+    expect(result.wordpressUrl).toBe("https://example-blog.test/wp-content/uploads/photo.webp");
+    expect(result.metadataUpdateStatus).toBe("success");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const [uploadUrl, uploadInit] = fetchMock.mock.calls[1];
+    expect(String(uploadUrl)).toContain("/wp-json/wp/v2/media");
+    const uploadHeaders = uploadInit.headers as Record<string, string>;
+    expect(uploadHeaders.Authorization).toMatch(/^Basic /);
+    expect(uploadHeaders.Authorization).not.toContain("dummy-app-password-for-tests");
+  });
+
+  it("media metadata 업데이트가 실패해도 업로드 성공은 유지된다 (warning)", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 7, source_url: "https://example-blog.test/x.webp" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress({
+      ...input,
+      sourceType: "external_url",
+      sourceUrl: "https://images.example.com/photo.webp",
+    });
+
+    expect(result.status).toBe("uploaded");
+    expect(result.wordpressMediaId).toBe(7);
+    expect(result.metadataUpdateStatus).toBe("failed");
+  });
+
+  it("media endpoint HTTP 오류 응답이면 statusCode/reasonCandidate를 포함한 실패를 반환한다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200 }))
+      .mockResolvedValueOnce(new Response("unauthorized", { status: 401, statusText: "Unauthorized" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress({
+      ...input,
+      sourceType: "external_url",
+      sourceUrl: "https://images.example.com/photo.webp",
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.statusCode).toBe(401);
+    expect(result.reasonCandidate).toBeTruthy();
+    expect(result.reasonCandidate!.length).toBeGreaterThan(0);
+  });
+
+  it("Authorization header/password/이미지 binary가 반환값에 포함되지 않는다", async () => {
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    setWordPressEnv();
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(new Uint8Array([9, 9, 9]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 3, source_url: "https://example-blog.test/y.webp" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadMediaToWordPress({
+      ...input,
+      sourceType: "external_url",
+      sourceUrl: "https://images.example.com/photo.webp",
+    });
+
+    const serialized = JSON.stringify(result).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("dummy-app-password-for-tests");
+    expect(serialized).not.toContain("basic ");
   });
 });
 
@@ -354,6 +534,182 @@ describe("testWordPressConnection", () => {
     const result = await testWordPressConnection();
 
     expect(result.connected).toBe(false);
+    expect(result.errorMessage).toContain("network down");
+  });
+});
+
+describe("updateDraftFeaturedMedia", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 실패를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateDraftFeaturedMedia(42, 7);
+
+    expect(result.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("status='draft'와 featured_media만 전송한다 (공개 게시 금지)", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ id: 42, link: "https://example-blog.test/?p=42", status: "draft", featured_media: 7 }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateDraftFeaturedMedia(42, 7);
+
+    expect(result.success).toBe(true);
+    const [endpoint, init] = fetchMock.mock.calls[0];
+    expect(String(endpoint)).toContain("/wp-json/wp/v2/posts/42");
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({ status: "draft", featured_media: 7 });
+  });
+
+  it("Authorization header를 사용하고 password를 평문으로 보내지 않는다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, link: "https://example-blog.test/?p=1", status: "draft" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateDraftFeaturedMedia(1, 5);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toMatch(/^Basic /);
+    expect(headers.Authorization).not.toContain("dummy-app-password-for-tests");
+  });
+
+  it("성공 시 postId/link/status/featuredMedia를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ id: 99, link: "https://example-blog.test/?p=99", status: "draft", featured_media: 12 }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const result = await updateDraftFeaturedMedia(99, 12);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.postId).toBe(99);
+      expect(result.link).toBe("https://example-blog.test/?p=99");
+      expect(result.status).toBe("draft");
+      expect(result.featuredMedia).toBe(12);
+    }
+  });
+
+  it("HTTP 오류 응답이면 statusCode/reasonCandidate를 포함한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("forbidden", { status: 403, statusText: "Forbidden" }))
+    );
+
+    const result = await updateDraftFeaturedMedia(1, 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.statusCode).toBe(403);
+      expect(result.reasonCandidate.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 안전한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await updateDraftFeaturedMedia(1, 1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errorMessage).toContain("network down");
+    }
+  });
+
+  it("반환값에 Authorization header/password가 포함되지 않는다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: 1, link: "https://example-blog.test/?p=1", status: "draft" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const result = await updateDraftFeaturedMedia(1, 1);
+
+    const serialized = JSON.stringify(result).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("dummy-app-password-for-tests");
+    expect(serialized).not.toContain("basic ");
+  });
+});
+
+describe("getMediaItem", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 exists:false를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getMediaItem(7);
+
+    expect(result.exists).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("media item이 존재하면 exists:true를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 7 }), { status: 200, headers: { "content-type": "application/json" } }))
+    );
+
+    const result = await getMediaItem(7);
+
+    expect(result.exists).toBe(true);
+  });
+
+  it("404이면 exists:false와 statusCode 404를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not found", { status: 404 })));
+
+    const result = await getMediaItem(999);
+
+    expect(result.exists).toBe(false);
+    expect(result.statusCode).toBe(404);
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 exists:false를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await getMediaItem(1);
+
+    expect(result.exists).toBe(false);
     expect(result.errorMessage).toContain("network down");
   });
 });

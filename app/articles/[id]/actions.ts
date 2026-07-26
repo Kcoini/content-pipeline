@@ -23,6 +23,8 @@ import {
   prepareWordPressMediaUpload,
   confirmWordPressMediaUploadDryRun,
 } from "@/lib/publish/wordpress-media-preparation-service";
+import { uploadFeaturedImageToWordPress } from "@/lib/publish/wordpress-media-upload-service";
+import { attachFeaturedMediaToDraft } from "@/lib/publish/wordpress-featured-media-service";
 import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -355,6 +357,85 @@ export async function confirmWordPressMediaUploadDryRunAction(formData: FormData
     ? `error=${encodeURIComponent(message)}`
     : `publishMessage=${encodeURIComponent(message)}`;
   redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 실제 WordPress Media Library에 featured image를 업로드한다 (Phase 2-10).
+ * WORDPRESS_MEDIA_UPLOAD_ENABLED=false이면 실제 업로드를 시도하지 않고 skipped로
+ * 처리한다. Application Password/Authorization header는 절대 반환/표시하지 않는다.
+ */
+export async function uploadFeaturedImageToWordPressAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await uploadFeaturedImageToWordPress(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * WordPress 이미지 업로드 상태를 다시 확인한다 (Phase 2-10). 별도의 API 호출
+ * 없이 현재 페이지를 새로고침해 최신 업로드 상태(article 테이블)를 보여준다.
+ */
+export async function checkWordPressMediaUploadStatusAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
+}
+
+/**
+ * 업로드된 WordPress media id를 기존 WordPress draft post의 featured_media로
+ * 연결한다 (Phase 2-11). media id가 없거나 기존 draft가 없으면 안전하게
+ * 실패 메시지를 반환한다. 공개 게시는 수행하지 않으며 post status는 항상
+ * draft로 유지된다.
+ */
+export async function attachFeaturedMediaToDraftAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await attachFeaturedMediaToDraft(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * WordPress featured_media 연결 상태를 다시 확인한다 (Phase 2-11). 별도의 API
+ * 호출 없이 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
+ */
+export async function checkWordPressFeaturedMediaAttachStatusAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
 }
 
 /**

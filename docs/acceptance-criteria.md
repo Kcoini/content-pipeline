@@ -234,6 +234,54 @@
       "공개 게시" 버튼은 존재하지 않는다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-19. WordPress Media Upload Actual Test (FR-20, Phase 2-10)
+- [ ] `WORDPRESS_MEDIA_UPLOAD_ENABLED=false`이면 실제 업로드를 호출하지 않고
+      skipped로 처리한다.
+- [ ] 업로드할 이미지 source가 없으면(sourceType=none) skipped_no_source로
+      처리한다.
+- [ ] mock URL 또는 상대경로 이미지는 실제 업로드하지 않고 안전하게
+      차단한다(fetch 미호출).
+- [ ] `featured_image_source_url`이 http/https이면 external_url로 다운로드
+      대상으로 처리한다.
+- [ ] 허용되지 않는 MIME type(jpeg/png/webp 외)은 실제 fetch 없이 failed로
+      처리한다.
+- [ ] 업로드 성공 시 `articles.featured_image_wordpress_media_id`/
+      `featured_image_wordpress_url`/`featured_image_source_type='uploaded'`가
+      저장된다.
+- [ ] `publish_logs`에 target=`wordpress_media`, status=`success`로 저장된다.
+- [ ] media metadata(alt text/caption) 업데이트 실패는 업로드 success를
+      failed로 바꾸지 않는다(warning 처리).
+- [ ] Authorization header/Application Password/API key가 로그에 저장되지
+      않는다.
+- [ ] 이미지 binary가 로그에 저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] 기존 WordPress draft publish 흐름(Phase 2-9)이 깨지지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
+## AC-20. WordPress Featured Media Draft Publish Test (FR-21, Phase 2-11)
+- [ ] media id가 없으면 새 draft/기존 draft 어느 쪽에도 `featured_media`를
+      보내지 않는다.
+- [ ] media id가 없으면 `articles.wordpress_featured_media_attach_status=
+      'skipped_no_media_id'`로 저장되고 실제 API가 호출되지 않는다.
+- [ ] media id가 있으면 새 draft 생성 시 post payload에 `featured_media`가
+      포함된다.
+- [ ] 이미 성공한 draft(external_post_id 존재)가 있으면 새 post를 만들지 않고
+      `updateDraftFeaturedMedia`를 호출한다.
+- [ ] `updateDraftFeaturedMedia`는 `status`를 항상 `"draft"`로 고정해 전송한다.
+- [ ] featured_media 업데이트 성공 시 `articles.wordpress_featured_media_
+      attach_status='attached'`가 저장된다.
+- [ ] 실패 시 safe error message가 저장되고(`statusCode`/`reasonCandidate`),
+      원본 응답 본문 전체나 인증 정보는 저장되지 않는다.
+- [ ] Authorization header/Application Password/API key가 로그에 저장되지
+      않는다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`에 저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] 기존 WordPress draft publish 흐름(Phase 2-9/2-10)이 깨지지 않는다.
+- [ ] article 상세 페이지에 media id/media url/attach status/attempted at/
+      기존 post id/post_url이 표시되고, "대표 이미지 초안 글에 연결"/"상태
+      다시 확인" 버튼이 제공된다. "공개 게시" 버튼은 존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.
