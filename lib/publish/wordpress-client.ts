@@ -307,6 +307,212 @@ export async function getMediaItem(mediaId: number): Promise<MediaItemCheckResul
 }
 
 // ─────────────────────────────────────────────────────────────
+// Phase 2-12: SEO plugin(Yoast/Rank Math/AIOSEO) 실제 post metadata write
+//
+// 표준 WordPress REST API(POST /wp-json/wp/v2/posts/{id})의 meta 필드로만
+// 시도한다. plugin이 protected meta key를 REST에 노출하지 않거나 별도 저장
+// 방식을 쓰면 반영되지 않을 수 있다 — 이 경우 호출자가 반영 여부를 다시
+// 조회(verifySeoPluginMetadata)해 needs_custom_endpoint로 처리한다.
+// ─────────────────────────────────────────────────────────────
+
+export type SeoPluginWriteProvider = "rank_math" | "yoast" | "aioseo";
+
+export interface SeoPluginMetaFields {
+  seoTitle?: string;
+  metaDescription?: string;
+  focusKeyword?: string;
+}
+
+/** provider별 post meta key로 payload를 만든다. 값이 없는 필드는 아예 포함하지 않는다. */
+function buildSeoPluginMetaPayload(
+  provider: SeoPluginWriteProvider,
+  fields: SeoPluginMetaFields
+): Record<string, string> {
+  const keys: Record<SeoPluginWriteProvider, { title: string; description: string; focusKeyword: string }> = {
+    rank_math: { title: "rank_math_title", description: "rank_math_description", focusKeyword: "rank_math_focus_keyword" },
+    yoast: { title: "_yoast_wpseo_title", description: "_yoast_wpseo_metadesc", focusKeyword: "_yoast_wpseo_focuskw" },
+    aioseo: { title: "_aioseo_title", description: "_aioseo_description", focusKeyword: "_aioseo_keywords" },
+  };
+  const providerKeys = keys[provider];
+
+  const payload: Record<string, string> = {};
+  if (fields.seoTitle) payload[providerKeys.title] = fields.seoTitle;
+  if (fields.metaDescription) payload[providerKeys.description] = fields.metaDescription;
+  if (fields.focusKeyword) payload[providerKeys.focusKeyword] = fields.focusKeyword;
+  return payload;
+}
+
+export interface UpdateSeoPluginMetadataSuccess {
+  success: true;
+  postId: number;
+  /** 실제로 전송을 시도한 meta key 목록 (값이 있는 필드만) */
+  fieldsAttempted: string[];
+}
+
+export interface UpdateSeoPluginMetadataFailure {
+  success: false;
+  statusCode?: number;
+  errorMessage: string;
+  reasonCandidate: string[];
+}
+
+export type UpdateSeoPluginMetadataResult = UpdateSeoPluginMetadataSuccess | UpdateSeoPluginMetadataFailure;
+
+/**
+ * WordPress draft post에 SEO plugin metadata를 실제로 반영 시도한다 (Phase 2-12).
+ * status는 입력값과 무관하게 항상 "draft"로 고정해 전송한다 — 공개(publish)는
+ * 절대 수행하지 않는다. WordPress REST API에서 meta field가 등록/노출되어
+ * 있지 않으면 요청은 성공(HTTP 200)해도 실제로 반영되지 않을 수 있다 —
+ * 반영 여부는 verifySeoPluginMetadata로 별도 확인해야 한다.
+ */
+export async function updateSeoPluginMetadata(
+  postId: number,
+  provider: SeoPluginWriteProvider,
+  fields: SeoPluginMetaFields
+): Promise<UpdateSeoPluginMetadataResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return {
+      success: false,
+      errorMessage: "WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD가 설정되지 않았습니다.",
+      reasonCandidate: ["Application Password가 설정되지 않았습니다."],
+    };
+  }
+
+  const metaPayload = buildSeoPluginMetaPayload(provider, fields);
+  const fieldsAttempted = Object.keys(metaPayload);
+  if (fieldsAttempted.length === 0) {
+    return {
+      success: false,
+      errorMessage: "저장할 SEO metadata 필드가 없습니다 (seo_title/meta_description/target_keyword가 모두 비어 있습니다).",
+      reasonCandidate: ["article에 seo_title/meta_description/target_keyword 중 하나 이상이 필요합니다."],
+    };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/wp-json/wp/v2/posts/${postId}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Authorization header는 절대 로그로 출력하지 않는다.
+        Authorization: buildAuthHeader(config),
+      },
+      body: JSON.stringify({ status: "draft", meta: metaPayload }),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const errorMessage = `WordPress API 네트워크 오류: ${message}`;
+    return {
+      success: false,
+      errorMessage,
+      reasonCandidate: ["사이트 접근 불가", "SSL 문제", "방화벽 또는 보안 플러그인 문제"],
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      statusCode: response.status,
+      errorMessage: `WordPress SEO metadata 갱신 실패 (HTTP ${response.status} ${response.statusText})`,
+      reasonCandidate: getLikelyCausesForStatus(response.status),
+    };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      errorMessage: `WordPress 응답 파싱 실패: ${message}`,
+      reasonCandidate: ["원인을 특정할 수 없는 오류입니다."],
+    };
+  }
+
+  const resultPostId = typeof data.id === "number" ? data.id : Number(data.id);
+  if (!resultPostId || Number.isNaN(resultPostId)) {
+    return {
+      success: false,
+      errorMessage: "WordPress 응답에 post id가 없습니다.",
+      reasonCandidate: ["원인을 특정할 수 없는 오류입니다."],
+    };
+  }
+
+  return { success: true, postId: resultPostId, fieldsAttempted };
+}
+
+export interface VerifySeoPluginMetadataResult {
+  verified: boolean;
+  /** 반영이 확인되지 않을 때만 채워지는 안전한 안내 메시지 (custom endpoint 필요 가능성 등) */
+  warning?: string;
+}
+
+/**
+ * SEO plugin metadata가 실제로 반영되었는지 다시 조회해 확인한다 (Phase 2-12).
+ * `GET /wp-json/wp/v2/posts/{postId}?context=edit`의 meta 필드에 시도한 key가
+ * 모두 존재하면 verified:true, 그렇지 않으면 반영 여부를 단정하지 않고
+ * warning으로 안내한다 (SEO plugin이 protected meta를 REST에 노출하지 않을 수 있음).
+ */
+export async function verifySeoPluginMetadata(
+  postId: number,
+  fieldsAttempted: string[]
+): Promise<VerifySeoPluginMetadataResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return { verified: false, warning: "WordPress 환경변수가 설정되지 않아 반영 여부를 확인할 수 없습니다." };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/wp-json/wp/v2/posts/${postId}?context=edit`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      headers: { Authorization: buildAuthHeader(config) },
+      cache: "no-store",
+    });
+  } catch {
+    return { verified: false, warning: "WordPress 응답을 확인할 수 없어 반영 여부를 검증하지 못했습니다 (네트워크 오류)." };
+  }
+
+  if (!response.ok) {
+    return {
+      verified: false,
+      warning: `WordPress 응답 확인 실패 (HTTP ${response.status}) — SEO metadata가 실제로 반영되었는지 확인할 수 없습니다.`,
+    };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch {
+    return { verified: false, warning: "WordPress 응답 파싱에 실패해 반영 여부를 확인할 수 없습니다." };
+  }
+
+  const meta = data.meta && typeof data.meta === "object" ? (data.meta as Record<string, unknown>) : {};
+  const allPresent = fieldsAttempted.every((key) => {
+    const value = meta[key];
+    return value !== undefined && value !== null && value !== "";
+  });
+
+  if (allPresent) {
+    return { verified: true };
+  }
+
+  return {
+    verified: false,
+    warning:
+      "SEO metadata가 저장되었을 수 있지만 REST 응답에 노출되지 않았습니다 (SEO meta may have been accepted but is not exposed in REST response).",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Phase 2-3: category/tag 동기화 (구조만 준비 — 실제 연결은 다음 단계)
 //
 // WORDPRESS_PUBLISH_ENABLED=false이면 이 함수들을 호출하지 않는다

@@ -159,6 +159,27 @@ export type GeneratedImageStatus = "not_generated" | "queued" | "generating" | "
 /** Phase 2-11: WordPress draft post에 featured_media 연결 시도 상태 */
 export type WordPressFeaturedMediaAttachStatus = "not_attached" | "attached" | "skipped_no_media_id" | "failed";
 
+/** Phase 2-12: SEO plugin 실제 metadata write 시도 상태 */
+export type SeoPluginActualWriteStatus =
+  | "not_attempted"
+  | "skipped_disabled"
+  | "skipped_provider_none"
+  | "skipped_no_wordpress_post"
+  | "skipped_missing_target_keyword"
+  | "success"
+  | "failed"
+  | "needs_custom_endpoint";
+
+/** Phase 2-13: WordPress custom SEO endpoint(Rank Math 전용) write 시도 상태 */
+export type SeoPluginCustomEndpointStatus =
+  | "not_attempted"
+  | "skipped_disabled"
+  | "skipped_provider_not_supported"
+  | "skipped_no_wordpress_post"
+  | "skipped_missing_target_keyword"
+  | "success"
+  | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -241,6 +262,19 @@ export type ArticleRow = {
   wordpress_featured_media_attach_status: WordPressFeaturedMediaAttachStatus;
   wordpress_featured_media_attached_at: string | null;
   wordpress_featured_media_attach_error: string | null;
+  /** Phase 2-12: SEO plugin 실제 metadata write 시도 상태 */
+  seo_plugin_actual_write_status: SeoPluginActualWriteStatus;
+  seo_plugin_actual_write_provider: string | null;
+  seo_plugin_actual_write_post_id: number | null;
+  seo_plugin_actual_write_error: string | null;
+  seo_plugin_actual_write_attempted_at: string | null;
+  seo_plugin_actual_write_verified: boolean;
+  seo_plugin_actual_write_warning: string | null;
+  /** Phase 2-13: WordPress custom SEO endpoint(Rank Math 전용) write 시도 상태 */
+  seo_plugin_custom_endpoint_status: SeoPluginCustomEndpointStatus;
+  seo_plugin_custom_endpoint_verified: boolean;
+  seo_plugin_custom_endpoint_error: string | null;
+  seo_plugin_custom_endpoint_attempted_at: string | null;
 };
 
 export type ArticleSourceRow = {

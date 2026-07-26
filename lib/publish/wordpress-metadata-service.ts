@@ -169,8 +169,52 @@ function resolveSlug(article: Article, theme: Theme | undefined): string {
   return slugify(source, { fallback: articleIdSlugFallback(article.id) });
 }
 
-function resolveTargetKeyword(article: Article, theme: Theme | undefined): string | undefined {
-  return article.targetKeyword || theme?.keywords[0] || undefined;
+const TITLE_KEYWORD_MAX_WORDS = 4;
+const TITLE_KEYWORD_MAX_LENGTH = 30;
+
+/**
+ * target_keyword 후보가 전혀 없을 때 title에서 핵심 키워드 후보를 추출한다
+ * (최후의 fallback). 대괄호/괄호 접두사(예: "[속보]")를 제거하고 앞부분
+ * 단어 몇 개만 사용한다 — 정교한 키워드 추출이 아니라 "완전히 비어있지는
+ * 않게" 하기 위한 안전장치다.
+ */
+function extractKeywordFromTitle(title: string): string {
+  const cleaned = title
+    .replace(/^[[({][^\])}]*[\])}]\s*/, "")
+    .replace(/[[\]()]/g, "")
+    .trim();
+  if (!cleaned) return "";
+
+  const words = cleaned.split(/\s+/).slice(0, TITLE_KEYWORD_MAX_WORDS).join(" ");
+  return words.length > TITLE_KEYWORD_MAX_LENGTH ? words.slice(0, TITLE_KEYWORD_MAX_LENGTH) : words;
+}
+
+export type TargetKeywordSource = "explicit" | "theme" | "title_fallback" | "none";
+
+export interface ResolvedTargetKeyword {
+  targetKeyword?: string;
+  source: TargetKeywordSource;
+}
+
+/**
+ * target_keyword를 결정한다 (누락 방지 보강).
+ * 우선순위: article.targetKeyword(explicit) → theme.keywords[0](theme) →
+ * title에서 추출(title_fallback). article_mode와 무관하게 항상 이 순서를
+ * 적용한다 — monetized_blog뿐 아니라 source_based_explainer/general_news도
+ * 가능하면 target_keyword를 갖도록 하기 위함이다.
+ */
+export function resolveTargetKeyword(article: Article, theme: Theme | undefined): ResolvedTargetKeyword {
+  if (article.targetKeyword) {
+    return { targetKeyword: article.targetKeyword, source: "explicit" };
+  }
+  if (theme?.keywords[0]) {
+    return { targetKeyword: theme.keywords[0], source: "theme" };
+  }
+  const fallback = extractKeywordFromTitle(article.title);
+  if (fallback) {
+    return { targetKeyword: fallback, source: "title_fallback" };
+  }
+  return { targetKeyword: undefined, source: "none" };
 }
 
 const SECONDARY_KEYWORD_LIMIT = 8;
@@ -192,7 +236,7 @@ function buildMetadata(article: Article, theme: Theme | undefined): WordPressMet
   const seoTitle = resolveSeoTitle(article);
   const metaDescription = resolveMetaDescription(article);
   const slug = resolveSlug(article, theme);
-  const targetKeyword = resolveTargetKeyword(article, theme);
+  const { targetKeyword, source: targetKeywordSource } = resolveTargetKeyword(article, theme);
   const secondaryKeywords = resolveSecondaryKeywords(article, theme, targetKeyword);
 
   return {
@@ -205,6 +249,7 @@ function buildMetadata(article: Article, theme: Theme | undefined): WordPressMet
     metaDescription,
     slug,
     targetKeyword,
+    targetKeywordSource,
     secondaryKeywords,
     internalLinkSuggestions: article.internalLinkSuggestions,
     adSlots: article.adSlots,
@@ -242,6 +287,7 @@ export async function generateWordPressMetadata(articleId: string): Promise<Gene
       metaDescription: metadata.metaDescription,
       slug: metadata.slug,
       targetKeyword: metadata.targetKeyword,
+      targetKeywordSource: metadata.targetKeywordSource,
       secondaryKeywords: metadata.secondaryKeywords,
       internalLinkSuggestions: metadata.internalLinkSuggestions,
       categoryNames: metadata.categoryNames,
@@ -263,8 +309,34 @@ export async function generateWordPressMetadata(articleId: string): Promise<Gene
         categoryNames: metadata.categoryNames,
         tagNames: metadata.tagNames,
         slug: metadata.slug,
+        targetKeywordSource: metadata.targetKeywordSource,
       },
     });
+
+    // target_keyword가 title fallback으로 결정되었으면 warning으로 기록한다
+    // (자동 추출이라 실제 핵심 키워드와 다를 수 있음을 알리기 위함).
+    if (metadata.targetKeywordSource === "title_fallback") {
+      await logEvent({
+        type: "wordpress_metadata_target_keyword_fallback_used",
+        status: "info",
+        message: `기사(${articleId})는 target_keyword를 title에서 자동 추출했습니다 ("${metadata.targetKeyword}"). 필요하면 직접 확인/수정하세요.`,
+        articleId,
+        themeId: article.themeId,
+        targetType: "article",
+        targetId: articleId,
+        details: { targetKeyword: metadata.targetKeyword ?? null },
+      });
+    } else if (metadata.targetKeywordSource === "none") {
+      await logEvent({
+        type: "wordpress_metadata_target_keyword_missing",
+        status: "failed",
+        message: `기사(${articleId})의 target_keyword를 결정할 수 없습니다 (title/theme 모두 비어 있음).`,
+        articleId,
+        themeId: article.themeId,
+        targetType: "article",
+        targetId: articleId,
+      });
+    }
 
     return { success: true, message: "WordPress metadata를 생성했습니다.", metadata };
   } catch (error) {

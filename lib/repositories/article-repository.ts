@@ -11,6 +11,8 @@ import type {
   ImageGenerationProvider,
   GeneratedImageStatus,
   WordPressFeaturedMediaAttachStatus,
+  SeoPluginActualWriteStatus,
+  SeoPluginCustomEndpointStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -160,6 +162,17 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     wordpressFeaturedMediaAttachStatus: row.wordpress_featured_media_attach_status ?? "not_attached",
     wordpressFeaturedMediaAttachedAt: row.wordpress_featured_media_attached_at,
     wordpressFeaturedMediaAttachError: row.wordpress_featured_media_attach_error,
+    seoPluginActualWriteStatus: row.seo_plugin_actual_write_status ?? "not_attempted",
+    seoPluginActualWriteProvider: row.seo_plugin_actual_write_provider,
+    seoPluginActualWritePostId: row.seo_plugin_actual_write_post_id,
+    seoPluginActualWriteError: row.seo_plugin_actual_write_error,
+    seoPluginActualWriteAttemptedAt: row.seo_plugin_actual_write_attempted_at,
+    seoPluginActualWriteVerified: row.seo_plugin_actual_write_verified ?? false,
+    seoPluginActualWriteWarning: row.seo_plugin_actual_write_warning,
+    seoPluginCustomEndpointStatus: row.seo_plugin_custom_endpoint_status ?? "not_attempted",
+    seoPluginCustomEndpointVerified: row.seo_plugin_custom_endpoint_verified ?? false,
+    seoPluginCustomEndpointError: row.seo_plugin_custom_endpoint_error,
+    seoPluginCustomEndpointAttemptedAt: row.seo_plugin_custom_endpoint_attempted_at,
   };
 }
 
@@ -420,6 +433,8 @@ export interface SaveWordPressMetadataInput {
   metaDescription: string;
   slug: string;
   targetKeyword?: string;
+  /** target_keyword를 어떻게 결정했는지(explicit/theme/title_fallback/none). warning 판단에 사용한다. */
+  targetKeywordSource?: string;
   secondaryKeywords?: string[];
   internalLinkSuggestions?: InternalLinkSuggestion[];
   categoryNames: string[];
@@ -452,6 +467,7 @@ export async function saveWordPressMetadata(input: SaveWordPressMetadataInput): 
     meta_description: input.metaDescription,
     internal_links: input.internalLinkSuggestions ?? existing.internalLinkSuggestions,
     ad_slots: existing.adSlots,
+    target_keyword_source: input.targetKeywordSource ?? null,
   };
 
   const formatMetadata = {
@@ -517,11 +533,17 @@ export interface SaveSeoPluginMetadataInput {
   payload: SeoPluginPayload;
   /** 'generated' 또는 'failed' — 'reviewed'는 markSeoPluginMetadataReviewed로만 전환한다. */
   status: "generated" | "failed";
+  /** target_keyword가 비어 있어 fallback으로 새로 계산된 경우에만 전달한다 (articles.target_keyword에도 반영). */
+  targetKeyword?: string;
+  /** target_keyword 결정 방식(explicit/theme/title_fallback/none) — format_metadata.wordpress에 함께 저장한다. */
+  targetKeywordSource?: string;
 }
 
 /**
  * SEO plugin(Yoast/Rank Math/AIOSEO 등) metadata mapping 결과를 저장한다 (Phase 2-4).
- * 실제 plugin write는 하지 않으며, payload 저장/상태 갱신만 수행한다.
+ * 실제 plugin write는 하지 않으며, payload 저장/상태 갱신만 수행한다. target_keyword가
+ * 비어 있어 fallback으로 새로 계산된 경우 articles.target_keyword도 함께 채워
+ * 다음 단계(실제 write)에서 다시 비어 보이지 않게 한다.
  */
 export async function saveSeoPluginMetadata(input: SaveSeoPluginMetadataInput): Promise<Article> {
   const existing = await getArticleById(input.articleId);
@@ -531,14 +553,28 @@ export async function saveSeoPluginMetadata(input: SaveSeoPluginMetadataInput): 
 
   const supabase = createServerSupabaseClient();
 
+  const update: Partial<ArticleRow> = {
+    seo_plugin_provider: input.provider,
+    seo_plugin_payload: input.payload as unknown as Record<string, unknown>,
+    seo_plugin_metadata_status: input.status,
+    seo_plugin_metadata_generated_at: new Date().toISOString(),
+  };
+  if (input.targetKeyword !== undefined) {
+    update.target_keyword = input.targetKeyword;
+  }
+  if (input.targetKeywordSource !== undefined) {
+    update.format_metadata = {
+      ...existing.formatMetadata,
+      wordpress: {
+        ...((existing.formatMetadata as { wordpress?: Record<string, unknown> })?.wordpress ?? {}),
+        target_keyword_source: input.targetKeywordSource,
+      },
+    };
+  }
+
   const { data, error } = await supabase
     .from("articles")
-    .update({
-      seo_plugin_provider: input.provider,
-      seo_plugin_payload: input.payload as unknown as Record<string, unknown>,
-      seo_plugin_metadata_status: input.status,
-      seo_plugin_metadata_generated_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq("id", input.articleId)
     .select()
     .single();
@@ -982,6 +1018,90 @@ export async function saveWordPressFeaturedMediaAttachResult(
 
   if (error || !data) {
     throw new Error(`WordPress featured_media 연결 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveSeoPluginActualWriteResultInput {
+  status: SeoPluginActualWriteStatus;
+  provider?: string | null;
+  postId?: number | null;
+  errorMessage?: string | null;
+  verified?: boolean;
+  warning?: string | null;
+}
+
+/** SEO plugin 실제 metadata write 시도 결과를 저장한다 (Phase 2-12). */
+export async function saveSeoPluginActualWriteResult(
+  articleId: string,
+  input: SaveSeoPluginActualWriteResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    seo_plugin_actual_write_status: input.status,
+    seo_plugin_actual_write_attempted_at: new Date().toISOString(),
+  };
+  if (input.provider !== undefined) update.seo_plugin_actual_write_provider = input.provider;
+  if (input.postId !== undefined) update.seo_plugin_actual_write_post_id = input.postId;
+  if (input.errorMessage !== undefined) update.seo_plugin_actual_write_error = input.errorMessage;
+  if (input.verified !== undefined) update.seo_plugin_actual_write_verified = input.verified;
+  if (input.warning !== undefined) update.seo_plugin_actual_write_warning = input.warning;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`SEO plugin 실제 write 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveSeoPluginCustomEndpointResultInput {
+  status: SeoPluginCustomEndpointStatus;
+  verified?: boolean;
+  errorMessage?: string | null;
+}
+
+/** WordPress custom SEO endpoint(Rank Math 전용) write 시도 결과를 저장한다 (Phase 2-13). */
+export async function saveSeoPluginCustomEndpointResult(
+  articleId: string,
+  input: SaveSeoPluginCustomEndpointResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    seo_plugin_custom_endpoint_status: input.status,
+    seo_plugin_custom_endpoint_attempted_at: new Date().toISOString(),
+  };
+  if (input.verified !== undefined) update.seo_plugin_custom_endpoint_verified = input.verified;
+  if (input.errorMessage !== undefined) update.seo_plugin_custom_endpoint_error = input.errorMessage;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress custom SEO endpoint 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

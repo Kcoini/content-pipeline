@@ -17,6 +17,8 @@ export interface WordPressMetadata {
   metaDescription: string;
   slug: string;
   targetKeyword?: string;
+  /** target_keyword를 어떻게 결정했는지 (explicit/theme/title_fallback/none) */
+  targetKeywordSource?: string;
   secondaryKeywords?: string[];
   internalLinkSuggestions?: InternalLinkSuggestion[];
   adSlots?: AdSlotEntry[];
@@ -32,6 +34,7 @@ export interface WordPressFormatMetadata {
   meta_description: string;
   internal_links: InternalLinkSuggestion[];
   ad_slots: AdSlotEntry[];
+  target_keyword_source?: string | null;
 }
 
 export function toWordPressFormatMetadata(metadata: WordPressMetadata): WordPressFormatMetadata {
@@ -43,5 +46,6 @@ export function toWordPressFormatMetadata(metadata: WordPressMetadata): WordPres
     meta_description: metadata.metaDescription,
     internal_links: metadata.internalLinkSuggestions ?? [],
     ad_slots: metadata.adSlots ?? [],
+    target_keyword_source: metadata.targetKeywordSource ?? null,
   };
 }

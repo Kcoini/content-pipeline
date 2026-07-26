@@ -122,6 +122,17 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     wordpressFeaturedMediaAttachStatus: "not_attached",
     wordpressFeaturedMediaAttachedAt: null,
     wordpressFeaturedMediaAttachError: null,
+    seoPluginActualWriteStatus: "not_attempted",
+    seoPluginActualWriteProvider: null,
+    seoPluginActualWritePostId: null,
+    seoPluginActualWriteError: null,
+    seoPluginActualWriteAttemptedAt: null,
+    seoPluginActualWriteVerified: false,
+    seoPluginActualWriteWarning: null,
+    seoPluginCustomEndpointStatus: "not_attempted",
+    seoPluginCustomEndpointVerified: false,
+    seoPluginCustomEndpointError: null,
+    seoPluginCustomEndpointAttemptedAt: null,
     ...overrides,
   };
 }

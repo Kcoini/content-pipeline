@@ -306,4 +306,30 @@ describe("generateAiArticleDraft — article_mode별 prompt 선택", () => {
     }
     expect(result.content).not.toMatch(/adsbygoogle|googlesyndication|data-ad-client|data-ad-slot/i);
   });
+
+  it("AI가 targetKeyword를 누락해도 theme 키워드로 채운다 (빈 문자열로 남기지 않는다)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", {
+        seoTitle: "SEO 제목",
+        metaDescription: "메타 설명",
+        // targetKeyword 필드 자체를 생략한다 (AI가 빠뜨린 경우를 재현).
+        secondaryKeywords: [],
+        searchIntent: "informational",
+        readerPersona: "일반 독자",
+        title: "본문 제목",
+        content: "수익형 블로그 본문입니다.".repeat(80),
+        citedSourceIds: sources.map((s) => s.id),
+        adSlots: [],
+        internalLinkSuggestions: [],
+        monetizationScore: 50,
+        policyRiskScore: 10,
+      })
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.targetKeyword).toBeTruthy();
+    expect(result.targetKeyword).toBe(theme.keywords[0]);
+  });
 });

@@ -282,6 +282,66 @@
       다시 확인" 버튼이 제공된다. "공개 게시" 버튼은 존재하지 않는다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-21. SEO Plugin Actual Metadata Test (FR-22, Phase 2-12)
+- [ ] `SEO_PLUGIN_WRITE_ENABLED=false`이면 실제 write를 호출하지 않고
+      `skipped_disabled`로 저장된다.
+- [ ] `SEO_PLUGIN_PROVIDER=none`이면 실제 write를 호출하지 않고
+      `skipped_provider_none`으로 저장된다.
+- [ ] WordPress draft post id가 없으면 `skipped_no_wordpress_post`로
+      저장된다.
+- [ ] rank_math/yoast/aioseo provider는 각각 올바른 post meta key로 payload를
+      만든다.
+- [ ] update payload는 `status`를 항상 `"draft"`로 고정한다.
+- [ ] 성공 시 `articles.seo_plugin_actual_write_status='success'`가
+      저장된다.
+- [ ] REST response에서 meta 확인이 안 되면 `needs_custom_endpoint`로
+      처리되고 warning이 저장된다.
+- [ ] 실패 시 safe error message(`statusCode`/`reasonCandidate`)가 저장되고
+      원본 응답 본문 전체나 인증 정보는 저장되지 않는다.
+- [ ] Authorization header/Application Password/API key가 로그에 저장되지
+      않는다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`에 저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] 기존 WordPress draft publish 흐름(Phase 2-9~2-11)이 깨지지 않는다.
+- [ ] article 상세 페이지에 provider/write enabled 상태, write status,
+      verified, warning, WordPress post id, 마지막 시도 시간이 표시되고
+      "SEO plugin metadata 실제 반영 테스트"/"반영 상태 확인" 버튼이
+      제공된다. provider=none이면 버튼이 비활성화된다. "공개 게시" 버튼은
+      존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
+## AC-22. Custom WordPress SEO Metadata Endpoint (FR-23, Phase 2-13)
+- [ ] custom endpoint가 비활성화되어 있으면(`WORDPRESS_SEO_CUSTOM_ENDPOINT_
+      ENABLED=false`) 실제 호출 없이 `skipped_disabled`로 저장된다.
+- [ ] provider가 rank_math가 아니면 실제 호출 없이
+      `skipped_provider_not_supported`로 저장된다.
+- [ ] WordPress draft post id가 없으면 `skipped_no_wordpress_post`로
+      저장된다.
+- [ ] rank_math custom endpoint payload(`postId`/`provider`/`seoTitle`/
+      `metaDescription`/`focusKeyword`/`secondaryKeywords`)가 올바르게
+      생성된다.
+- [ ] custom endpoint 성공 시 `articles.seo_plugin_custom_endpoint_status
+      ='success'`가 저장된다.
+- [ ] custom endpoint 성공 시 `seo_plugin_actual_write_verified=true`가
+      저장된다.
+- [ ] custom endpoint 실패 시 safe error(`statusCode`/`reasonCandidate`)가
+      저장되고 표준 REST 방식으로 fallback하지 않는다.
+- [ ] `publish_logs`에 `target='wordpress_seo_custom_endpoint'`로 저장된다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] Authorization header/Application Password/API key가 로그에 저장되지
+      않는다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`에 저장되지 않는다.
+- [ ] 기존 WordPress draft publish 흐름(Phase 2-9~2-12)이 깨지지 않는다.
+- [ ] WordPress plugin의 `permission_callback`이 `current_user_can(
+      'edit_post', $post_id)`로 권한을 확인하며 `'__return_true'`를
+      사용하지 않는다.
+- [ ] article 상세 페이지에 provider/custom endpoint enabled/path, custom
+      endpoint status/verified/error, WordPress post id가 표시되고
+      "Rank Math custom endpoint로 SEO 반영"/"반영 상태 확인" 버튼이
+      제공된다. provider가 rank_math가 아니면 버튼이 비활성화된다.
+      "공개 게시" 버튼은 존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

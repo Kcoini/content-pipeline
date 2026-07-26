@@ -135,6 +135,27 @@ export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | 
 /** Phase 2-11: WordPress draft post에 featured_media(대표 이미지)를 연결한 시도 상태 */
 export type WordPressFeaturedMediaAttachStatus = "not_attached" | "attached" | "skipped_no_media_id" | "failed";
 
+/** Phase 2-12: SEO plugin(Yoast/Rank Math/AIOSEO) 실제 post metadata write 시도 상태 */
+export type SeoPluginActualWriteStatus =
+  | "not_attempted"
+  | "skipped_disabled"
+  | "skipped_provider_none"
+  | "skipped_no_wordpress_post"
+  | "skipped_missing_target_keyword"
+  | "success"
+  | "failed"
+  | "needs_custom_endpoint";
+
+/** Phase 2-13: WordPress custom SEO endpoint(Rank Math 전용) write 시도 상태 */
+export type SeoPluginCustomEndpointStatus =
+  | "not_attempted"
+  | "skipped_disabled"
+  | "skipped_provider_not_supported"
+  | "skipped_no_wordpress_post"
+  | "skipped_missing_target_keyword"
+  | "success"
+  | "failed";
+
 /** Phase 2-7: 이미지 생성 provider */
 export type ImageGenerationProvider = "mock" | "openai" | "custom";
 
@@ -278,4 +299,26 @@ export interface Article {
   wordpressFeaturedMediaAttachedAt: string | null;
   /** Phase 2-11: featured_media 연결 실패 시 안전한 오류 메시지 */
   wordpressFeaturedMediaAttachError: string | null;
+  /** Phase 2-12: SEO plugin 실제 metadata write 시도 상태 */
+  seoPluginActualWriteStatus: SeoPluginActualWriteStatus;
+  /** Phase 2-12: 실제 write에 사용된 provider (시도 시점 기준) */
+  seoPluginActualWriteProvider: string | null;
+  /** Phase 2-12: 실제 write 대상 WordPress post id */
+  seoPluginActualWritePostId: number | null;
+  /** Phase 2-12: 실제 write 실패 시 안전한 오류 메시지 */
+  seoPluginActualWriteError: string | null;
+  /** Phase 2-12: 실제 write가 마지막으로 시도된 시각 */
+  seoPluginActualWriteAttemptedAt: string | null;
+  /** Phase 2-12: REST 응답으로 반영이 확인되었는지 여부 */
+  seoPluginActualWriteVerified: boolean;
+  /** Phase 2-12: 반영 확인 관련 warning (custom endpoint 필요 가능성 등) */
+  seoPluginActualWriteWarning: string | null;
+  /** Phase 2-13: WordPress custom SEO endpoint(Rank Math 전용) write 시도 상태 */
+  seoPluginCustomEndpointStatus: SeoPluginCustomEndpointStatus;
+  /** Phase 2-13: custom endpoint 응답으로 반영이 확인되었는지 여부 */
+  seoPluginCustomEndpointVerified: boolean;
+  /** Phase 2-13: custom endpoint 실패 시 안전한 오류 메시지 */
+  seoPluginCustomEndpointError: string | null;
+  /** Phase 2-13: custom endpoint가 마지막으로 시도된 시각 */
+  seoPluginCustomEndpointAttemptedAt: string | null;
 }

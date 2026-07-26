@@ -63,6 +63,8 @@ export type LogEventType =
   | "wordpress_metadata_generation_completed"
   | "wordpress_metadata_generation_failed"
   | "wordpress_metadata_reviewed"
+  | "wordpress_metadata_target_keyword_fallback_used"
+  | "wordpress_metadata_target_keyword_missing"
   | "wordpress_category_tag_sync_skipped_dry_run"
   | "wordpress_category_tag_sync_started"
   | "wordpress_category_tag_sync_completed"
@@ -134,7 +136,28 @@ export type LogEventType =
   | "wordpress_featured_media_existing_draft_found"
   | "wordpress_featured_media_existing_draft_not_found"
   | "wordpress_media_item_validation_completed"
-  | "wordpress_media_item_validation_failed";
+  | "wordpress_media_item_validation_failed"
+  // Phase 2-12: SEO Plugin Actual Metadata Test 이벤트
+  | "seo_plugin_actual_write_started"
+  | "seo_plugin_actual_write_completed"
+  | "seo_plugin_actual_write_failed"
+  | "seo_plugin_actual_write_skipped_disabled"
+  | "seo_plugin_actual_write_skipped_provider_none"
+  | "seo_plugin_actual_write_skipped_no_wordpress_post"
+  | "seo_plugin_actual_write_skipped_missing_target_keyword"
+  | "seo_plugin_actual_write_needs_custom_endpoint"
+  | "seo_plugin_actual_write_verification_completed"
+  | "seo_plugin_actual_write_verification_warning"
+  // Phase 2-13: Custom WordPress SEO Metadata Endpoint(Rank Math 전용) 이벤트
+  | "seo_plugin_custom_endpoint_write_started"
+  | "seo_plugin_custom_endpoint_write_completed"
+  | "seo_plugin_custom_endpoint_write_failed"
+  | "seo_plugin_custom_endpoint_skipped_disabled"
+  | "seo_plugin_custom_endpoint_skipped_provider_not_supported"
+  | "seo_plugin_custom_endpoint_skipped_no_wordpress_post"
+  | "seo_plugin_custom_endpoint_skipped_missing_target_keyword"
+  | "seo_plugin_custom_endpoint_verification_completed"
+  | "seo_plugin_custom_endpoint_verification_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

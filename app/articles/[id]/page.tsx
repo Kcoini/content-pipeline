@@ -22,6 +22,9 @@ import {
   checkWordPressMediaUploadStatusAction,
   attachFeaturedMediaToDraftAction,
   checkWordPressFeaturedMediaAttachStatusAction,
+  writeSeoPluginMetadataToWordPressAction,
+  checkSeoPluginActualWriteStatusAction,
+  writeRankMathSeoViaCustomEndpointAction,
   generateFeaturedImageAction,
   reviewGeneratedImageAction,
   testWordPressConnectionAction,
@@ -34,11 +37,15 @@ import type {
   WordPressMediaUploadStatus,
   GeneratedImageStatus,
   WordPressFeaturedMediaAttachStatus,
+  SeoPluginActualWriteStatus,
+  SeoPluginCustomEndpointStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
 import { isWordPressMediaUploadEnabled } from "@/lib/publish/wordpress-media-config";
 import { isImageGenerationEnabled } from "@/lib/images/image-generation-config";
+import { getSeoPluginProvider, isSeoPluginWriteEnabled } from "@/lib/seo/seo-plugin-config";
+import { isSeoCustomEndpointEnabled, getSeoCustomEndpointPath } from "@/lib/seo/wordpress-seo-custom-endpoint-client";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 
 export const dynamic = "force-dynamic";
@@ -146,6 +153,48 @@ const FEATURED_MEDIA_ATTACH_STATUS_STYLE: Record<WordPressFeaturedMediaAttachSta
   failed: "bg-red-100 text-red-700",
 };
 
+const SEO_PLUGIN_ACTUAL_WRITE_STATUS_LABEL: Record<SeoPluginActualWriteStatus, string> = {
+  not_attempted: "시도 안 함",
+  skipped_disabled: "건너뜀 (비활성화)",
+  skipped_provider_none: "건너뜀 (provider 없음)",
+  skipped_no_wordpress_post: "건너뜀 (draft 없음)",
+  skipped_missing_target_keyword: "건너뜀 (focus keyword 없음)",
+  success: "반영 확인됨",
+  failed: "실패",
+  needs_custom_endpoint: "custom endpoint 필요",
+};
+
+const SEO_PLUGIN_ACTUAL_WRITE_STATUS_STYLE: Record<SeoPluginActualWriteStatus, string> = {
+  not_attempted: "bg-zinc-100 text-zinc-500",
+  skipped_disabled: "bg-zinc-100 text-zinc-500",
+  skipped_provider_none: "bg-zinc-100 text-zinc-500",
+  skipped_no_wordpress_post: "bg-amber-100 text-amber-700",
+  skipped_missing_target_keyword: "bg-amber-100 text-amber-700",
+  success: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+  needs_custom_endpoint: "bg-amber-100 text-amber-700",
+};
+
+const SEO_PLUGIN_CUSTOM_ENDPOINT_STATUS_LABEL: Record<SeoPluginCustomEndpointStatus, string> = {
+  not_attempted: "시도 안 함",
+  skipped_disabled: "건너뜀 (비활성화)",
+  skipped_provider_not_supported: "건너뜀 (rank_math 아님)",
+  skipped_no_wordpress_post: "건너뜀 (draft 없음)",
+  skipped_missing_target_keyword: "건너뜀 (focus keyword 없음)",
+  success: "반영 확인됨",
+  failed: "실패",
+};
+
+const SEO_PLUGIN_CUSTOM_ENDPOINT_STATUS_STYLE: Record<SeoPluginCustomEndpointStatus, string> = {
+  not_attempted: "bg-zinc-100 text-zinc-500",
+  skipped_disabled: "bg-zinc-100 text-zinc-500",
+  skipped_provider_not_supported: "bg-zinc-100 text-zinc-500",
+  skipped_no_wordpress_post: "bg-amber-100 text-amber-700",
+  skipped_missing_target_keyword: "bg-amber-100 text-amber-700",
+  success: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+};
+
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
   not_generated: "생성 안 됨",
   queued: "대기중",
@@ -204,6 +253,7 @@ export default async function ArticleDetailPage({
   const wordpressLogs = publishLogs.filter((log) => log.target === WORDPRESS_TARGET);
   const latestWordPressLog = wordpressLogs[0];
   const hasWordPressSuccess = wordpressLogs.some((log) => log.status === "success");
+  const hasFocusKeyword = Boolean(article.targetKeyword && article.targetKeyword.trim());
   const seoPluginPayload = article.seoPluginPayload as unknown as Partial<SeoPluginPayload>;
 
   return (
@@ -1141,6 +1191,194 @@ export default async function ArticleDetailPage({
                 상태 다시 확인
               </button>
             </form>
+          </div>
+        </section>
+
+        {/* Phase 2-12: SEO Plugin Actual Metadata Test */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">SEO Plugin Actual Write</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${SEO_PLUGIN_ACTUAL_WRITE_STATUS_STYLE[article.seoPluginActualWriteStatus]}`}
+            >
+              {SEO_PLUGIN_ACTUAL_WRITE_STATUS_LABEL[article.seoPluginActualWriteStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Phase 2-4에서 준비한 SEO plugin metadata를 실제 WordPress draft
+            post에 반영하는 테스트를 합니다. 공개 게시는 수행하지 않으며 post
+            status는 항상 draft로 유지됩니다. provider 하나만 선택해서
+            테스트합니다.
+          </p>
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">SEO_PLUGIN_PROVIDER</dt>
+              <dd className="text-zinc-500">{getSeoPluginProvider()}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">SEO_PLUGIN_WRITE_ENABLED</dt>
+              <dd className="text-zinc-500">{isSeoPluginWriteEnabled() ? "true" : "false"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">write provider (마지막 시도)</dt>
+              <dd className="text-zinc-500">{article.seoPluginActualWriteProvider ?? "해당 없음"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">target_keyword (focus keyword)</dt>
+              <dd className={hasFocusKeyword ? "text-zinc-500" : "font-medium text-amber-700"}>
+                {article.targetKeyword || "없음"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">WordPress post id</dt>
+              <dd className="text-zinc-500">
+                {article.seoPluginActualWritePostId ?? latestWordPressLog?.externalPostId ?? "해당 없음"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">반영 확인(verified)</dt>
+              <dd className="text-zinc-500">{article.seoPluginActualWriteVerified ? "예" : "아니오"}</dd>
+            </div>
+            {article.seoPluginActualWriteAttemptedAt && (
+              <div>
+                <dt className="font-medium text-zinc-600">마지막 시도 시간</dt>
+                <dd className="text-zinc-500">
+                  {new Date(article.seoPluginActualWriteAttemptedAt).toLocaleString("ko-KR")}
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {getSeoPluginProvider() === "none" && (
+            <p className="mt-3 text-xs font-medium text-amber-700">
+              ⚠ SEO_PLUGIN_PROVIDER=none이어서 실제 write를 시도할 수 없습니다.
+            </p>
+          )}
+          {!hasWordPressSuccess && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠ 아직 생성된 WordPress draft가 없습니다 (먼저 WordPress 초안 생성을 실행하세요).
+            </p>
+          )}
+          {!hasFocusKeyword && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              ⚠ Focus keyword가 없어 Rank Math에 반영할 수 없습니다. SEO metadata를 다시 생성하거나 target_keyword를 입력하세요.
+            </p>
+          )}
+          {article.seoPluginActualWriteWarning && (
+            <p className="mt-3 text-xs text-amber-700">⚠ {article.seoPluginActualWriteWarning}</p>
+          )}
+          {article.seoPluginActualWriteError && (
+            <p className="mt-3 text-xs text-red-600">오류: {article.seoPluginActualWriteError}</p>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={writeSeoPluginMetadataToWordPressAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                disabled={getSeoPluginProvider() === "none" || !hasFocusKeyword}
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                SEO plugin metadata 실제 반영 테스트
+              </button>
+            </form>
+            <form action={checkSeoPluginActualWriteStatusAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                반영 상태 확인
+              </button>
+            </form>
+          </div>
+
+          {/* Phase 2-13: Custom WordPress SEO Metadata Endpoint (Rank Math 전용) */}
+          <div className="mt-4 border-t border-zinc-100 pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold text-zinc-700">Custom Endpoint (Rank Math 전용)</h3>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${SEO_PLUGIN_CUSTOM_ENDPOINT_STATUS_STYLE[article.seoPluginCustomEndpointStatus]}`}
+              >
+                {SEO_PLUGIN_CUSTOM_ENDPOINT_STATUS_LABEL[article.seoPluginCustomEndpointStatus]}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              표준 WordPress posts REST API로 Rank Math SEO metadata 반영이
+              확인되지 않을 때, WordPress 쪽 custom REST endpoint를 통해
+              update_post_meta로 직접 저장합니다. Rank Math 전용이며 Yoast/
+              AIOSEO는 지원하지 않습니다.
+            </p>
+
+            <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-600">WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED</dt>
+                <dd className="text-zinc-500">{isSeoCustomEndpointEnabled() ? "true" : "false"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">custom endpoint path</dt>
+                <dd className="text-zinc-500 font-mono break-all">{getSeoCustomEndpointPath()}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">반영 확인(verified)</dt>
+                <dd className="text-zinc-500">{article.seoPluginCustomEndpointVerified ? "예" : "아니오"}</dd>
+              </div>
+              {article.seoPluginCustomEndpointAttemptedAt && (
+                <div>
+                  <dt className="font-medium text-zinc-600">마지막 시도 시간</dt>
+                  <dd className="text-zinc-500">
+                    {new Date(article.seoPluginCustomEndpointAttemptedAt).toLocaleString("ko-KR")}
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            {getSeoPluginProvider() !== "rank_math" && (
+              <p className="mt-2 text-xs font-medium text-amber-700">
+                ⚠ SEO_PLUGIN_PROVIDER가 rank_math가 아니어서 custom endpoint를 사용할 수 없습니다.
+              </p>
+            )}
+            {!isSeoCustomEndpointEnabled() && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                ⚠ WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED=false이어서 custom endpoint write를 건너뜁니다.
+              </p>
+            )}
+            {!hasWordPressSuccess && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                ⚠ 아직 생성된 WordPress draft가 없습니다.
+              </p>
+            )}
+            {!hasFocusKeyword && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                ⚠ Focus keyword가 없어 Rank Math에 반영할 수 없습니다. SEO metadata를 다시 생성하거나 target_keyword를 입력하세요.
+              </p>
+            )}
+            {article.seoPluginCustomEndpointError && (
+              <p className="mt-2 text-xs text-red-600">오류: {article.seoPluginCustomEndpointError}</p>
+            )}
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              <form action={writeRankMathSeoViaCustomEndpointAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  disabled={getSeoPluginProvider() !== "rank_math" || !hasFocusKeyword}
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Rank Math custom endpoint로 SEO 반영
+                </button>
+              </form>
+              <form action={checkSeoPluginActualWriteStatusAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                >
+                  반영 상태 확인
+                </button>
+              </form>
+            </div>
           </div>
         </section>
 

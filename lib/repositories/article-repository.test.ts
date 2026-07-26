@@ -84,6 +84,17 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     wordpress_featured_media_attach_status: "not_attached",
     wordpress_featured_media_attached_at: null,
     wordpress_featured_media_attach_error: null,
+    seo_plugin_actual_write_status: "not_attempted",
+    seo_plugin_actual_write_provider: null,
+    seo_plugin_actual_write_post_id: null,
+    seo_plugin_actual_write_error: null,
+    seo_plugin_actual_write_attempted_at: null,
+    seo_plugin_actual_write_verified: false,
+    seo_plugin_actual_write_warning: null,
+    seo_plugin_custom_endpoint_status: "not_attempted",
+    seo_plugin_custom_endpoint_verified: false,
+    seo_plugin_custom_endpoint_error: null,
+    seo_plugin_custom_endpoint_attempted_at: null,
     ...overrides,
   };
 }
@@ -168,6 +179,17 @@ describe("mapArticleRowToArticle", () => {
       wordpressFeaturedMediaAttachStatus: "not_attached",
       wordpressFeaturedMediaAttachedAt: null,
       wordpressFeaturedMediaAttachError: null,
+      seoPluginActualWriteStatus: "not_attempted",
+      seoPluginActualWriteProvider: null,
+      seoPluginActualWritePostId: null,
+      seoPluginActualWriteError: null,
+      seoPluginActualWriteAttemptedAt: null,
+      seoPluginActualWriteVerified: false,
+      seoPluginActualWriteWarning: null,
+      seoPluginCustomEndpointStatus: "not_attempted",
+      seoPluginCustomEndpointVerified: false,
+      seoPluginCustomEndpointError: null,
+      seoPluginCustomEndpointAttemptedAt: null,
     });
   });
 

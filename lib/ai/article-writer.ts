@@ -612,7 +612,12 @@ async function generateMonetizedBlogAiDraft(
     citedSourceIds,
     seoTitle: typeof input.seoTitle === "string" ? input.seoTitle : title,
     metaDescription: typeof input.metaDescription === "string" ? input.metaDescription : "",
-    targetKeyword: typeof input.targetKeyword === "string" ? input.targetKeyword : "",
+    // AI가 targetKeyword를 누락하거나 빈 문자열로 응답해도 완전히 비지 않도록
+    // theme 키워드/제목으로 fallback한다 (target_keyword 누락 방지).
+    targetKeyword:
+      typeof input.targetKeyword === "string" && input.targetKeyword.trim()
+        ? input.targetKeyword
+        : theme.keywords[0] || theme.title,
     secondaryKeywords: Array.isArray(input.secondaryKeywords)
       ? input.secondaryKeywords.filter((k): k is string => typeof k === "string")
       : [],

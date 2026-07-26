@@ -8,6 +8,8 @@ import {
   testWordPressConnection,
   updateDraftFeaturedMedia,
   getMediaItem,
+  updateSeoPluginMetadata,
+  verifySeoPluginMetadata,
 } from "./wordpress-client";
 
 const ENV_KEYS = ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"] as const;
@@ -711,5 +713,178 @@ describe("getMediaItem", () => {
 
     expect(result.exists).toBe(false);
     expect(result.errorMessage).toContain("network down");
+  });
+});
+
+describe("updateSeoPluginMetadata", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  const fields = { seoTitle: "SEO 제목", metaDescription: "메타 설명", focusKeyword: "타깃 키워드" };
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 실패를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateSeoPluginMetadata(1, "rank_math", fields);
+
+    expect(result.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rank_math provider는 rank_math meta key를 만든다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, status: "draft" }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateSeoPluginMetadata(1, "rank_math", fields);
+
+    expect(result.success).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.meta).toEqual({
+      rank_math_title: "SEO 제목",
+      rank_math_description: "메타 설명",
+      rank_math_focus_keyword: "타깃 키워드",
+    });
+  });
+
+  it("yoast provider는 yoast meta key를 만든다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, status: "draft" }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateSeoPluginMetadata(1, "yoast", fields);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.meta).toEqual({
+      _yoast_wpseo_title: "SEO 제목",
+      _yoast_wpseo_metadesc: "메타 설명",
+      _yoast_wpseo_focuskw: "타깃 키워드",
+    });
+  });
+
+  it("aioseo provider는 aioseo meta key를 만든다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, status: "draft" }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateSeoPluginMetadata(1, "aioseo", fields);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.meta).toEqual({
+      _aioseo_title: "SEO 제목",
+      _aioseo_description: "메타 설명",
+      _aioseo_keywords: "타깃 키워드",
+    });
+  });
+
+  it("status=draft를 강제한다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, status: "draft" }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateSeoPluginMetadata(1, "rank_math", fields);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.status).toBe("draft");
+  });
+
+  it("HTTP 오류 응답이면 statusCode/reasonCandidate를 포함한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("forbidden", { status: 403, statusText: "Forbidden" })));
+
+    const result = await updateSeoPluginMetadata(1, "rank_math", fields);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.statusCode).toBe(403);
+      expect(result.reasonCandidate.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 안전한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await updateSeoPluginMetadata(1, "rank_math", fields);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("반환값에 Authorization header/password가 포함되지 않는다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 1, status: "draft" }), { status: 200, headers: { "content-type": "application/json" } }))
+    );
+
+    const result = await updateSeoPluginMetadata(1, "rank_math", fields);
+
+    const serialized = JSON.stringify(result).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("dummy-app-password-for-tests");
+    expect(serialized).not.toContain("basic ");
+  });
+});
+
+describe("verifySeoPluginMetadata", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("meta 필드가 응답에 모두 존재하면 verified:true를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ meta: { rank_math_title: "SEO 제목" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const result = await verifySeoPluginMetadata(1, ["rank_math_title"]);
+
+    expect(result.verified).toBe(true);
+  });
+
+  it("meta 필드가 응답에 없으면 verified:false와 warning을 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ meta: {} }), { status: 200, headers: { "content-type": "application/json" } }))
+    );
+
+    const result = await verifySeoPluginMetadata(1, ["rank_math_title"]);
+
+    expect(result.verified).toBe(false);
+    expect(result.warning).toBeTruthy();
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 verified:false를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await verifySeoPluginMetadata(1, ["rank_math_title"]);
+
+    expect(result.verified).toBe(false);
+    expect(result.warning).toBeTruthy();
   });
 });

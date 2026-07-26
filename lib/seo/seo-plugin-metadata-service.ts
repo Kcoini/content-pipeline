@@ -8,10 +8,12 @@ import {
   saveSeoPluginMetadata,
   markSeoPluginMetadataReviewed as markReviewedInRepository,
 } from "@/lib/repositories/article-repository";
+import { getThemeById } from "@/lib/repositories/theme-repository";
 import { logEvent } from "@/lib/harness/logger";
 import { validateSeoPluginProvider } from "./seo-plugin-config";
 import { mapSeoPluginPayload } from "./plugin-mappers";
-import type { Article, ArticleMode, SeoPluginProvider } from "@/lib/types/domain";
+import { resolveTargetKeyword } from "@/lib/publish/wordpress-metadata-service";
+import type { Article, ArticleMode, SeoPluginProvider, Theme } from "@/lib/types/domain";
 import type { SeoPluginMapperInput, SeoPluginPayload } from "./seo-plugin-types";
 
 export interface GenerateSeoPluginResult {
@@ -34,7 +36,7 @@ function computeCanonicalUrl(article: Article): string | undefined {
   return `${baseUrl.replace(/\/+$/, "")}/${article.slug}`;
 }
 
-function buildMapperInput(article: Article): SeoPluginMapperInput {
+function buildMapperInput(article: Article, theme: Theme | undefined, targetKeyword: string | undefined): SeoPluginMapperInput {
   return {
     articleId: article.id,
     articleMode: article.articleMode,
@@ -42,7 +44,7 @@ function buildMapperInput(article: Article): SeoPluginMapperInput {
     seoTitle: article.seoTitle || article.title,
     metaDescription: article.metaDescription || "",
     slug: article.slug || "",
-    targetKeyword: article.targetKeyword ?? undefined,
+    targetKeyword,
     secondaryKeywords: article.secondaryKeywords,
     formatMetadata: article.formatMetadata,
     wpCategoryNames: article.wpCategoryNames,
@@ -82,9 +84,22 @@ export async function generateSeoPluginPayload(
   });
 
   try {
-    const payload = mapSeoPluginPayload(provider, buildMapperInput(article));
+    const theme = await getThemeById(article.themeId);
+    const { targetKeyword, source: targetKeywordSource } = resolveTargetKeyword(article, theme);
+    const payload = mapSeoPluginPayload(provider, buildMapperInput(article, theme, targetKeyword));
 
-    await saveSeoPluginMetadata({ articleId, provider, payload, status: "generated" });
+    // target_keyword가 원래 비어 있었고 fallback으로 새로 계산되었으면 articles.target_keyword에도 반영한다
+    // (누락 방지 — 실제 write 단계에서 다시 비어 보이지 않도록).
+    const shouldPersistTargetKeyword = !article.targetKeyword && Boolean(targetKeyword);
+
+    await saveSeoPluginMetadata({
+      articleId,
+      provider,
+      payload,
+      status: "generated",
+      targetKeyword: shouldPersistTargetKeyword ? targetKeyword : undefined,
+      targetKeywordSource,
+    });
 
     await logEvent({
       type: "seo_plugin_metadata_generation_completed",
@@ -98,8 +113,32 @@ export async function generateSeoPluginPayload(
         provider,
         seoTitle: payload.seoTitle,
         focusKeyword: payload.focusKeyword ?? null,
+        targetKeywordSource,
       },
     });
+
+    if (targetKeywordSource === "title_fallback") {
+      await logEvent({
+        type: "wordpress_metadata_target_keyword_fallback_used",
+        status: "info",
+        message: `기사(${articleId})는 target_keyword를 title에서 자동 추출했습니다 ("${targetKeyword}"). 필요하면 직접 확인/수정하세요.`,
+        articleId,
+        themeId: article.themeId,
+        targetType: "article",
+        targetId: articleId,
+        details: { targetKeyword: targetKeyword ?? null },
+      });
+    } else if (targetKeywordSource === "none") {
+      await logEvent({
+        type: "wordpress_metadata_target_keyword_missing",
+        status: "failed",
+        message: `기사(${articleId})의 target_keyword를 결정할 수 없습니다 (title/theme 모두 비어 있음).`,
+        articleId,
+        themeId: article.themeId,
+        targetType: "article",
+        targetId: articleId,
+      });
+    }
 
     return { success: true, message: "SEO plugin metadata를 생성했습니다.", payload, provider };
   } catch (error) {

@@ -103,6 +103,17 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     wordpressFeaturedMediaAttachStatus: "not_attached",
     wordpressFeaturedMediaAttachedAt: null,
     wordpressFeaturedMediaAttachError: null,
+    seoPluginActualWriteStatus: "not_attempted",
+    seoPluginActualWriteProvider: null,
+    seoPluginActualWritePostId: null,
+    seoPluginActualWriteError: null,
+    seoPluginActualWriteAttemptedAt: null,
+    seoPluginActualWriteVerified: false,
+    seoPluginActualWriteWarning: null,
+    seoPluginCustomEndpointStatus: "not_attempted",
+    seoPluginCustomEndpointVerified: false,
+    seoPluginCustomEndpointError: null,
+    seoPluginCustomEndpointAttemptedAt: null,
     ...overrides,
   };
 }
@@ -240,6 +251,44 @@ describe("generateWordPressMetadata", () => {
     expect(result.message).toContain("DB 오류");
     expect(saveWordPressMetadata).toHaveBeenCalledTimes(2);
     expect(saveWordPressMetadata).toHaveBeenLastCalledWith(expect.objectContaining({ status: "failed" }));
+  });
+
+  it("target_keyword가 없어도 theme keyword로 채워진다 (누락되지 않는다)", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ targetKeyword: null }));
+    getThemeById.mockResolvedValue(makeTheme({ keywords: ["장기요양보험"] }));
+
+    const result = await generateWordPressMetadata("article-1");
+
+    expect(result.metadata!.targetKeyword).toBe("장기요양보험");
+    expect(saveWordPressMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ targetKeyword: "장기요양보험", targetKeywordSource: "theme" })
+    );
+  });
+
+  it("target_keyword와 theme keyword가 모두 없으면 title에서 추출하고 fallback 이벤트를 기록한다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ targetKeyword: null, title: "요양원 완벽 가이드" }));
+    getThemeById.mockResolvedValue(makeTheme({ keywords: [] }));
+
+    const result = await generateWordPressMetadata("article-1");
+
+    expect(result.metadata!.targetKeyword).toBeTruthy();
+    expect(saveWordPressMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ targetKeywordSource: "title_fallback" })
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_metadata_target_keyword_fallback_used" })
+    );
+  });
+
+  it("monetized_blog에서도 target_keyword가 항상 채워진다 (필수 취급)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ articleMode: "monetized_blog", targetKeyword: null })
+    );
+    getThemeById.mockResolvedValue(makeTheme({ keywords: [] }));
+
+    const result = await generateWordPressMetadata("article-1");
+
+    expect(result.metadata!.targetKeyword).toBeTruthy();
   });
 });
 

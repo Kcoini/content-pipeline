@@ -25,6 +25,10 @@ import {
 } from "@/lib/publish/wordpress-media-preparation-service";
 import { uploadFeaturedImageToWordPress } from "@/lib/publish/wordpress-media-upload-service";
 import { attachFeaturedMediaToDraft } from "@/lib/publish/wordpress-featured-media-service";
+import {
+  writeSeoPluginMetadataToWordPress,
+  writeRankMathSeoViaCustomEndpoint,
+} from "@/lib/seo/seo-plugin-actual-write-service";
 import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -436,6 +440,76 @@ export async function checkWordPressFeaturedMediaAttachStatusAction(formData: Fo
 
   revalidatePath(`/articles/${articleId}`);
   redirect(`/articles/${articleId}`);
+}
+
+/**
+ * SEO plugin metadata를 실제 WordPress draft post에 반영하는 테스트를 한다
+ * (Phase 2-12). SEO_PLUGIN_PROVIDER=none이거나 SEO_PLUGIN_WRITE_ENABLED=false
+ * 이면 실제 API를 호출하지 않고 안전하게 skip한다. 공개 게시는 수행하지
+ * 않으며 post status는 항상 draft로 유지된다.
+ */
+export async function writeSeoPluginMetadataToWordPressAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await writeSeoPluginMetadataToWordPress(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * SEO plugin 실제 write 반영 상태를 다시 확인한다 (Phase 2-12). 별도의 API
+ * 호출 없이 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
+ */
+export async function checkSeoPluginActualWriteStatusAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
+}
+
+/**
+ * Rank Math SEO metadata를 WordPress custom REST endpoint(ai-pipeline/v1/
+ * seo-meta)를 통해 update_post_meta로 직접 반영한다 (Phase 2-13). provider가
+ * rank_math가 아니거나 custom endpoint가 비활성화되어 있거나 WordPress
+ * draft post가 없으면 실제 API를 호출하지 않고 안전하게 skip한다. 실패해도
+ * 표준 REST 방식으로 fallback하지 않는다.
+ */
+export async function writeRankMathSeoViaCustomEndpointAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await writeRankMathSeoViaCustomEndpoint(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
 }
 
 /**

@@ -228,6 +228,47 @@ media`)에 저장되며, 기사 본문·인증 정보·WordPress 원본 오류 �
 기록한다. 자세한 내용은
 `docs/phase-2-11-wordpress-featured-media-draft-publish-test.md` 참고.
 
+### FR-22. SEO Plugin Actual Metadata Test (Phase 2-12)
+`SEO_PLUGIN_PROVIDER`(none/yoast/rank_math/aioseo 중 하나)와
+`SEO_PLUGIN_WRITE_ENABLED=true`일 때, Phase 2-4에서 준비한 SEO metadata
+(seo_title/meta_description/target_keyword)를 실제 WordPress draft post에
+`POST /wp-json/wp/v2/posts/{id}`의 `meta` 필드로 반영을 시도할 수 있다 —
+provider 하나만 선택해서 테스트하며 여러 plugin 동시 write는 하지 않는다.
+status는 입력값과 무관하게 항상 `draft`로 고정된다. write 요청이 성공해도
+WordPress REST API가 protected meta key를 노출하지 않으면 실제 반영 여부가
+불확실할 수 있으므로, 반영 직후 `GET .../posts/{id}?context=edit`로 다시
+조회해 확인하고(`verifySeoPluginMetadata`), 확인되지 않으면
+`seo_plugin_actual_write_status='needs_custom_endpoint'`로 기록한다.
+provider=none이거나 write가 비활성화되어 있거나 WordPress draft post가 없으면
+실제 API를 호출하지 않고 각각 `skipped_provider_none`/`skipped_disabled`/
+`skipped_no_wordpress_post`로 처리한다. 결과는
+`articles.seo_plugin_actual_write_*` 컬럼과 `publish_logs`(target=
+`wordpress_seo_plugin`)에 저장되며, 기사 본문 전체·인증 정보·WordPress
+원본 오류 응답 전체는 저장하지 않는다. `pipeline_logs`는 `event_name` 컬럼
+기준으로 `seo_plugin_actual_write_*` 이벤트를 기록한다. 자세한 내용은
+`docs/phase-2-12-seo-plugin-actual-metadata-test.md` 참고.
+
+### FR-23. Custom WordPress SEO Metadata Endpoint (Phase 2-13)
+표준 WordPress posts REST API로 Rank Math SEO metadata 반영 여부가
+확인되지 않는 문제(Phase 2-12)를 해결하기 위해, WordPress 쪽에 custom REST
+endpoint(`wordpress-plugin/ai-pipeline-seo-endpoint`, `POST /wp-json/
+ai-pipeline/v1/seo-meta`)를 배포하고 `update_post_meta`로 직접 저장하는
+경로를 추가한다. 이 경로는 Rank Math 전용이며 Yoast/AIOSEO는 지원하지
+않는다. `permission_callback`은 `'__return_true'`를 사용하지 않고
+`current_user_can('edit_post', $post_id)`로 대상 글에 대한 편집 권한을
+확인한다. `SEO_PLUGIN_PROVIDER=rank_math`이고 `WORDPRESS_SEO_CUSTOM_
+ENDPOINT_ENABLED=true`이면 표준 REST 방식 대신 custom endpoint를 우선
+사용하며, custom endpoint가 비활성화되어 있으면 표준 REST 방식을 사용하고,
+custom endpoint 호출이 실패하면 표준 REST 방식으로 fallback하지 않고
+실패를 그대로 저장한다. 결과는 `articles.seo_plugin_custom_endpoint_*`
+컬럼과 `publish_logs`(target=`wordpress_seo_custom_endpoint`)에 저장되며,
+Application Password/Authorization header/API key와 기사 본문 전체,
+WordPress 원본 응답 본문 전체는 저장하지 않는다. `pipeline_logs`는
+`event_name` 컬럼 기준으로 `seo_plugin_custom_endpoint_*` 이벤트를
+기록한다. 자세한 내용은
+`docs/phase-2-13-custom-wordpress-seo-metadata-endpoint.md`와
+`docs/phase-2-13-wordpress-plugin-install.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성
