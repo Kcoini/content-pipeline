@@ -269,6 +269,22 @@ WordPress 원본 응답 본문 전체는 저장하지 않는다. `pipeline_logs`
 `docs/phase-2-13-custom-wordpress-seo-metadata-endpoint.md`와
 `docs/phase-2-13-wordpress-plugin-install.md` 참고.
 
+### FR-24. WordPress Final Draft Payload Review (Phase 2-14)
+WordPress draft post/featured media/Rank Math SEO metadata/category·tag/
+출처 인용/AD_SLOT marker가 하나의 draft에 정상 반영되었는지 review
+checklist(6개 항목: wordpress_draft/featured_media/seo_metadata/
+category_tag/source_citation/ad_slot_marker)로 점검할 수 있다. 실제
+WordPress API를 다시 호출하지 않고 이전 단계에서 이미 저장된 상태를
+재집계하며, 공개(publish)는 어떤 경우에도 수행하지 않는다. WordPress draft
+post가 없으면(`publish_logs.target='wordpress'`, `status='success'`,
+`external_post_id`가 있는 기록이 없으면) `missing_wordpress_draft`로
+처리하고 실제 점검을 시도하지 않는다. 결과는
+`articles.wordpress_final_draft_review_*` 컬럼과 `publish_logs`(target=
+`wordpress_final_draft_review`)에 저장되며, 기사 본문 전체·인증 정보는
+저장하지 않는다. `pipeline_logs`는 `event_name` 컬럼 기준으로
+`wordpress_final_draft_review_*` 이벤트를 기록한다. 자세한 내용은
+`docs/phase-2-14-wordpress-final-draft-payload-review.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

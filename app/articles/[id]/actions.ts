@@ -29,6 +29,7 @@ import {
   writeSeoPluginMetadataToWordPress,
   writeRankMathSeoViaCustomEndpoint,
 } from "@/lib/seo/seo-plugin-actual-write-service";
+import { reviewWordPressFinalDraft } from "@/lib/publish/wordpress-final-draft-review-service";
 import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -510,6 +511,46 @@ export async function writeRankMathSeoViaCustomEndpointAction(formData: FormData
     ? `error=${encodeURIComponent(message)}`
     : `publishMessage=${encodeURIComponent(message)}`;
   redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * WordPress draft post/featured media/Rank Math SEO metadata/category·tag/
+ * source citation/AD_SLOT marker가 정상 반영되었는지 checklist로 점검한다
+ * (Phase 2-14). 실제 WordPress API를 다시 호출하지 않고 이미 저장된 상태를
+ * 재집계하며, 공개(publish)는 절대 수행하지 않는다.
+ */
+export async function reviewWordPressFinalDraftAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await reviewWordPressFinalDraft(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * WordPress final draft review 상태를 다시 확인한다 (Phase 2-14). 별도의 API
+ * 호출 없이 현재 페이지를 새로고침해 최신 상태(article 테이블)를 보여준다.
+ */
+export async function checkWordPressFinalDraftReviewStatusAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
 }
 
 /**

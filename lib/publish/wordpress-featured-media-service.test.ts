@@ -116,6 +116,11 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     seoPluginCustomEndpointVerified: false,
     seoPluginCustomEndpointError: null,
     seoPluginCustomEndpointAttemptedAt: null,
+    wordpressFinalDraftReviewStatus: "not_reviewed",
+    wordpressFinalDraftReviewScore: null,
+    wordpressFinalDraftReviewSummary: {},
+    wordpressFinalDraftReviewError: null,
+    wordpressFinalDraftReviewedAt: null,
     ...overrides,
   };
 }

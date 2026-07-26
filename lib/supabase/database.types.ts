@@ -180,6 +180,9 @@ export type SeoPluginCustomEndpointStatus =
   | "success"
   | "failed";
 
+/** Phase 2-14: WordPress final draft payload review 상태 */
+export type WordPressFinalDraftReviewStatus = "not_reviewed" | "reviewed" | "missing_wordpress_draft" | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -275,6 +278,12 @@ export type ArticleRow = {
   seo_plugin_custom_endpoint_verified: boolean;
   seo_plugin_custom_endpoint_error: string | null;
   seo_plugin_custom_endpoint_attempted_at: string | null;
+  /** Phase 2-14: WordPress final draft payload review 결과 */
+  wordpress_final_draft_review_status: WordPressFinalDraftReviewStatus;
+  wordpress_final_draft_review_score: number | null;
+  wordpress_final_draft_review_summary: Record<string, unknown>;
+  wordpress_final_draft_review_error: string | null;
+  wordpress_final_draft_reviewed_at: string | null;
 };
 
 export type ArticleSourceRow = {

@@ -25,6 +25,8 @@ import {
   writeSeoPluginMetadataToWordPressAction,
   checkSeoPluginActualWriteStatusAction,
   writeRankMathSeoViaCustomEndpointAction,
+  reviewWordPressFinalDraftAction,
+  checkWordPressFinalDraftReviewStatusAction,
   generateFeaturedImageAction,
   reviewGeneratedImageAction,
   testWordPressConnectionAction,
@@ -39,6 +41,7 @@ import type {
   WordPressFeaturedMediaAttachStatus,
   SeoPluginActualWriteStatus,
   SeoPluginCustomEndpointStatus,
+  WordPressFinalDraftReviewStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
@@ -193,6 +196,26 @@ const SEO_PLUGIN_CUSTOM_ENDPOINT_STATUS_STYLE: Record<SeoPluginCustomEndpointSta
   skipped_missing_target_keyword: "bg-amber-100 text-amber-700",
   success: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
+};
+
+const FINAL_DRAFT_REVIEW_STATUS_LABEL: Record<WordPressFinalDraftReviewStatus, string> = {
+  not_reviewed: "검토 안 함",
+  reviewed: "검토 완료",
+  missing_wordpress_draft: "건너뜀 (draft 없음)",
+  failed: "검토 실패",
+};
+
+const FINAL_DRAFT_REVIEW_STATUS_STYLE: Record<WordPressFinalDraftReviewStatus, string> = {
+  not_reviewed: "bg-zinc-100 text-zinc-500",
+  reviewed: "bg-green-100 text-green-700",
+  missing_wordpress_draft: "bg-amber-100 text-amber-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+const CHECKLIST_ITEM_STYLE: Record<string, string> = {
+  passed: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+  warning: "bg-amber-100 text-amber-700",
 };
 
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
@@ -1379,6 +1402,92 @@ export default async function ArticleDetailPage({
                 </button>
               </form>
             </div>
+          </div>
+        </section>
+
+        {/* Phase 2-14: WordPress Final Draft Payload Review */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">WordPress Final Draft Payload Review</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${FINAL_DRAFT_REVIEW_STATUS_STYLE[article.wordpressFinalDraftReviewStatus]}`}
+            >
+              {FINAL_DRAFT_REVIEW_STATUS_LABEL[article.wordpressFinalDraftReviewStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            WordPress draft post/featured media/Rank Math SEO metadata/
+            category·tag/출처 인용/AD_SLOT marker가 하나의 draft에 정상
+            반영되었는지 checklist로 점검합니다. 실제 WordPress API를 다시
+            호출하지 않으며, 공개 게시는 절대 수행하지 않습니다.
+          </p>
+
+          {!hasWordPressSuccess && (
+            <p className="mt-2 text-xs font-medium text-amber-700">
+              ⚠ 아직 생성된 WordPress draft가 없습니다 (먼저 WordPress 초안 생성을 실행하세요).
+            </p>
+          )}
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">score</dt>
+              <dd className="text-zinc-500">
+                {article.wordpressFinalDraftReviewScore != null ? `${article.wordpressFinalDraftReviewScore} / 100` : "해당 없음"}
+              </dd>
+            </div>
+            {article.wordpressFinalDraftReviewedAt && (
+              <div>
+                <dt className="font-medium text-zinc-600">마지막 검토 시간</dt>
+                <dd className="text-zinc-500">
+                  {new Date(article.wordpressFinalDraftReviewedAt).toLocaleString("ko-KR")}
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {article.wordpressFinalDraftReviewError && (
+            <p className="mt-3 text-xs text-red-600">오류: {article.wordpressFinalDraftReviewError}</p>
+          )}
+
+          {Array.isArray((article.wordpressFinalDraftReviewSummary as { checklist?: unknown })?.checklist) && (
+            <ul className="mt-3 flex flex-col gap-1">
+              {(
+                (article.wordpressFinalDraftReviewSummary as {
+                  checklist: Array<{ key: string; label: string; status: string; detail: string }>;
+                }).checklist
+              ).map((item) => (
+                <li key={item.key} className="flex items-start gap-2 rounded px-2 py-1 text-xs">
+                  <span
+                    className={`mt-0.5 inline-block shrink-0 rounded-full px-1.5 py-0.5 font-medium ${CHECKLIST_ITEM_STYLE[item.status] ?? "bg-zinc-100 text-zinc-500"}`}
+                  >
+                    {item.label}
+                  </span>
+                  <span className="text-zinc-600">{item.detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={reviewWordPressFinalDraftAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                disabled={!hasWordPressSuccess}
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Final draft payload 검토 실행
+              </button>
+            </form>
+            <form action={checkWordPressFinalDraftReviewStatusAction}>
+              <input type="hidden" name="articleId" value={article.id} />
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                검토 상태 확인
+              </button>
+            </form>
           </div>
         </section>
 

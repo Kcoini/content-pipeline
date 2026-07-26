@@ -95,6 +95,11 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     seo_plugin_custom_endpoint_verified: false,
     seo_plugin_custom_endpoint_error: null,
     seo_plugin_custom_endpoint_attempted_at: null,
+    wordpress_final_draft_review_status: "not_reviewed",
+    wordpress_final_draft_review_score: null,
+    wordpress_final_draft_review_summary: {},
+    wordpress_final_draft_review_error: null,
+    wordpress_final_draft_reviewed_at: null,
     ...overrides,
   };
 }
@@ -190,6 +195,11 @@ describe("mapArticleRowToArticle", () => {
       seoPluginCustomEndpointVerified: false,
       seoPluginCustomEndpointError: null,
       seoPluginCustomEndpointAttemptedAt: null,
+      wordpressFinalDraftReviewStatus: "not_reviewed",
+      wordpressFinalDraftReviewScore: null,
+      wordpressFinalDraftReviewSummary: {},
+      wordpressFinalDraftReviewError: null,
+      wordpressFinalDraftReviewedAt: null,
     });
   });
 

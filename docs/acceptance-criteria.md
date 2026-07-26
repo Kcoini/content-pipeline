@@ -342,6 +342,29 @@
       "공개 게시" 버튼은 존재하지 않는다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-23. WordPress Final Draft Payload Review (FR-24, Phase 2-14)
+- [ ] WordPress draft post가 없으면 `missing_wordpress_draft`로 저장되고
+      실제 점검을 시도하지 않는다.
+- [ ] 모든 checklist 항목을 통과하면 score=100으로 저장된다.
+- [ ] category/tag가 없으면 `category_tag` 항목이 failed로 기록된다.
+- [ ] 출처 인용이 3개 미만이면 `source_citation` 항목이 failed로 기록된다.
+- [ ] monetized_blog에서 AD_SLOT marker가 누락되면 `ad_slot_marker` 항목이
+      failed로 기록된다.
+- [ ] SEO metadata 반영이 확인되지 않으면 `seo_metadata` 항목이 failed로
+      기록된다.
+- [ ] `publish_logs`에 `target='wordpress_final_draft_review'`로 저장된다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] Authorization header/Application Password/API key가 로그에 저장되지
+      않는다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`/`articles.wordpress_
+      final_draft_review_summary`에 저장되지 않는다.
+- [ ] 실행 중 예외가 발생해도 Runtime Error로 터지지 않고 안전한 실패를
+      반환한다.
+- [ ] article 상세 페이지에 score/마지막 검토 시간/항목별 결과가 표시되고
+      "Final draft payload 검토 실행"/"검토 상태 확인" 버튼이 제공된다.
+      "공개 게시" 버튼은 존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

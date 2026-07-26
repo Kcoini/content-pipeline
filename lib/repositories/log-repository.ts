@@ -157,7 +157,12 @@ export type LogEventType =
   | "seo_plugin_custom_endpoint_skipped_no_wordpress_post"
   | "seo_plugin_custom_endpoint_skipped_missing_target_keyword"
   | "seo_plugin_custom_endpoint_verification_completed"
-  | "seo_plugin_custom_endpoint_verification_failed";
+  | "seo_plugin_custom_endpoint_verification_failed"
+  // Phase 2-14: WordPress Final Draft Payload Review 이벤트
+  | "wordpress_final_draft_review_started"
+  | "wordpress_final_draft_review_completed"
+  | "wordpress_final_draft_review_failed"
+  | "wordpress_final_draft_review_skipped_missing_draft";
 
 export type LogStatus = "success" | "failed" | "info";
 

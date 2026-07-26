@@ -13,6 +13,7 @@ import type {
   WordPressFeaturedMediaAttachStatus,
   SeoPluginActualWriteStatus,
   SeoPluginCustomEndpointStatus,
+  WordPressFinalDraftReviewStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -173,6 +174,11 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     seoPluginCustomEndpointVerified: row.seo_plugin_custom_endpoint_verified ?? false,
     seoPluginCustomEndpointError: row.seo_plugin_custom_endpoint_error,
     seoPluginCustomEndpointAttemptedAt: row.seo_plugin_custom_endpoint_attempted_at,
+    wordpressFinalDraftReviewStatus: row.wordpress_final_draft_review_status ?? "not_reviewed",
+    wordpressFinalDraftReviewScore: row.wordpress_final_draft_review_score,
+    wordpressFinalDraftReviewSummary: row.wordpress_final_draft_review_summary ?? {},
+    wordpressFinalDraftReviewError: row.wordpress_final_draft_review_error,
+    wordpressFinalDraftReviewedAt: row.wordpress_final_draft_reviewed_at,
   };
 }
 
@@ -1102,6 +1108,47 @@ export async function saveSeoPluginCustomEndpointResult(
 
   if (error || !data) {
     throw new Error(`WordPress custom SEO endpoint 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveWordPressFinalDraftReviewResultInput {
+  status: WordPressFinalDraftReviewStatus;
+  score?: number | null;
+  summary?: Record<string, unknown>;
+  errorMessage?: string | null;
+}
+
+/** WordPress final draft payload review 결과를 저장한다 (Phase 2-14). */
+export async function saveWordPressFinalDraftReviewResult(
+  articleId: string,
+  input: SaveWordPressFinalDraftReviewResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    wordpress_final_draft_review_status: input.status,
+    wordpress_final_draft_reviewed_at: new Date().toISOString(),
+  };
+  if (input.score !== undefined) update.wordpress_final_draft_review_score = input.score;
+  if (input.summary !== undefined) update.wordpress_final_draft_review_summary = input.summary;
+  if (input.errorMessage !== undefined) update.wordpress_final_draft_review_error = input.errorMessage;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress final draft review 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

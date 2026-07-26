@@ -156,6 +156,9 @@ export type SeoPluginCustomEndpointStatus =
   | "success"
   | "failed";
 
+/** Phase 2-14: WordPress final draft payload review 상태 */
+export type WordPressFinalDraftReviewStatus = "not_reviewed" | "reviewed" | "missing_wordpress_draft" | "failed";
+
 /** Phase 2-7: 이미지 생성 provider */
 export type ImageGenerationProvider = "mock" | "openai" | "custom";
 
@@ -321,4 +324,14 @@ export interface Article {
   seoPluginCustomEndpointError: string | null;
   /** Phase 2-13: custom endpoint가 마지막으로 시도된 시각 */
   seoPluginCustomEndpointAttemptedAt: string | null;
+  /** Phase 2-14: WordPress final draft payload review 상태 */
+  wordpressFinalDraftReviewStatus: WordPressFinalDraftReviewStatus;
+  /** Phase 2-14: 체크리스트 통과 비율(0~100) — 항목이 없으면 null */
+  wordpressFinalDraftReviewScore: number | null;
+  /** Phase 2-14: 체크리스트 항목별 결과 요약 (본문 전체는 포함하지 않음) */
+  wordpressFinalDraftReviewSummary: Record<string, unknown>;
+  /** Phase 2-14: 검토 실행 자체가 실패했을 때의 안전한 오류 메시지 */
+  wordpressFinalDraftReviewError: string | null;
+  /** Phase 2-14: 검토가 마지막으로 시도된 시각 */
+  wordpressFinalDraftReviewedAt: string | null;
 }
