@@ -20,6 +20,7 @@ import {
   confirmWordPressMediaUploadDryRunAction,
   generateFeaturedImageAction,
   reviewGeneratedImageAction,
+  testWordPressConnectionAction,
 } from "./actions";
 import type {
   WordPressMetadataStatus,
@@ -30,7 +31,7 @@ import type {
   GeneratedImageStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
-import { WORDPRESS_TARGET } from "@/lib/publish/publish-service";
+import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
 import { isWordPressMediaUploadEnabled } from "@/lib/publish/wordpress-media-config";
 import { isImageGenerationEnabled } from "@/lib/images/image-generation-config";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
@@ -852,13 +853,80 @@ export default async function ArticleDetailPage({
           )}
         </section>
 
-        {/* Phase 2-2: WordPress 초안 생성 */}
+        {/* Phase 2-8: WordPress Connection Test */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">WordPress Connection Test</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            실제 WordPress 사이트에 안전하게 연결할 수 있는지 확인합니다
+            (draft 생성 권한 확인용이며, 공개 게시는 절대 수행하지 않습니다).
+            Application Password나 Authorization header는 표시되지 않습니다.
+          </p>
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">base URL</dt>
+              <dd className="text-zinc-500 font-mono break-all">
+                {process.env.WORDPRESS_BASE_URL || "설정되지 않음"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">publish enabled</dt>
+              <dd className="text-zinc-500">
+                {isWordPressPublishEnabled() ? "true (실제 draft 생성)" : "false (dry-run)"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">media upload enabled</dt>
+              <dd className="text-zinc-500">
+                {isWordPressMediaUploadEnabled() ? "true" : "false (비활성화)"}
+              </dd>
+            </div>
+          </dl>
+
+          <form action={testWordPressConnectionAction} className="mt-3">
+            <input type="hidden" name="articleId" value={article.id} />
+            <button
+              type="submit"
+              className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              WordPress 연결 테스트
+            </button>
+          </form>
+
+          <p className="mt-2 text-xs text-zinc-400">
+            연결 테스트 결과는 위쪽 알림 영역에 표시됩니다 (성공/실패 및 원인 후보 포함).
+          </p>
+        </section>
+
+        {/* Phase 2-2 / 2-9: WordPress 초안 생성 (안정화) */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">WordPress 게시</h2>
           <p className="mt-1 text-xs text-zinc-500">
             승인(reviewed)된 기사만 WordPress에 draft(초안) post로 생성할 수 있습니다.
-            자동 공개(publish)는 수행하지 않습니다.
+            자동 공개(publish)는 절대 수행하지 않으며, post status는 항상 draft로
+            강제됩니다.
           </p>
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">WORDPRESS_PUBLISH_ENABLED</dt>
+              <dd className="text-zinc-500">{isWordPressPublishEnabled() ? "true" : "false"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">현재 모드</dt>
+              <dd className="text-zinc-500">
+                {isWordPressPublishEnabled() ? "actual draft (실제 WordPress API 호출)" : "dry-run (실제 호출 없음)"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">media upload</dt>
+              <dd className="text-zinc-500">deferred (다음 단계 예정)</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">SEO plugin write</dt>
+              <dd className="text-zinc-500">deferred (다음 단계 예정)</dd>
+            </div>
+          </dl>
 
           {isReviewed && article.wpMetadataStatus !== "reviewed" && !hasWordPressSuccess && (
             <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -872,7 +940,7 @@ export default async function ArticleDetailPage({
             </p>
           ) : hasWordPressSuccess ? (
             <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-              ✓ 이미 WordPress 초안 생성됨
+              ✓ 이미 WordPress 초안이 생성되어 있어 중복 생성을 건너뜁니다 (duplicate skip)
               {latestWordPressLog?.postUrl && (
                 <>
                   {" — "}
@@ -922,6 +990,19 @@ export default async function ArticleDetailPage({
               </div>
               {latestWordPressLog.externalPostId && (
                 <p className="mt-1">external_post_id: {latestWordPressLog.externalPostId}</p>
+              )}
+              {latestWordPressLog.postUrl && (
+                <p className="mt-1 break-all">
+                  post_url:{" "}
+                  <a
+                    href={latestWordPressLog.postUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    {latestWordPressLog.postUrl}
+                  </a>
+                </p>
               )}
               {latestWordPressLog.errorMessage && (
                 <p className="mt-1 text-red-600">오류: {latestWordPressLog.errorMessage}</p>

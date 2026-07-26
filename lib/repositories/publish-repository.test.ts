@@ -14,6 +14,8 @@ function makePublishLogRow(overrides: Partial<PublishLogRow> = {}): PublishLogRo
     external_post_id: "42",
     post_url: "https://example-blog.test/?p=42",
     error_message: null,
+    details_json: {},
+    updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -53,5 +55,19 @@ describe("mapPublishLogRow", () => {
 
     expect(entry.status).toBe("failed");
     expect(entry.errorMessage).toBe("WordPress 인증 실패");
+  });
+
+  it("details_json을 details보다 우선 사용한다 (Phase 2-8)", () => {
+    const entry = mapPublishLogRow(
+      makePublishLogRow({ details: { legacy: true }, details_json: { statusCode: 401 } })
+    );
+
+    expect(entry.details).toEqual({ statusCode: 401 });
+  });
+
+  it("details_json이 비어있으면 details로 fallback한다 (과거 데이터 호환)", () => {
+    const entry = mapPublishLogRow(makePublishLogRow({ details: { legacy: true }, details_json: {} }));
+
+    expect(entry.details).toEqual({ legacy: true });
   });
 });

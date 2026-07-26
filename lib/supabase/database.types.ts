@@ -326,6 +326,7 @@ export type PublishLogRow = {
   article_id: string | null;
   status: PublishLogStatus;
   target: string | null;
+  /** 과거 schema의 호환용 컬럼. Phase 2-8부터는 details_json을 사용한다. */
   details: Record<string, unknown>;
   published_at: string | null;
   created_at: string;
@@ -335,6 +336,9 @@ export type PublishLogRow = {
   post_url: string | null;
   /** Phase 2-2: 실패 시 오류 메시지 */
   error_message: string | null;
+  /** Phase 2-8: pipeline_logs/contract_runs와 컬럼명을 맞춘 상세 정보(jsonb). 민감정보/본문 전체 저장 금지 */
+  details_json: Record<string, unknown>;
+  updated_at: string;
 };
 
 export interface Database {

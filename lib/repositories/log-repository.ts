@@ -98,7 +98,29 @@ export type LogEventType =
   | "image_generation_failed"
   | "image_generation_skipped_disabled"
   | "generated_image_reviewed"
-  | "wordpress_media_source_updated_from_generated_image";
+  | "wordpress_media_source_updated_from_generated_image"
+  // Phase 2-8: Actual WordPress Connection Test 이벤트
+  | "wordpress_connection_test_started"
+  | "wordpress_connection_test_completed"
+  | "wordpress_connection_test_failed"
+  | "wordpress_actual_publish_started"
+  | "wordpress_actual_publish_completed"
+  | "wordpress_actual_publish_failed"
+  | "wordpress_category_sync_started"
+  | "wordpress_category_sync_completed"
+  | "wordpress_category_sync_failed"
+  | "wordpress_tag_sync_started"
+  | "wordpress_tag_sync_completed"
+  | "wordpress_tag_sync_failed"
+  | "wordpress_media_upload_started"
+  | "wordpress_media_upload_completed"
+  | "wordpress_media_upload_failed"
+  // Phase 2-9: WordPress Draft Publish Stabilization 이벤트
+  | "wordpress_actual_publish_skipped_duplicate"
+  | "wordpress_actual_publish_skipped_not_reviewed"
+  | "wordpress_actual_publish_dry_run"
+  | "wordpress_media_upload_skipped_deferred"
+  | "seo_plugin_write_skipped_deferred";
 
 export type LogStatus = "success" | "failed" | "info";
 

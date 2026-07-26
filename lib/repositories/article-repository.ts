@@ -901,3 +901,77 @@ export async function markGeneratedImageReviewed(articleId: string): Promise<Art
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);
 }
+
+export interface SaveFeaturedImageUploadResultInput {
+  status: WordPressMediaUploadStatus;
+  wordpressMediaId?: number | null;
+  wordpressUrl?: string | null;
+  errorMessage?: string | null;
+}
+
+/** 실제(또는 시도된) featured image 업로드 결과를 저장한다 (Phase 2-8). */
+export async function saveFeaturedImageUploadResult(
+  articleId: string,
+  input: SaveFeaturedImageUploadResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    featured_image_upload_status: input.status,
+    featured_image_upload_attempted_at: new Date().toISOString(),
+  };
+  if (input.wordpressMediaId !== undefined) update.featured_image_wordpress_media_id = input.wordpressMediaId;
+  if (input.wordpressUrl !== undefined) update.featured_image_wordpress_url = input.wordpressUrl;
+  if (input.errorMessage !== undefined) update.featured_image_upload_error = input.errorMessage;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`대표 이미지 업로드 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/**
+ * 실제 WordPress API로 동기화된 카테고리/태그 id를 저장한다 (Phase 2-8).
+ * 다음 게시부터는 이름 검색 없이 이 id를 바로 사용할 수 있다.
+ */
+export async function saveWordPressCategoryTagIds(
+  articleId: string,
+  categoryIds: number[],
+  tagIds: number[]
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({
+      wp_category_ids: categoryIds,
+      wp_tag_ids: tagIds,
+    })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`WordPress 카테고리/태그 id 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}

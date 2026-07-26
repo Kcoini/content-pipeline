@@ -177,6 +177,63 @@
       깨지지 않는다.
 - [ ] 실제 API key가 없어도 `npm run lint`/`test`/`build`가 통과한다.
 
+## AC-17. Actual WordPress Connection Test (FR-18, Phase 2-8)
+- [ ] `WORDPRESS_BASE_URL`/`WORDPRESS_USERNAME`/`WORDPRESS_APP_PASSWORD`가
+      설정되어 있으면 `GET /wp-json/wp/v2/users/me`로 실제 연결을 테스트할 수
+      있다.
+- [ ] 연결 테스트 결과에 Authorization header, 비밀번호가 절대 포함되지 않는다.
+- [ ] 연결 실패 시 401/403/404/5xx에 대한 안전한 오류 메시지와 원인 후보가
+      표시된다.
+- [ ] Application Password가 없으면 실제 API를 호출하지 않고 안전하게
+      실패를 반환한다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=false`(기본값)이면 기존과 동일하게 dry-run
+      으로 동작하고 실제 fetch가 호출되지 않는다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=true`이면 승인(reviewed)된 기사만 실제
+      WordPress draft post를 생성하며, 생성된 post의 status는 항상 `draft`다
+      (입력값과 무관하게 강제된다).
+- [ ] category/tag 동기화가 실패해도 draft 생성 자체는 계속 진행되며 warning
+      으로 기록된다.
+- [ ] 동기화에 성공한 category/tag id는 `articles.wp_category_ids`/
+      `wp_tag_ids`에 저장된다.
+- [ ] `WORDPRESS_MEDIA_UPLOAD_ENABLED=false`(기본값)이면 실제 media upload를
+      시도하지 않는다.
+- [ ] `WORDPRESS_MEDIA_UPLOAD_ENABLED=true`이고 생성된 이미지가 있으면 업로드를
+      시도하며, 업로드 실패는 draft 생성 자체를 막지 않는다.
+- [ ] 게시 성공/실패 결과가 `publish_logs`에 저장되며 `details_json`에 기사
+      본문 전체가 저장되지 않는다.
+- [ ] `pipeline_logs`에 `wordpress_connection_test_*`,
+      `wordpress_actual_publish_*`, `wordpress_category_sync_*`,
+      `wordpress_tag_sync_*`, `wordpress_media_upload_*` 이벤트가 기록된다.
+- [ ] article 상세 페이지에 WordPress Connection Test 섹션(base URL,
+      publish/media upload enabled 여부, 연결 상태, safe error message)과
+      "WordPress 연결 테스트" 버튼이 표시된다. "공개 게시" 버튼은 존재하지 않는다.
+- [ ] 기존 dry-run 흐름과 테스트가 계속 통과한다.
+- [ ] 실제 WordPress 값이 없어도 `npm run lint`/`test`/`build`가 통과한다.
+
+## AC-18. WordPress Draft Publish Stabilization (FR-19, Phase 2-9)
+- [ ] 이미 success + external_post_id가 있는 publish_logs 기록이 있으면 새 draft를
+      생성하지 않고(`createDraftPost` 미호출) 기존 결과를 반환한다.
+- [ ] duplicate skip 시 `wordpress_actual_publish_skipped_duplicate`가 기록된다.
+- [ ] article.status가 reviewed가 아니면 actual publish가 차단되고
+      `wordpress_actual_publish_skipped_not_reviewed`가 기록된다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=false`이면 dry_run으로 저장되고 실제 API가
+      호출되지 않는다.
+- [ ] `WORDPRESS_PUBLISH_ENABLED=true`이고 필수 env가 없으면 failed로 저장된다.
+- [ ] actual publish 성공 시 status=success, external_post_id, post_url이
+      저장된다.
+- [ ] WordPress에 전송되는 post status는 입력값과 무관하게 항상 draft다.
+- [ ] category/tag 동기화 실패는 warning으로 처리되고 draft 생성은 계속된다.
+- [ ] media upload는 `WORDPRESS_MEDIA_UPLOAD_ENABLED` 값과 무관하게 이번 단계에서
+      `skipped_deferred`로 처리된다.
+- [ ] SEO plugin write는 `SEO_PLUGIN_WRITE_ENABLED` 값과 무관하게 이번 단계에서
+      `skipped_deferred`로 처리된다.
+- [ ] `publish_logs.details_json`에 기사 본문 전체나 인증 정보가 저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 기록된다.
+- [ ] article 상세 페이지에 publish enabled 상태, 현재 모드, media upload/SEO
+      plugin write deferred 표시, duplicate 안내, post_url 링크가 표시된다.
+      "공개 게시" 버튼은 존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

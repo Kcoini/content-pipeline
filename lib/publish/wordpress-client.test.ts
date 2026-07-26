@@ -5,6 +5,7 @@ import {
   findOrCreateCategory,
   findOrCreateTag,
   uploadMediaToWordPress,
+  testWordPressConnection,
 } from "./wordpress-client";
 
 const ENV_KEYS = ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"] as const;
@@ -248,5 +249,111 @@ describe("uploadMediaToWordPress", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("testWordPressConnection", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 connected:false를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await testWordPressConnection();
+
+    expect(result.connected).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("GET /wp-json/wp/v2/users/me를 호출하고 성공 시 connected:true와 displayName을 반환한다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ name: "관리자" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await testWordPressConnection();
+
+    expect(result.connected).toBe(true);
+    expect(result.displayName).toBe("관리자");
+    expect(result.username).toBe("test-user");
+    const [endpoint] = fetchMock.mock.calls[0];
+    expect(String(endpoint)).toContain("/wp-json/wp/v2/users/me");
+  });
+
+  it("Authorization header를 사용하고 password를 평문으로 노출하지 않는다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ name: "관리자" }), { status: 200, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await testWordPressConnection();
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toMatch(/^Basic /);
+    expect(headers.Authorization).not.toContain("dummy-app-password-for-tests");
+    expect(JSON.stringify(result)).not.toContain("dummy-app-password-for-tests");
+  });
+
+  it("401이면 원인 후보를 함께 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401, statusText: "Unauthorized" }))
+    );
+
+    const result = await testWordPressConnection();
+
+    expect(result.connected).toBe(false);
+    expect(result.statusCode).toBe(401);
+    expect(result.likelyCauses).toBeDefined();
+    expect(result.likelyCauses!.length).toBeGreaterThan(0);
+  });
+
+  it("404이면 원인 후보를 함께 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not found", { status: 404, statusText: "Not Found" })));
+
+    const result = await testWordPressConnection();
+
+    expect(result.connected).toBe(false);
+    expect(result.statusCode).toBe(404);
+    expect(result.likelyCauses!.some((c) => c.includes("WORDPRESS_BASE_URL"))).toBe(true);
+  });
+
+  it("http(비-https) base URL이면 경고를 포함한다", async () => {
+    process.env.WORDPRESS_BASE_URL = "http://example-blog.test";
+    process.env.WORDPRESS_USERNAME = "test-user";
+    process.env.WORDPRESS_APP_PASSWORD = "dummy-app-password-for-tests";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ name: "관리자" }), { status: 200, headers: { "content-type": "application/json" } })
+      )
+    );
+
+    const result = await testWordPressConnection();
+
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.some((w) => w.includes("https"))).toBe(true);
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 connected:false를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await testWordPressConnection();
+
+    expect(result.connected).toBe(false);
+    expect(result.errorMessage).toContain("network down");
   });
 });

@@ -162,6 +162,38 @@ media upload 준비와 연결된다. 실제 WordPress media upload와 `featured_
 설정은 이번 단계에서도 하지 않는다. 자세한 내용은
 `docs/phase-2-7-image-generation-integration.md` 참고.
 
+### FR-18. Actual WordPress Connection Test (Phase 2-8)
+사용자는 실제 WordPress 사이트에 안전하게 연결되는지 테스트할 수 있다
+(`GET /wp-json/wp/v2/users/me`, Application Password 기반 Basic Auth). 연결
+테스트는 `connected` 여부, `username`/`displayName`, 실패 시 `statusCode`와
+안전한(safe) 오류 메시지 및 401/403/404/5xx별 원인 후보(likely causes)를
+반환하며, Authorization header나 비밀번호는 절대 반환/저장/로그하지 않는다.
+`WORDPRESS_PUBLISH_ENABLED=false`(기본값)이면 기존과 동일하게 dry-run으로
+동작하고, `true`이면 승인(reviewed)된 기사에 한해 실제 WordPress draft post를
+생성한다 — post status는 항상 `draft`로 강제되며 공개(publish)는 절대
+수행하지 않는다. 카테고리/태그는 이름 기반으로 실제 동기화를 시도하되 실패해도
+draft 생성 자체를 막지 않고 경고(warning)로만 처리한다. Media upload는
+`WORDPRESS_MEDIA_UPLOAD_ENABLED=true`일 때만 시도하며 기본값은 `false`다
+(업로드 실패도 draft 생성을 막지 않는다). 게시 결과는 `publish_logs`에
+저장되며, 상세 정보는 `details_json`에 저장하되 기사 본문 전체나 인증 정보는
+절대 포함하지 않는다. 자세한 내용은
+`docs/phase-2-8-actual-wordpress-connection-test.md` 참고.
+
+### FR-19. WordPress Draft Publish Stabilization (Phase 2-9)
+같은 기사에 대해 이미 성공적으로 생성된 WordPress draft 기록(`publish_logs.target
+='wordpress'`, `status='success'`, `external_post_id`가 있는 기록)이 있으면
+`publishArticleToWordPressDraft`는 새 draft를 생성하지 않고 기존 `external_post_id`/
+`post_url`을 그대로 반환한다(`wordpress_actual_publish_skipped_duplicate` 기록).
+`publish_logs.details_json`은 성공/dry-run/실패 각각 안정된 구조(`actual`/`dryRun`
+플래그, 성공 시 `wordpressPostId`/`wordpressStatus`/`categoryCount`/`tagCount`/
+`mediaUpload`/`seoPluginWrite` 요약, 실패 시 `statusCode`/`endpointType`/
+`reasonCandidate`)로 저장되며, 기사 본문 전체나 인증 정보, WordPress 원본 오류
+응답 본문은 절대 포함하지 않는다. `pipeline_logs`는 `event_name` 컬럼 기준으로
+`wordpress_actual_publish_*` 이벤트를 기록한다. 이미지 업로드와 SEO plugin 실제
+write는 `WORDPRESS_MEDIA_UPLOAD_ENABLED`/`SEO_PLUGIN_WRITE_ENABLED` 값과
+무관하게 이번 단계에서 시도하지 않고 `skipped_deferred`로 기록한다. 자세한 내용은
+`docs/phase-2-9-wordpress-draft-publish-stabilization.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

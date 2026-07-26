@@ -14,7 +14,7 @@ import {
   EmptyContentError,
 } from "@/lib/repositories/article-repository";
 import { logEvent } from "@/lib/harness/logger";
-import { publishArticleToWordPressDraft } from "@/lib/publish/publish-service";
+import { publishArticleToWordPressDraft, runWordPressConnectionTest } from "@/lib/publish/publish-service";
 import { generateWordPressMetadata, reviewWordPressMetadata } from "@/lib/publish/wordpress-metadata-service";
 import { generateSeoPluginPayload, reviewSeoPluginMetadata } from "@/lib/seo/seo-plugin-metadata-service";
 import { isSeoPluginProvider } from "@/lib/seo/seo-plugin-types";
@@ -94,6 +94,42 @@ export async function publishToWordPressDraftAction(formData: FormData): Promise
     const result = await publishArticleToWordPressDraft(articleId);
     message = result.message;
     isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * WordPress 실제 연결을 테스트한다 (Phase 2-8). 특정 기사와 무관한 사이트 단위
+ * 점검이지만, article 상세 페이지에서 결과를 확인할 수 있도록 이 화면으로
+ * 돌아온다. Application Password/Authorization header는 절대 반환/표시하지 않는다.
+ */
+export async function testWordPressConnectionAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await runWordPressConnectionTest();
+    isError = !result.connected;
+    if (result.connected) {
+      message = `WordPress 연결 성공 (${result.username ?? "알 수 없음"}${result.displayName ? `, ${result.displayName}` : ""})`;
+    } else {
+      const causes = result.likelyCauses && result.likelyCauses.length > 0 ? ` — 원인 후보: ${result.likelyCauses.join(" / ")}` : "";
+      message = `${result.errorMessage ?? "WordPress 연결에 실패했습니다."}${causes}`;
+    }
+    if (result.warnings && result.warnings.length > 0) {
+      message = `${message} (${result.warnings.join(" ")})`;
+    }
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;

@@ -290,6 +290,151 @@ export function findOrCreateTag(name: string): Promise<WordPressTermResult> {
   return findOrCreateTerm("tags", name);
 }
 
+/** findOrCreateCategory의 별칭 (Phase 2-8 네이밍). */
+export function getOrCreateCategoryByName(name: string): Promise<WordPressTermResult> {
+  return findOrCreateCategory(name);
+}
+
+/** findOrCreateTag의 별칭 (Phase 2-8 네이밍). */
+export function getOrCreateTagByName(name: string): Promise<WordPressTermResult> {
+  return findOrCreateTag(name);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2-8: WordPress 연결 테스트 (실제 사이트와 안전하게 연결 확인)
+//
+// GET /wp-json/wp/v2/users/me로 인증이 되는지만 확인한다. Authorization
+// header/password는 어떤 경우에도 반환값에 포함하지 않는다.
+// ─────────────────────────────────────────────────────────────
+
+export interface WordPressConnectionTestResult {
+  connected: boolean;
+  /** slash를 제거해 normalize한 base URL (인증 정보 없음) */
+  baseUrl?: string;
+  /** WordPress 계정 사용자명 (Application Password 값은 절대 포함하지 않음) */
+  username?: string;
+  /** WordPress 표시 이름 (성공 시) */
+  displayName?: string;
+  statusCode?: number;
+  errorMessage?: string;
+  /** 401/403/404/5xx별 원인 후보 안내 */
+  likelyCauses?: string[];
+  /** http(비-https) 연결 등 주의가 필요한 경고 */
+  warnings?: string[];
+  testedAt: string;
+}
+
+function getLikelyCausesForStatus(status: number): string[] {
+  if (status === 401) {
+    return [
+      "username 또는 Application Password가 올바르지 않습니다.",
+      "Application Password를 복사하는 과정에서 오타가 있을 수 있습니다.",
+      "보안 플러그인이 REST API 인증을 차단하고 있을 수 있습니다.",
+    ];
+  }
+  if (status === 403) {
+    return [
+      "해당 사용자의 권한이 부족합니다.",
+      "REST API 쓰기 권한이 제한되어 있을 수 있습니다.",
+      "보안 플러그인이 요청을 차단하고 있을 수 있습니다.",
+    ];
+  }
+  if (status === 404) {
+    return [
+      "WORDPRESS_BASE_URL이 올바른지 확인하세요.",
+      "/wp-json 경로에 접근할 수 없습니다.",
+      "permalink 설정 또는 REST API가 비활성화/차단되어 있을 수 있습니다.",
+    ];
+  }
+  if (status >= 500) {
+    return ["WordPress 서버 오류입니다.", "플러그인 충돌 가능성이 있습니다.", "보안 설정 문제일 수 있습니다."];
+  }
+  return [`알 수 없는 오류입니다 (HTTP ${status}).`];
+}
+
+/**
+ * WordPress REST API에 실제로 연결이 되는지 확인한다 (`GET /wp-json/wp/v2/users/me`).
+ * Application Password/Authorization header는 어떤 경우에도 반환값에 포함하지 않는다.
+ */
+export async function testWordPressConnection(): Promise<WordPressConnectionTestResult> {
+  const testedAt = new Date().toISOString();
+  const config = getWordPressConfig();
+
+  if (!config) {
+    return {
+      connected: false,
+      errorMessage: "WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD가 설정되지 않았습니다.",
+      testedAt,
+    };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const warnings: string[] = [];
+  if (baseUrl.startsWith("http://")) {
+    warnings.push("http(비-https) 연결입니다. Application Password가 평문으로 전송될 수 있으니 https 사용을 권장합니다.");
+  }
+
+  const endpoint = `${baseUrl}/wp-json/wp/v2/users/me`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      headers: { Authorization: buildAuthHeader(config) },
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      connected: false,
+      baseUrl,
+      username: config.username,
+      errorMessage: `WordPress API 네트워크 오류: ${message}`,
+      likelyCauses: ["WORDPRESS_BASE_URL이 올바른지 확인하세요.", "사이트에 네트워크로 접근 가능한지 확인하세요."],
+      warnings: warnings.length > 0 ? warnings : undefined,
+      testedAt,
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      connected: false,
+      baseUrl,
+      username: config.username,
+      statusCode: response.status,
+      errorMessage: `WordPress 연결 실패 (HTTP ${response.status} ${response.statusText})`,
+      likelyCauses: getLikelyCausesForStatus(response.status),
+      warnings: warnings.length > 0 ? warnings : undefined,
+      testedAt,
+    };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      connected: false,
+      baseUrl,
+      username: config.username,
+      errorMessage: `WordPress 응답 파싱 실패: ${message}`,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      testedAt,
+    };
+  }
+
+  const displayName = typeof data.name === "string" ? data.name : undefined;
+
+  return {
+    connected: true,
+    baseUrl,
+    username: config.username,
+    displayName,
+    warnings: warnings.length > 0 ? warnings : undefined,
+    testedAt,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Phase 2-6: WordPress media upload (safe stub — 실제 업로드는 구현하지 않는다)
 //

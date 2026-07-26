@@ -1,5 +1,7 @@
 // publish_logs 테이블 ↔ PublishLogEntry 도메인 타입 매핑 및 데이터 접근.
 // Phase 2-2: WordPress 등 외부 게시 대상에 대한 게시 결과를 기록/조회한다.
+// Phase 2-8: 상세 정보는 details_json 컬럼에 저장한다 (pipeline_logs/contract_runs와
+// 컬럼명을 맞춤). details_json에는 절대 본문 전체나 인증 정보를 저장하지 않는다.
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { PublishLogRow, PublishLogStatus } from "@/lib/supabase/database.types";
@@ -21,6 +23,8 @@ export interface PublishLogEntry {
 }
 
 export function mapPublishLogRow(row: PublishLogRow): PublishLogEntry {
+  const hasDetailsJson = row.details_json && Object.keys(row.details_json).length > 0;
+
   return {
     id: row.id,
     articleId: row.article_id,
@@ -29,7 +33,7 @@ export function mapPublishLogRow(row: PublishLogRow): PublishLogEntry {
     externalPostId: row.external_post_id,
     postUrl: row.post_url,
     errorMessage: row.error_message,
-    details: row.details ?? {},
+    details: hasDetailsJson ? row.details_json : (row.details ?? {}),
     publishedAt: row.published_at,
     createdAt: row.created_at,
   };
@@ -67,7 +71,7 @@ export async function savePublishLog(input: SavePublishLogInput): Promise<Publis
       external_post_id: input.externalPostId ?? null,
       post_url: input.postUrl ?? null,
       error_message: input.errorMessage ?? null,
-      details: input.details ?? {},
+      details_json: input.details ?? {},
       published_at: publishedAt,
     })
     .select()
@@ -101,19 +105,29 @@ export async function getPublishLogsByArticleId(
   return (data ?? []).map(mapPublishLogRow);
 }
 
-/** 특정 대상(target)에 대해 이미 success 상태의 게시 로그가 있는지 확인한다 (중복 게시 방지). */
-export async function hasSuccessfulPublishLog(
-  articleId: string,
-  target: string
-): Promise<boolean> {
+export interface SuccessfulWordPressDraft {
+  externalPostId: string;
+  postUrl: string | null;
+}
+
+/**
+ * 이미 성공적으로 생성된 WordPress draft 기록이 있는지 확인한다 (중복 게시 방지, Phase 2-9).
+ * target='wordpress', status='success', external_post_id가 있는 기록만 중복으로 취급한다
+ * (external_post_id가 없는 과거 success 기록은 실제로 생성되지 않은 것으로 간주해 중복 판정에서 제외한다).
+ */
+export async function getSuccessfulWordPressDraft(
+  articleId: string
+): Promise<SuccessfulWordPressDraft | null> {
   const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("publish_logs")
-    .select("id")
+    .select("external_post_id, post_url")
     .eq("article_id", articleId)
-    .eq("target", target)
+    .eq("target", "wordpress")
     .eq("status", "success")
+    .not("external_post_id", "is", null)
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -121,7 +135,9 @@ export async function hasSuccessfulPublishLog(
     throw new Error(`게시 로그 조회에 실패했습니다: ${error.message}`);
   }
 
-  return data !== null;
+  if (!data || !data.external_post_id) return null;
+
+  return { externalPostId: data.external_post_id, postUrl: data.post_url };
 }
 
 export interface UpdatePublishLogFields {
@@ -144,7 +160,7 @@ export async function updatePublishLogStatus(
   if (fields.externalPostId !== undefined) update.external_post_id = fields.externalPostId;
   if (fields.postUrl !== undefined) update.post_url = fields.postUrl;
   if (fields.errorMessage !== undefined) update.error_message = fields.errorMessage;
-  if (fields.details !== undefined) update.details = fields.details;
+  if (fields.details !== undefined) update.details_json = fields.details;
   if (fields.publishedAt !== undefined) update.published_at = fields.publishedAt;
 
   const { data, error } = await supabase

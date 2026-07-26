@@ -3,30 +3,38 @@ import type { Article } from "@/lib/types/domain";
 
 const getArticleById = vi.fn();
 const updateSeoPluginWriteStatus = vi.fn();
+const saveWordPressCategoryTagIds = vi.fn();
+const saveFeaturedImageUploadResult = vi.fn();
 const getApprovalLogsByArticleId = vi.fn();
 const savePublishLog = vi.fn();
-const hasSuccessfulPublishLog = vi.fn();
+const getSuccessfulWordPressDraft = vi.fn();
 const createDraftPost = vi.fn();
 const findOrCreateCategory = vi.fn();
 const findOrCreateTag = vi.fn();
+const uploadMediaToWordPress = vi.fn();
+const testWordPressConnection = vi.fn();
 const applySeoPluginMetadata = vi.fn();
 const logEvent = vi.fn();
 
 vi.mock("@/lib/repositories/article-repository", () => ({
   getArticleById: (...args: unknown[]) => getArticleById(...args),
   updateSeoPluginWriteStatus: (...args: unknown[]) => updateSeoPluginWriteStatus(...args),
+  saveWordPressCategoryTagIds: (...args: unknown[]) => saveWordPressCategoryTagIds(...args),
+  saveFeaturedImageUploadResult: (...args: unknown[]) => saveFeaturedImageUploadResult(...args),
 }));
 vi.mock("@/lib/repositories/approval-repository", () => ({
   getApprovalLogsByArticleId: (...args: unknown[]) => getApprovalLogsByArticleId(...args),
 }));
 vi.mock("@/lib/repositories/publish-repository", () => ({
   savePublishLog: (...args: unknown[]) => savePublishLog(...args),
-  hasSuccessfulPublishLog: (...args: unknown[]) => hasSuccessfulPublishLog(...args),
+  getSuccessfulWordPressDraft: (...args: unknown[]) => getSuccessfulWordPressDraft(...args),
 }));
 vi.mock("./wordpress-client", () => ({
   createDraftPost: (...args: unknown[]) => createDraftPost(...args),
   findOrCreateCategory: (...args: unknown[]) => findOrCreateCategory(...args),
   findOrCreateTag: (...args: unknown[]) => findOrCreateTag(...args),
+  uploadMediaToWordPress: (...args: unknown[]) => uploadMediaToWordPress(...args),
+  testWordPressConnection: (...args: unknown[]) => testWordPressConnection(...args),
 }));
 vi.mock("@/lib/seo/seo-plugin-writer", () => ({
   applySeoPluginMetadata: (...args: unknown[]) => applySeoPluginMetadata(...args),
@@ -35,9 +43,8 @@ vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
 }));
 
-const { publishArticleToWordPressDraft, resolveWordPressTitle, resolveWordPressExcerpt } = await import(
-  "./publish-service"
-);
+const { publishArticleToWordPressDraft, resolveWordPressTitle, resolveWordPressExcerpt, runWordPressConnectionTest } =
+  await import("./publish-service");
 
 function makeArticle(overrides: Partial<Article> = {}): Article {
   return {
@@ -119,21 +126,27 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
 beforeEach(() => {
   getArticleById.mockReset();
   updateSeoPluginWriteStatus.mockReset();
+  saveWordPressCategoryTagIds.mockReset();
+  saveFeaturedImageUploadResult.mockReset();
   getApprovalLogsByArticleId.mockReset();
   savePublishLog.mockReset();
-  hasSuccessfulPublishLog.mockReset();
+  getSuccessfulWordPressDraft.mockReset();
   createDraftPost.mockReset();
   findOrCreateCategory.mockReset();
   findOrCreateTag.mockReset();
+  uploadMediaToWordPress.mockReset();
+  testWordPressConnection.mockReset();
   applySeoPluginMetadata.mockReset();
   logEvent.mockReset();
 
   getApprovalLogsByArticleId.mockResolvedValue([
     { id: "approval-1", articleId: "article-1", themeId: "theme-1", targetType: "article", targetId: "article-1", action: "approve_article", status: "approved", approvedBy: "local-user", notes: null, createdAt: "2026-01-02T00:00:00.000Z" },
   ]);
-  hasSuccessfulPublishLog.mockResolvedValue(false);
+  getSuccessfulWordPressDraft.mockResolvedValue(null);
   savePublishLog.mockResolvedValue({});
   updateSeoPluginWriteStatus.mockResolvedValue({});
+  saveWordPressCategoryTagIds.mockResolvedValue({});
+  saveFeaturedImageUploadResult.mockResolvedValue({});
   logEvent.mockResolvedValue({});
 });
 
@@ -294,29 +307,91 @@ describe("publishArticleToWordPressDraft", () => {
     );
   });
 
-  it("이미 success publish_logs가 있으면 중복 생성하지 않는다", async () => {
+  it("이미 success publish_logs(external_post_id 포함)가 있으면 중복 생성하지 않는다", async () => {
     getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
-    hasSuccessfulPublishLog.mockResolvedValue(true);
+    getSuccessfulWordPressDraft.mockResolvedValue({
+      externalPostId: "77",
+      postUrl: "https://example-blog.test/?p=77",
+    });
     vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
 
     const result = await publishArticleToWordPressDraft("article-1");
 
     expect(result.success).toBe(true);
     expect(result.message).toContain("이미");
+    expect(result.externalPostId).toBe("77");
+    expect(result.postUrl).toBe("https://example-blog.test/?p=77");
     expect(createDraftPost).not.toHaveBeenCalled();
     expect(savePublishLog).not.toHaveBeenCalled();
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_actual_publish_skipped_duplicate" })
+    );
+  });
+
+  it("duplicate skip 시 실제 WordPress API를 다시 호출하지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    getSuccessfulWordPressDraft.mockResolvedValue({
+      externalPostId: "77",
+      postUrl: "https://example-blog.test/?p=77",
+    });
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(createDraftPost).not.toHaveBeenCalled();
+    expect(findOrCreateCategory).not.toHaveBeenCalled();
+    expect(findOrCreateTag).not.toHaveBeenCalled();
+  });
+
+  it("article.status가 reviewed가 아니면 actual publish를 막는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "draft" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(false);
+    expect(createDraftPost).not.toHaveBeenCalled();
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_actual_publish_skipped_not_reviewed" })
+    );
   });
 
   it("WordPress API 실패 시 publish_logs에 failed가 저장된다", async () => {
     getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
     vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
-    createDraftPost.mockResolvedValue({ success: false, errorMessage: "WordPress 인증 실패" });
+    createDraftPost.mockResolvedValue({ success: false, errorMessage: "WordPress 인증 실패", statusCode: 401 });
 
     const result = await publishArticleToWordPressDraft("article-1");
 
     expect(result.success).toBe(false);
     expect(savePublishLog).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed", errorMessage: "WordPress 인증 실패" })
+      expect.objectContaining({
+        status: "failed",
+        errorMessage: "WordPress 인증 실패",
+        details: expect.objectContaining({
+          actual: true,
+          dryRun: false,
+          statusCode: 401,
+          endpointType: "wp/v2/posts",
+          reasonCandidate: expect.arrayContaining(["username 또는 Application Password 오류"]),
+        }),
+      })
+    );
+  });
+
+  it("WORDPRESS_PUBLISH_ENABLED=true이고 env(Application Password 등)가 없으면 failed로 저장된다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: false,
+      errorMessage: "WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD가 설정되지 않았습니다.",
+    });
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(false);
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed" })
     );
   });
 
@@ -517,6 +592,154 @@ describe("publishArticleToWordPressDraft", () => {
     );
   });
 
+  it("실제 게시 성공 시 category/tag 동기화 결과를 articles.wp_category_ids/wp_tag_ids에 저장한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        status: "reviewed",
+        wpCategoryNames: ["복지"],
+        wpTagNames: ["장기요양보험"],
+        wpCategoryIds: [],
+        wpTagIds: [],
+      })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    findOrCreateCategory.mockResolvedValue({ success: true, id: 11, name: "복지" });
+    findOrCreateTag.mockResolvedValue({ success: true, id: 22, name: "장기요양보험" });
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(saveWordPressCategoryTagIds).toHaveBeenCalledWith("article-1", [11], [22]);
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "wordpress_category_sync_completed" }));
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "wordpress_tag_sync_completed" }));
+  });
+
+  it("category sync 실패 시 warning으로 처리되고 draft 생성은 계속 진행된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", wpCategoryNames: ["복지"], wpCategoryIds: [], wpTagNames: [] })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    findOrCreateCategory.mockRejectedValue(new Error("권한 부족"));
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(true);
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "wordpress_category_sync_failed" }));
+    expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ categories: undefined }));
+  });
+
+  it("WORDPRESS_MEDIA_UPLOAD_ENABLED=false이면 실제 업로드를 시도하지 않는다 (media upload skipped_deferred)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", generatedImageUrl: "/mock/generated-images/article-1.webp" })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "false");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(uploadMediaToWordPress).not.toHaveBeenCalled();
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_media_upload_skipped_deferred" })
+    );
+  });
+
+  it("Phase 2-9: WORDPRESS_MEDIA_UPLOAD_ENABLED=true이고 생성된 이미지가 있어도 실제 업로드는 이번 단계에서 시도하지 않는다 (skipped_deferred)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", generatedImageUrl: "/mock/generated-images/article-1.webp" })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    const result = await publishArticleToWordPressDraft("article-1");
+
+    expect(result.success).toBe(true);
+    expect(uploadMediaToWordPress).not.toHaveBeenCalled();
+    expect(saveFeaturedImageUploadResult).not.toHaveBeenCalled();
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_media_upload_skipped_deferred" })
+    );
+    expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ featuredMedia: undefined }));
+  });
+
+  it("WordPress media id가 이미 있으면(사전 업로드) 새 업로드 없이 featured_media로 연결한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", featuredImageWordpressMediaId: 42 })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(uploadMediaToWordPress).not.toHaveBeenCalled();
+    expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ featuredMedia: 42 }));
+  });
+
+  it("details_json(details)에 기사 본문 전체를 저장하지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", content: "본문".repeat(2000) }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: { id: 1, link: "https://example-blog.test/?p=1", status: "draft", slug: "slug" },
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    const call = savePublishLog.mock.calls.find((c) => c[0].status === "success");
+    const detailsStr = JSON.stringify(call![0].details);
+    expect(detailsStr.length).toBeLessThan(2000);
+    expect(detailsStr).not.toContain("본문".repeat(2000));
+  });
+
+  it("auth header/password가 pipeline_logs details에 저장되지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    for (const call of logEvent.mock.calls) {
+      const serialized = JSON.stringify(call[0]);
+      expect(serialized.toLowerCase()).not.toContain("authorization");
+      expect(serialized.toLowerCase()).not.toContain("app_password");
+    }
+  });
+
   it("SEO plugin provider가 none이면 실제 API 게시 성공 시 write를 시도하지 않고 skipped_provider_none으로 기록한다", async () => {
     getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", seoPluginProvider: "none" }));
     vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
@@ -533,21 +756,164 @@ describe("publishArticleToWordPressDraft", () => {
     expect(updateSeoPluginWriteStatus).toHaveBeenCalledWith("article-1", "skipped_provider_none");
   });
 
-  it("SEO_PLUGIN_WRITE_ENABLED=false이면 provider가 있어도 실제 write를 시도하지 않는다 (stub이 skipped_dry_run 반환)", async () => {
+  it("Phase 2-9: SEO_PLUGIN_WRITE_ENABLED=true여도 실제 SEO plugin write는 이번 단계에서 시도하지 않는다 (skipped_deferred)", async () => {
     getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", seoPluginProvider: "yoast" }));
     vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
-    vi.stubEnv("SEO_PLUGIN_WRITE_ENABLED", "false");
+    vi.stubEnv("SEO_PLUGIN_WRITE_ENABLED", "true");
     createDraftPost.mockResolvedValue({
       success: true,
       externalPostId: 1,
       postUrl: "https://example-blog.test/?p=1",
       raw: {},
     });
-    applySeoPluginMetadata.mockResolvedValue({ status: "skipped_dry_run" });
 
     await publishArticleToWordPressDraft("article-1");
 
-    expect(applySeoPluginMetadata).toHaveBeenCalled();
+    expect(applySeoPluginMetadata).not.toHaveBeenCalled();
     expect(updateSeoPluginWriteStatus).toHaveBeenCalledWith("article-1", "skipped_dry_run");
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "seo_plugin_write_skipped_deferred" })
+    );
+  });
+
+  it("actual publish 성공 시 publish_logs.details_json에 mediaUpload/seoPluginWrite가 skipped_deferred로 저장된다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", seoPluginProvider: "yoast" }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "success",
+        details: expect.objectContaining({
+          actual: true,
+          dryRun: false,
+          wordpressStatus: "draft",
+          mediaUpload: { status: "skipped_deferred" },
+          seoPluginWrite: { status: "skipped_deferred" },
+        }),
+      })
+    );
+  });
+});
+
+describe("runWordPressConnectionTest", () => {
+  it("실행 시작 시 wordpress_connection_test_started를 기록한다", async () => {
+    testWordPressConnection.mockResolvedValue({ connected: false, testedAt: "2026-01-01T00:00:00.000Z" });
+
+    await runWordPressConnectionTest();
+
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_connection_test_started", status: "info" })
+    );
+  });
+
+  it("연결 성공 시 wordpress_connection_test_completed를 기록하고 결과를 반환한다", async () => {
+    testWordPressConnection.mockResolvedValue({
+      connected: true,
+      baseUrl: "https://example-blog.test",
+      username: "content-bot",
+      displayName: "Content Bot",
+      testedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const result = await runWordPressConnectionTest();
+
+    expect(result.connected).toBe(true);
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "wordpress_connection_test_completed",
+        status: "success",
+        details: expect.objectContaining({
+          baseUrlHost: "example-blog.test",
+          connected: true,
+          statusCode: 200,
+          endpointType: "wp/v2/users/me",
+        }),
+      })
+    );
+  });
+
+  it("연결 실패 시 wordpress_connection_test_failed를 기록한다", async () => {
+    testWordPressConnection.mockResolvedValue({
+      connected: false,
+      baseUrl: "https://example-blog.test",
+      statusCode: 401,
+      errorMessage: "WordPress 연결 실패 (HTTP 401 Unauthorized)",
+      testedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await runWordPressConnectionTest();
+
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "wordpress_connection_test_failed",
+        status: "failed",
+        details: expect.objectContaining({
+          baseUrlHost: "example-blog.test",
+          connected: false,
+          statusCode: 401,
+          endpointType: "wp/v2/users/me",
+        }),
+      })
+    );
+  });
+
+  it("details_json에 stage 필드를 사용하지 않고 event 관련 필드만 저장한다", async () => {
+    testWordPressConnection.mockResolvedValue({
+      connected: false,
+      statusCode: 404,
+      errorMessage: "WordPress 연결 실패 (HTTP 404 Not Found)",
+      testedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await runWordPressConnectionTest();
+
+    for (const call of logEvent.mock.calls) {
+      const input = call[0] as { details?: Record<string, unknown>; type: string };
+      expect(input).not.toHaveProperty("stage");
+      if (input.details) {
+        const allowedKeys = ["baseUrlHost", "connected", "statusCode", "endpointType", "safeMessage"];
+        expect(Object.keys(input.details).every((key) => allowedKeys.includes(key))).toBe(true);
+      }
+    }
+  });
+
+  it("Authorization header/password/API key가 로그에 저장되지 않는다", async () => {
+    testWordPressConnection.mockResolvedValue({
+      connected: false,
+      baseUrl: "https://example-blog.test",
+      statusCode: 401,
+      errorMessage: "WordPress 연결 실패 (HTTP 401 Unauthorized)",
+      testedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await runWordPressConnectionTest();
+
+    const serialized = JSON.stringify(logEvent.mock.calls).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("app_password");
+    expect(serialized).not.toContain("basic ");
+    expect(serialized).not.toContain("api_key");
+  });
+
+  it("pipeline_logs 저장이 실패해도 연결 테스트 결과는 그대로 반환된다", async () => {
+    testWordPressConnection.mockResolvedValue({
+      connected: true,
+      baseUrl: "https://example-blog.test",
+      username: "content-bot",
+      testedAt: "2026-01-01T00:00:00.000Z",
+    });
+    logEvent.mockRejectedValue(new Error("DB insert failed"));
+
+    const result = await runWordPressConnectionTest();
+
+    expect(result.connected).toBe(true);
   });
 });
