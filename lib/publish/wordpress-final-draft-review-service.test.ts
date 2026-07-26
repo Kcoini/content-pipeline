@@ -127,6 +127,12 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     publishQualityGateCheckedAt: null,
     publishReady: false,
     publishBlockedReason: null,
+    publicPublishApprovalStatus: "not_requested",
+    publicPublishApproved: false,
+    publicPublishApprovedAt: null,
+    publicPublishApprovedBy: null,
+    publicPublishApprovalError: null,
+    publicPublishApprovalNotes: null,
     ...overrides,
   };
 }

@@ -32,6 +32,9 @@ import {
   testWordPressConnectionAction,
   runPublishQualityGateAction,
   checkPublishQualityGateStatusAction,
+  approvePublicPublishAction,
+  revokePublicPublishApprovalAction,
+  checkPublicPublishApprovalStatusAction,
 } from "./actions";
 import type {
   WordPressMetadataStatus,
@@ -45,6 +48,7 @@ import type {
   SeoPluginCustomEndpointStatus,
   WordPressFinalDraftReviewStatus,
   PublishQualityGateStatus,
+  PublicPublishApprovalStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
@@ -242,6 +246,22 @@ const QUALITY_GATE_ITEM_STYLE: Record<string, string> = {
   warning: "bg-amber-100 text-amber-700",
   fail: "bg-orange-100 text-orange-700",
   blocked: "bg-red-100 text-red-700",
+};
+
+const PUBLIC_PUBLISH_APPROVAL_STATUS_LABEL: Record<PublicPublishApprovalStatus, string> = {
+  not_requested: "승인 요청 안 함",
+  approved: "승인 완료",
+  revoked: "승인 취소됨",
+  blocked: "승인 차단됨",
+  failed: "승인 처리 실패",
+};
+
+const PUBLIC_PUBLISH_APPROVAL_STATUS_STYLE: Record<PublicPublishApprovalStatus, string> = {
+  not_requested: "bg-zinc-100 text-zinc-500",
+  approved: "bg-green-100 text-green-700",
+  revoked: "bg-amber-100 text-amber-700",
+  blocked: "bg-red-100 text-red-700",
+  failed: "bg-red-100 text-red-700",
 };
 
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
@@ -1620,6 +1640,135 @@ export default async function ArticleDetailPage({
               </button>
             </form>
           </div>
+        </section>
+
+        {/* Phase 2-16: Human Approval Before Public Publish */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">Human Approval Before Public Publish</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${PUBLIC_PUBLISH_APPROVAL_STATUS_STYLE[article.publicPublishApprovalStatus]}`}
+            >
+              {PUBLIC_PUBLISH_APPROVAL_STATUS_LABEL[article.publicPublishApprovalStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Publish Quality Gate를 통과한 기사에 대해 사람이 최종 승인해야만
+            다음 단계에서 WordPress 공개 게시(public publish)를 진행할 수
+            있습니다. 이 화면에서는 승인 상태만 저장하며 실제 공개 게시는
+            수행하지 않습니다.
+          </p>
+
+          {(() => {
+            const canApprove =
+              article.publishReady &&
+              article.publishQualityGateStatus === "ready_to_publish" &&
+              hasWordPressSuccess &&
+              !(article.publicPublishApprovalStatus === "approved" && article.publicPublishApproved);
+            const alreadyApproved =
+              article.publicPublishApprovalStatus === "approved" && article.publicPublishApproved;
+
+            return (
+              <>
+                <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="font-medium text-zinc-600">publish_quality_gate_status</dt>
+                    <dd className="text-zinc-500">{article.publishQualityGateStatus}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">publish_ready</dt>
+                    <dd className={article.publishReady ? "font-medium text-green-700" : "text-zinc-500"}>
+                      {article.publishReady ? "예" : "아니오"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">public_publish_approved</dt>
+                    <dd className={article.publicPublishApproved ? "font-medium text-green-700" : "text-zinc-500"}>
+                      {article.publicPublishApproved ? "예" : "아니오"}
+                    </dd>
+                  </div>
+                  {article.publicPublishApprovedAt && (
+                    <div>
+                      <dt className="font-medium text-zinc-600">승인 시각</dt>
+                      <dd className="text-zinc-500">
+                        {new Date(article.publicPublishApprovedAt).toLocaleString("ko-KR")}
+                      </dd>
+                    </div>
+                  )}
+                  {article.publicPublishApprovedBy && (
+                    <div>
+                      <dt className="font-medium text-zinc-600">승인자</dt>
+                      <dd className="text-zinc-500">{article.publicPublishApprovedBy}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="font-medium text-zinc-600">WordPress draft post id</dt>
+                    <dd className="text-zinc-500">{latestWordPressLog?.externalPostId ?? "해당 없음"}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-600">WordPress draft post URL</dt>
+                    <dd className="text-zinc-500 break-all">{latestWordPressLog?.postUrl || "해당 없음"}</dd>
+                  </div>
+                  {article.publicPublishApprovalNotes && (
+                    <div className="sm:col-span-2">
+                      <dt className="font-medium text-zinc-600">메모</dt>
+                      <dd className="text-zinc-500">{article.publicPublishApprovalNotes}</dd>
+                    </div>
+                  )}
+                </dl>
+
+                {article.publicPublishApprovalError && (
+                  <p className="mt-3 text-xs text-red-600">오류: {article.publicPublishApprovalError}</p>
+                )}
+
+                {alreadyApproved && (
+                  <p className="mt-3 text-xs font-medium text-indigo-700">
+                    ℹ 승인이 완료되었습니다. 다음 단계에서 공개 게시가 가능합니다
+                    (이 화면에서는 실제 공개 게시를 수행하지 않습니다).
+                  </p>
+                )}
+
+                {!canApprove && !alreadyApproved && (
+                  <p className="mt-3 text-xs font-medium text-amber-700">
+                    ⚠ 아직 승인할 수 없습니다. publish_ready=true, publish_quality_gate_status=
+                    ready_to_publish, WordPress draft post 존재 조건을 모두 만족해야 합니다.
+                  </p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <form action={approvePublicPublishAction}>
+                    <input type="hidden" name="articleId" value={article.id} />
+                    <button
+                      type="submit"
+                      disabled={!canApprove}
+                      className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      공개 게시 승인
+                    </button>
+                  </form>
+                  <form action={revokePublicPublishApprovalAction}>
+                    <input type="hidden" name="articleId" value={article.id} />
+                    <button
+                      type="submit"
+                      disabled={!alreadyApproved}
+                      className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      공개 게시 승인 취소
+                    </button>
+                  </form>
+                  <form action={checkPublicPublishApprovalStatusAction}>
+                    <input type="hidden" name="articleId" value={article.id} />
+                    <button
+                      type="submit"
+                      className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                    >
+                      승인 상태 새로고침
+                    </button>
+                  </form>
+                </div>
+              </>
+            );
+          })()}
         </section>
 
         {/* 인용 출처 */}

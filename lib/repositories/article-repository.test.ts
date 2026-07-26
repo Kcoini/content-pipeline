@@ -107,6 +107,12 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     publish_quality_gate_checked_at: null,
     publish_ready: false,
     publish_blocked_reason: null,
+    public_publish_approval_status: "not_requested",
+    public_publish_approved: false,
+    public_publish_approved_at: null,
+    public_publish_approved_by: null,
+    public_publish_approval_error: null,
+    public_publish_approval_notes: null,
     ...overrides,
   };
 }
@@ -214,6 +220,12 @@ describe("mapArticleRowToArticle", () => {
       publishQualityGateCheckedAt: null,
       publishReady: false,
       publishBlockedReason: null,
+      publicPublishApprovalStatus: "not_requested",
+      publicPublishApproved: false,
+      publicPublishApprovedAt: null,
+      publicPublishApprovedBy: null,
+      publicPublishApprovalError: null,
+      publicPublishApprovalNotes: null,
     });
   });
 

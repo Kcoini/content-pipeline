@@ -168,7 +168,15 @@ export type LogEventType =
   | "publish_quality_gate_completed"
   | "publish_quality_gate_needs_revision"
   | "publish_quality_gate_blocked"
-  | "publish_quality_gate_failed";
+  | "publish_quality_gate_failed"
+  // Phase 2-16: Human Approval Before Public Publish 이벤트
+  | "public_publish_approval_started"
+  | "public_publish_approval_completed"
+  | "public_publish_approval_blocked"
+  | "public_publish_approval_failed"
+  | "public_publish_approval_duplicate"
+  | "public_publish_approval_revoked"
+  | "public_publish_approval_revoke_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

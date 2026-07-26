@@ -398,6 +398,38 @@
       여도 실제 공개는 수행되지 않고 안내 문구만 표시된다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-25. Human Approval Before Public Publish (FR-26, Phase 2-16)
+- [ ] `publish_ready=false`이면 승인이 불가하다.
+- [ ] `publish_quality_gate_status`가 `ready_to_publish`가 아니면 승인이
+      불가하다.
+- [ ] WordPress draft post id가 없으면 승인이 불가하다.
+- [ ] 조건 충족 시 `public_publish_approval_status='approved'`로 저장된다.
+- [ ] 승인 성공 시 `public_publish_approved=true`가 된다.
+- [ ] 승인 성공 시 `approval_logs`에 `action='public_publish_approved'`로
+      기록된다.
+- [ ] 승인 성공 시 `publish_logs`에 `target='public_publish_approval'`로
+      저장된다.
+- [ ] 이미 승인된 상태에서 재승인을 시도하면 duplicate로 처리되고
+      `articles`는 갱신되지 않는다.
+- [ ] 승인 취소 시 `public_publish_approval_status='revoked'`,
+      `public_publish_approved=false`로 저장된다.
+- [ ] `assertCanPublicPublish()`는 승인 전에는 실패한다.
+- [ ] `assertCanPublicPublish()`는 승인 후(모든 조건 충족 시)에는 통과한다.
+- [ ] 이번 단계는 어떤 경로로도 실제 공개 publish를 실행하지 않는다.
+- [ ] Authorization header/Application Password/Basic Auth 문자열/API key가
+      로그에 저장되지 않는다.
+- [ ] 기사 본문 전체가 `publish_logs.details_json`/
+      `articles.public_publish_approval_notes`에 저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준(`public_publish_approval_*`)으로
+      저장된다.
+- [ ] 실행 중 예외가 발생해도 Runtime Error로 터지지 않고 안전한 실패를
+      반환한다.
+- [ ] article 상세 페이지에 Quality Gate 상태/publish_ready/승인 상태/
+      승인 시각/승인자/메모/오류/WordPress draft post id·URL이 표시되고
+      "공개 게시 승인"/"공개 게시 승인 취소"/"승인 상태 새로고침" 버튼이
+      제공된다. 실제 "공개 게시" 버튼은 존재하지 않는다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

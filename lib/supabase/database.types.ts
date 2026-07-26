@@ -186,6 +186,9 @@ export type WordPressFinalDraftReviewStatus = "not_reviewed" | "reviewed" | "mis
 /** Phase 2-15: Publish Quality Gate 상태 */
 export type PublishQualityGateStatus = "not_checked" | "ready_to_publish" | "needs_revision" | "blocked" | "failed";
 
+/** Phase 2-16: Human Approval Before Public Publish 상태 */
+export type PublicPublishApprovalStatus = "not_requested" | "approved" | "revoked" | "blocked" | "failed";
+
 export type ArticleRow = {
   id: string;
   theme_id: string;
@@ -295,6 +298,13 @@ export type ArticleRow = {
   publish_quality_gate_checked_at: string | null;
   publish_ready: boolean;
   publish_blocked_reason: string | null;
+  /** Phase 2-16: Human Approval Before Public Publish 결과 */
+  public_publish_approval_status: PublicPublishApprovalStatus;
+  public_publish_approved: boolean;
+  public_publish_approved_at: string | null;
+  public_publish_approved_by: string | null;
+  public_publish_approval_error: string | null;
+  public_publish_approval_notes: string | null;
 };
 
 export type ArticleSourceRow = {
@@ -362,7 +372,7 @@ export type PipelineLogRow = {
   updated_at: string;
 };
 
-export type ApprovalLogStatus = "approved" | "rejected";
+export type ApprovalLogStatus = "approved" | "rejected" | "revoked";
 
 export type ApprovalLogRow = {
   id: string;

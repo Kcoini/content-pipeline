@@ -15,6 +15,7 @@ import type {
   SeoPluginCustomEndpointStatus,
   WordPressFinalDraftReviewStatus,
   PublishQualityGateStatus,
+  PublicPublishApprovalStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -187,6 +188,12 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     publishQualityGateCheckedAt: row.publish_quality_gate_checked_at,
     publishReady: row.publish_ready ?? false,
     publishBlockedReason: row.publish_blocked_reason,
+    publicPublishApprovalStatus: row.public_publish_approval_status ?? "not_requested",
+    publicPublishApproved: row.public_publish_approved ?? false,
+    publicPublishApprovedAt: row.public_publish_approved_at,
+    publicPublishApprovedBy: row.public_publish_approved_by,
+    publicPublishApprovalError: row.public_publish_approval_error,
+    publicPublishApprovalNotes: row.public_publish_approval_notes,
   };
 }
 
@@ -1202,6 +1209,54 @@ export async function savePublishQualityGateResult(
 
   if (error || !data) {
     throw new Error(`Publish Quality Gate 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SavePublicPublishApprovalResultInput {
+  status: PublicPublishApprovalStatus;
+  approved?: boolean;
+  /** 승인 시각. 전달하지 않으면 approved=true로 새로 승인될 때만 현재 시각으로 채운다. */
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  errorMessage?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Human Approval Before Public Publish 결과를 저장한다 (Phase 2-16).
+ * 실제 WordPress 공개(publish)는 이 함수에서 수행하지 않는다.
+ */
+export async function savePublicPublishApprovalResult(
+  articleId: string,
+  input: SavePublicPublishApprovalResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    public_publish_approval_status: input.status,
+  };
+  if (input.approved !== undefined) update.public_publish_approved = input.approved;
+  if (input.approvedAt !== undefined) update.public_publish_approved_at = input.approvedAt;
+  if (input.approvedBy !== undefined) update.public_publish_approved_by = input.approvedBy;
+  if (input.errorMessage !== undefined) update.public_publish_approval_error = input.errorMessage;
+  if (input.notes !== undefined) update.public_publish_approval_notes = input.notes;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`공개 게시 승인 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

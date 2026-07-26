@@ -162,6 +162,9 @@ export type WordPressFinalDraftReviewStatus = "not_reviewed" | "reviewed" | "mis
 /** Phase 2-15: Publish Quality Gate 상태 */
 export type PublishQualityGateStatus = "not_checked" | "ready_to_publish" | "needs_revision" | "blocked" | "failed";
 
+/** Phase 2-16: Human Approval Before Public Publish 상태 */
+export type PublicPublishApprovalStatus = "not_requested" | "approved" | "revoked" | "blocked" | "failed";
+
 /** Phase 2-7: 이미지 생성 provider */
 export type ImageGenerationProvider = "mock" | "openai" | "custom";
 
@@ -351,4 +354,16 @@ export interface Article {
   publishReady: boolean;
   /** Phase 2-15: blocked 상태일 때의 안전한 사유 요약 */
   publishBlockedReason: string | null;
+  /** Phase 2-16: Human Approval Before Public Publish 상태 */
+  publicPublishApprovalStatus: PublicPublishApprovalStatus;
+  /** Phase 2-16: 실제 공개 게시가 승인되었는지 여부 (approved 상태일 때만 true) */
+  publicPublishApproved: boolean;
+  /** Phase 2-16: 승인이 이루어진 시각 (중복 승인 시에도 덮어쓰지 않음) */
+  publicPublishApprovedAt: string | null;
+  /** Phase 2-16: 승인한 사용자 (미상이면 'unknown') */
+  publicPublishApprovedBy: string | null;
+  /** Phase 2-16: 승인/취소 처리 자체가 실패했을 때의 안전한 오류 메시지 */
+  publicPublishApprovalError: string | null;
+  /** Phase 2-16: 승인/취소 사유 메모 (본문 전체는 포함하지 않음) */
+  publicPublishApprovalNotes: string | null;
 }

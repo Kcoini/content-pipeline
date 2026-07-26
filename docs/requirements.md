@@ -302,6 +302,25 @@ header/Application Password/Basic Auth 문자열/API key)는 저장하지 않는
 이벤트를 기록한다. 자세한 내용은
 `docs/phase-2-15-publish-quality-gate.md` 참고.
 
+### FR-26. Human Approval Before Public Publish (Phase 2-16)
+Phase 2-15 Publish Quality Gate를 통과한(`publish_quality_gate_status=
+'ready_to_publish'`, `publish_ready=true`) article에 대해, 사람이 승인
+버튼을 직접 눌렀을 때만 WordPress public publish 승인 상태를 저장할 수
+있다. `publish_ready`가 true가 아니거나, `publish_quality_gate_status`가
+`ready_to_publish`가 아니거나, WordPress draft post id가 없으면 승인이
+차단된다. 이미 승인된 상태에서 재승인을 시도하면 중복(duplicate)으로
+처리하고 `public_publish_approved_at`을 덮어쓰지 않는다. 승인 취소
+기능도 제공한다. 이 단계는 승인 상태만 저장하며, 실제 공개 게시
+(WordPress post status를 `publish`로 변경하는 동작)는 어떤 경우에도
+수행하지 않는다. 결과는 `articles.public_publish_approval_*`/
+`public_publish_approved` 컬럼, `approval_logs`, `publish_logs`(target=
+`public_publish_approval`)에 저장되며, 기사 본문 전체·인증 정보는
+저장하지 않는다. `pipeline_logs`는 `event_name` 컬럼 기준으로
+`public_publish_approval_*` 이벤트를 기록한다. Phase 2-17에서 사용할
+`assertCanPublicPublish()` guard도 함께 준비한다(이번 단계에서는 실제
+publish를 실행하지 않음). 자세한 내용은
+`docs/phase-2-16-human-approval-before-public-publish.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성
