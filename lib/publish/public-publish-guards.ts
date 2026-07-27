@@ -86,6 +86,17 @@ export async function checkPublicPublishGuard(articleId: string): Promise<Public
     reasons.push("WordPress draft post id가 존재하지 않습니다 (publish_logs.target='wordpress', status='success').");
   }
 
+  // Featured Image Workflow: Quality Gate에서는 이미지 source가 준비만
+  // 되어도 warning으로 통과할 수 있지만, 실제 공개(publish)는 media_id가
+  // 실제로 존재하거나 featured_media가 attach되어 있어야만 허용한다.
+  const hasFeaturedMedia =
+    Boolean(article.featuredImageWordpressMediaId) || article.wordpressFeaturedMediaAttachStatus === "attached";
+  if (!hasFeaturedMedia) {
+    reasons.push(
+      "featured_image_wordpress_media_id 또는 wordpress_featured_media_attach_status='attached'가 필요합니다 (대표 이미지가 아직 완료되지 않았습니다)."
+    );
+  }
+
   const alreadyPublished = article.publicPublished === true;
   if (alreadyPublished) {
     reasons.push("이미 공개(publish)된 기사입니다 (중복 공개 방지).");

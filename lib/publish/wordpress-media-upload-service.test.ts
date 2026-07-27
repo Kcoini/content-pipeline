@@ -83,6 +83,9 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     featuredImageUploadPayload: {},
     featuredImageUploadError: null,
     featuredImageUploadAttemptedAt: null,
+    featuredImageSourceStatus: "none",
+    featuredImageSourceError: null,
+    featuredImageManualSourceSavedAt: null,
     generatedImageStatus: "not_generated",
     generatedImageProvider: "mock",
     generatedImageModel: null,
@@ -160,6 +163,26 @@ afterEach(() => {
 });
 
 describe("uploadFeaturedImageToWordPress", () => {
+  it("source_type=wordpress_media_existing이면 업로드를 다시 시도하지 않고 uploaded로 간주한다 (Phase 2-19)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        featuredImageSourceType: "wordpress_media_existing",
+        featuredImageWordpressMediaId: 77,
+        featuredImageWordpressUrl: "https://example-blog.test/?p=77",
+      })
+    );
+    vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "false");
+
+    const result = await uploadFeaturedImageToWordPress("article-1");
+
+    expect(result.success).toBe(true);
+    expect(result.wordpressMediaId).toBe(77);
+    expect(uploadMediaToWordPress).not.toHaveBeenCalled();
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wordpress_media_upload_skipped_existing_media" })
+    );
+  });
+
   it("WORDPRESS_MEDIA_UPLOAD_ENABLED=false이면 실제 업로드를 호출하지 않고 skipped 처리한다", async () => {
     getArticleById.mockResolvedValue(makeArticle());
     vi.stubEnv("WORDPRESS_MEDIA_UPLOAD_ENABLED", "false");

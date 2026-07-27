@@ -61,8 +61,8 @@ function makeApprovedArticle(overrides: Partial<Article> = {}): Article {
     featuredImageMetadata: {},
     featuredImageGeneratedAt: null,
     featuredImageReviewedAt: null,
-    featuredImageWordpressMediaId: null,
-    featuredImageWordpressUrl: null,
+    featuredImageWordpressMediaId: 99,
+    featuredImageWordpressUrl: "https://example-blog.test/uploads/photo.webp",
     featuredImageError: null,
     featuredImageSourceType: "none",
     featuredImageSourceUrl: null,
@@ -73,6 +73,9 @@ function makeApprovedArticle(overrides: Partial<Article> = {}): Article {
     featuredImageUploadPayload: {},
     featuredImageUploadError: null,
     featuredImageUploadAttemptedAt: null,
+    featuredImageSourceStatus: "none",
+    featuredImageSourceError: null,
+    featuredImageManualSourceSavedAt: null,
     generatedImageStatus: "not_generated",
     generatedImageProvider: "mock",
     generatedImageModel: null,
@@ -211,5 +214,32 @@ describe("checkPublicPublishGuard", () => {
 
     expect(result.canPublish).toBe(false);
     expect(result.reasons.some((reason) => reason.includes("article.status"))).toBe(true);
+  });
+
+  it("featured_image_wordpress_media_id도 없고 attach도 안 되어 있으면 blocked된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeApprovedArticle({
+        featuredImageWordpressMediaId: null,
+        wordpressFeaturedMediaAttachStatus: "not_attached",
+      })
+    );
+
+    const result = await checkPublicPublishGuard("article-1");
+
+    expect(result.canPublish).toBe(false);
+    expect(result.reasons.some((reason) => reason.includes("featured_image_wordpress_media_id"))).toBe(true);
+  });
+
+  it("attach만 되어 있어도(media_id 없이) 통과한다", async () => {
+    getArticleById.mockResolvedValue(
+      makeApprovedArticle({
+        featuredImageWordpressMediaId: null,
+        wordpressFeaturedMediaAttachStatus: "attached",
+      })
+    );
+
+    const result = await checkPublicPublishGuard("article-1");
+
+    expect(result.canPublish).toBe(true);
   });
 });

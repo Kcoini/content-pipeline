@@ -360,14 +360,49 @@ function checkTag(article: Article): ChecklistItem {
 // F. Featured Image 항목 -----------------------------------------------------
 
 function checkFeaturedImagePresent(article: Article): ChecklistItem {
-  const hasFeaturedImage = Boolean(article.featuredImageWordpressMediaId || article.featuredImageWordpressUrl);
-  if (hasFeaturedImage) {
-    return item("featured_image_present", "Featured image 존재", "pass", "featured image가 준비되어 있습니다.", "medium");
+  const hasMediaId = Boolean(article.featuredImageWordpressMediaId);
+  const attached = article.wordpressFeaturedMediaAttachStatus === "attached";
+
+  if (hasMediaId || attached) {
+    return item(
+      "featured_image_present",
+      "Featured image 존재",
+      "pass",
+      "featured image가 WordPress에 준비(업로드/연결)되어 있습니다.",
+      "medium"
+    );
   }
-  if (article.articleMode === "monetized_blog") {
-    return item("featured_image_present", "Featured image 존재", "fail", "monetized_blog에 featured image가 없습니다.", "high");
+
+  // Featured Image Workflow: source는 준비되었지만 아직 WordPress에
+  // 업로드/연결되지 않은 상태 — "완전히 없음"과 구분해 warning으로 처리한다.
+  const sourcePrepared =
+    article.featuredImageSourceStatus === "prepared" || article.featuredImageUploadStatus === "prepared";
+  if (sourcePrepared) {
+    return item(
+      "featured_image_present",
+      "Featured image 존재",
+      "warning",
+      "이미지 source는 준비되었지만 아직 WordPress에 업로드/연결되지 않았습니다.",
+      "medium"
+    );
   }
-  return item("featured_image_present", "Featured image 존재", "warning", "featured image가 없습니다.", "low");
+
+  const noSource = article.featuredImageSourceStatus === "none" && !hasMediaId;
+  const uploadFailedOrSkipped =
+    (article.featuredImageUploadStatus === "skipped" || article.featuredImageUploadStatus === "failed") &&
+    !hasMediaId;
+
+  if (article.articleMode === "monetized_blog" && (noSource || uploadFailedOrSkipped)) {
+    return item(
+      "featured_image_present",
+      "Featured image 존재",
+      "fail",
+      "monetized_blog에 featured image가 준비되지 않았습니다.",
+      "high"
+    );
+  }
+
+  return item("featured_image_present", "Featured image 존재", "warning", "featured image가 아직 준비되지 않았습니다.", "low");
 }
 
 function checkFeaturedMediaAttached(article: Article): ChecklistItem {

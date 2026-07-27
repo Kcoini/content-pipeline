@@ -128,6 +128,8 @@ export type LogEventType =
   | "wordpress_media_source_invalid"
   | "wordpress_media_metadata_update_completed"
   | "wordpress_media_metadata_update_failed"
+  // Phase 2-19: 기존 WordPress media를 직접 지정한 경우 업로드 건너뜀
+  | "wordpress_media_upload_skipped_existing_media"
   // Phase 2-11: WordPress Featured Media Draft Publish Test 이벤트
   | "wordpress_featured_media_attach_started"
   | "wordpress_featured_media_attach_completed"
@@ -184,7 +186,16 @@ export type LogEventType =
   | "wordpress_public_publish_blocked"
   | "wordpress_public_publish_skipped_already_published"
   | "wordpress_public_publish_guard_passed"
-  | "wordpress_public_publish_guard_failed";
+  | "wordpress_public_publish_guard_failed"
+  // Phase 2-19: Manual Featured Image Source Setup 이벤트
+  | "featured_image_manual_source_saved"
+  | "featured_image_external_url_saved"
+  | "featured_image_local_upload_saved"
+  | "featured_image_existing_wordpress_media_saved"
+  | "featured_image_manual_source_failed"
+  // Featured Image Workflow: Source Setup (3단계 워크플로우 정리)
+  | "featured_image_source_saved"
+  | "featured_image_source_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

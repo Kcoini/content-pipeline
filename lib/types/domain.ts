@@ -127,7 +127,18 @@ export type SeoPluginWriteStatus =
 export type FeaturedImageStatus = "not_ready" | "prepared" | "reviewed" | "failed" | "uploaded";
 
 /** Phase 2-6: featured image 원본 소스 종류 */
-export type WordPressMediaSourceType = "none" | "generated_url" | "external_url" | "local_file" | "uploaded";
+export type WordPressMediaSourceType =
+  | "none"
+  | "generated_url"
+  | "external_url"
+  | "local_file"
+  | "uploaded"
+  // Phase 2-19: 수동 대표 이미지 source 설정
+  | "local_upload"
+  | "wordpress_media_existing";
+
+/** Featured Image Workflow: source 설정 자체의 상태 (WordPress 업로드 전 단계). */
+export type FeaturedImageSourceStatus = "none" | "prepared" | "invalid" | "failed";
 
 /** Phase 2-6: WordPress media upload 준비/시도 상태 (safe stub — 현재는 'uploaded'가 되지 않는다) */
 export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | "uploaded" | "failed" | "skipped";
@@ -280,6 +291,12 @@ export interface Article {
   featuredImageUploadError: string | null;
   /** Phase 2-6: 업로드가 마지막으로 시도(준비/dry-run)된 시각 */
   featuredImageUploadAttemptedAt: string | null;
+  /** Featured Image Workflow: source 설정 자체의 상태 (none/prepared/invalid/failed) */
+  featuredImageSourceStatus: FeaturedImageSourceStatus;
+  /** Featured Image Workflow: source 설정 검증/저장 실패 시 안전한 오류 메시지 */
+  featuredImageSourceError: string | null;
+  /** Featured Image Workflow: 사용자가 직접 source를 저장한 시각 */
+  featuredImageManualSourceSavedAt: string | null;
   /** Phase 2-7: 이미지 생성 상태 (기본값 not_generated) */
   generatedImageStatus: GeneratedImageStatus;
   /** Phase 2-7: 이미지를 생성한 provider (기본값 mock) */

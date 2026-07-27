@@ -30,16 +30,23 @@ export interface UploadFeaturedImageResult {
 
 type MediaUploadSourceType = "generated_url" | "external_url" | "local_file" | "none";
 
+/** 업로드를 시도할 수 없을 때의 안전한 사유 코드 (Phase 2-19 보강). */
+export type MediaUploadSkipReason =
+  | "no_valid_image_source"
+  | "mock_url_not_uploadable"
+  | "invalid_image_source_url"
+  | "existing_wordpress_media_no_upload_needed";
+
 interface ResolvedUploadSource {
   sourceType: MediaUploadSourceType;
   sourceUrl?: string;
   localPath?: string;
-  /** true면 mock/상대경로 등 업로드 후보는 있었지만 실제 업로드 대상이 될 수 없었다. */
-  hadInvalidCandidate: boolean;
+  /** sourceType==='none'일 때만 존재하는 안전한 사유 코드. */
+  skipReason?: MediaUploadSkipReason;
 }
 
 /**
- * featured image 업로드에 사용할 source를 결정한다 (Phase 2-10).
+ * featured image 업로드에 사용할 source를 결정한다 (Phase 2-10, Phase 2-19 보강).
  * 1. generated_image_status가 generated/reviewed이고 generated_image_url이 http/https이면 generated_url
  * 2. 아니면 featured_image_source_url이 http/https이면 external_url
  * 3. 아니면 featured_image_local_path가 있으면 local_file
@@ -49,22 +56,30 @@ function resolveUploadSource(article: Article): ResolvedUploadSource {
   const isGeneratedReady = article.generatedImageStatus === "generated" || article.generatedImageStatus === "reviewed";
 
   if (isGeneratedReady && isRealHttpUrl(article.generatedImageUrl)) {
-    return { sourceType: "generated_url", sourceUrl: article.generatedImageUrl, hadInvalidCandidate: false };
+    return { sourceType: "generated_url", sourceUrl: article.generatedImageUrl };
   }
 
   if (isRealHttpUrl(article.featuredImageSourceUrl)) {
-    return { sourceType: "external_url", sourceUrl: article.featuredImageSourceUrl, hadInvalidCandidate: false };
+    return { sourceType: "external_url", sourceUrl: article.featuredImageSourceUrl };
   }
 
   if (article.featuredImageLocalPath) {
-    return { sourceType: "local_file", localPath: article.featuredImageLocalPath, hadInvalidCandidate: false };
+    return { sourceType: "local_file", localPath: article.featuredImageLocalPath };
   }
 
-  const hadInvalidCandidate =
-    (isGeneratedReady && Boolean(article.generatedImageUrl) && !isRealHttpUrl(article.generatedImageUrl)) ||
-    (Boolean(article.featuredImageSourceUrl) && !isRealHttpUrl(article.featuredImageSourceUrl));
+  const hasInvalidGeneratedUrl =
+    isGeneratedReady && Boolean(article.generatedImageUrl) && !isRealHttpUrl(article.generatedImageUrl);
+  const hasInvalidExternalUrl =
+    Boolean(article.featuredImageSourceUrl) && !isRealHttpUrl(article.featuredImageSourceUrl);
 
-  return { sourceType: "none", hadInvalidCandidate };
+  if (hasInvalidGeneratedUrl) {
+    return { sourceType: "none", skipReason: "mock_url_not_uploadable" };
+  }
+  if (hasInvalidExternalUrl || article.featuredImageSourceStatus === "invalid") {
+    return { sourceType: "none", skipReason: "invalid_image_source_url" };
+  }
+
+  return { sourceType: "none", skipReason: "no_valid_image_source" };
 }
 
 /** filename은 featured_image_filename 우선, 없으면 slug 기반(또는 article id fallback)으로 생성한다. */
@@ -109,25 +124,67 @@ export async function uploadFeaturedImageToWordPress(articleId: string): Promise
     return { success: false, message: `기사를 찾을 수 없습니다: ${articleId}` };
   }
 
+  // Phase 2-19: 이미 WordPress Media Library에 있는 media를 직접 지정한
+  // 경우(source_type='wordpress_media_existing')에는 업로드를 다시 시도하지
+  // 않고 이미 uploaded 상태로 간주한다 (featured media attach 단계로 바로 넘어갈 수 있음).
+  if (article.featuredImageSourceType === "wordpress_media_existing" && article.featuredImageWordpressMediaId) {
+    const message = `기사(${articleId})는 이미 지정된 WordPress media(id: ${article.featuredImageWordpressMediaId})를 사용하므로 업로드를 건너뜁니다.`;
+    const reason: MediaUploadSkipReason = "existing_wordpress_media_no_upload_needed";
+    await logMediaUploadEvent("wordpress_media_upload_skipped_existing_media", "info", message, articleId, article, {
+      mediaId: article.featuredImageWordpressMediaId,
+      reason,
+    });
+    await savePublishLog({
+      articleId,
+      target: WORDPRESS_MEDIA_TARGET,
+      status: "skipped",
+      externalPostId: String(article.featuredImageWordpressMediaId),
+      postUrl: article.featuredImageWordpressUrl ?? undefined,
+      details: {
+        actual: false,
+        reason,
+        sourceType: "wordpress_media_existing",
+        hasWordPressMediaId: true,
+      },
+    });
+    return {
+      success: true,
+      message,
+      wordpressMediaId: article.featuredImageWordpressMediaId,
+      wordpressUrl: article.featuredImageWordpressUrl ?? undefined,
+    };
+  }
+
   if (!isWordPressMediaUploadEnabled()) {
     const message = `WORDPRESS_MEDIA_UPLOAD_ENABLED=false이므로 기사(${articleId})의 실제 이미지 업로드를 건너뜁니다.`;
     await updateWordPressMediaUploadStatus(articleId, "skipped");
-    await logMediaUploadEvent("wordpress_media_upload_skipped_disabled", "info", message, articleId, article);
+    await logMediaUploadEvent("wordpress_media_upload_skipped_disabled", "info", message, articleId, article, {
+      reason: "WORDPRESS_MEDIA_UPLOAD_ENABLED=false",
+    });
     return { success: true, message: "이미지 업로드가 비활성화되어 있어 건너뜁니다 (WORDPRESS_MEDIA_UPLOAD_ENABLED=false)." };
   }
 
   const source = resolveUploadSource(article);
 
   if (source.sourceType === "none") {
-    if (source.hadInvalidCandidate) {
-      const message = `기사(${articleId})의 이미지 source가 mock 또는 상대경로여서 실제 업로드를 건너뜁니다.`;
-      await updateWordPressMediaUploadStatus(articleId, "skipped", message);
-      await logMediaUploadEvent("wordpress_media_source_invalid", "info", message, articleId, article);
-      return { success: false, message };
-    }
-    const message = `기사(${articleId})에 업로드할 이미지 source가 없어 건너뜁니다.`;
+    const reason = source.skipReason ?? "no_valid_image_source";
+    const message =
+      reason === "mock_url_not_uploadable" || reason === "invalid_image_source_url"
+        ? `기사(${articleId})의 이미지 source가 mock 또는 상대경로여서 실제 업로드를 건너뜁니다.`
+        : `기사(${articleId})에 업로드할 이미지 source가 없어 건너뜁니다.`;
+    const eventType =
+      reason === "mock_url_not_uploadable" || reason === "invalid_image_source_url"
+        ? "wordpress_media_source_invalid"
+        : "wordpress_media_upload_skipped_no_source";
+
     await updateWordPressMediaUploadStatus(articleId, "skipped", message);
-    await logMediaUploadEvent("wordpress_media_upload_skipped_no_source", "info", message, articleId, article);
+    await logMediaUploadEvent(eventType, "info", message, articleId, article, { reason });
+    await savePublishLog({
+      articleId,
+      target: WORDPRESS_MEDIA_TARGET,
+      status: "skipped",
+      details: { actual: false, reason },
+    });
     return { success: false, message };
   }
 

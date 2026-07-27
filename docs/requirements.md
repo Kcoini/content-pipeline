@@ -339,6 +339,26 @@ WordPress raw response 전체는 저장하지 않는다. `pipeline_logs`는
 `event_name` 컬럼 기준으로 `wordpress_public_publish_*` 이벤트를 기록한다.
 자세한 내용은 `docs/phase-2-17-wordpress-public-publish-test.md` 참고.
 
+### FR-28. Manual Featured Image Source Setup (Phase 2-19)
+AI 이미지 생성 actual integration을 연결하기 전까지, 사용자가 대표
+이미지(featured image) source를 직접 설정할 수 있다. 지원 방식은
+로컬 컴퓨터 이미지 업로드, 인터넷 이미지 URL 입력, 이미 WordPress
+Media Library에 있는 media id 직접 지정 3가지다. 로컬 업로드는
+jpg/jpeg/png/webp 확장자와 최대 5MB(기본값)만 허용하며, 외부 URL은
+http/https로 시작해야 하고 `/mock/...` 같은 상대경로는 거부한다.
+image binary는 DB나 로그에 저장하지 않으며(경로/URL 문자열만 저장),
+사용 권한이 있는 이미지만 사용하도록 UI에 안내 문구를 표시한다. 기존
+WordPress media id를 지정한 경우 WordPress media upload를 다시
+수행하지 않고 곧바로 uploaded 상태로 간주한다. Publish Quality
+Gate(FR-25)의 featured image 판정을 "media id 존재 또는 attached"→
+pass, "source는 준비되었지만 업로드 전"→warning, "source도 media id도
+없음(monetized_blog)"→fail로 세분화해, source만 준비된 상태와 완전히
+없는 상태를 구분한다. `pipeline_logs`는 `event_name` 컬럼 기준으로
+`featured_image_manual_source_*`/`featured_image_external_url_saved`/
+`featured_image_local_upload_saved`/`featured_image_existing_wordpress_
+media_saved` 이벤트를 기록한다. 자세한 내용은
+`docs/phase-2-19-manual-featured-image-source-setup.md` 참고.
+
 ## 5. 비기능 요구사항 (Non-Functional Requirements)
 
 ### NFR-1. 타입 안정성

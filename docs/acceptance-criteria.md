@@ -456,6 +456,29 @@
       존재하지 않는다.
 - [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
 
+## AC-27. Manual Featured Image Source Setup (FR-28, Phase 2-19)
+- [ ] external_url이 http/https가 아니면 거부한다.
+- [ ] `/mock/...` 상대경로 URL은 external_url로 저장하지 않는다.
+- [ ] jpg/png/webp MIME type은 허용한다.
+- [ ] local_upload 저장 시 `featured_image_upload_status='prepared'`가 된다.
+- [ ] external_url 저장 시 `featured_image_upload_status='prepared'`가 된다.
+- [ ] wordpress_media_existing 저장 시 `featured_image_upload_status='uploaded'`가 된다.
+- [ ] wordpress_media_existing 저장 시 media id가 필수다 (없으면 거부).
+- [ ] monetized_blog에서 이미지 source가 없으면 Publish Quality Gate가
+      `featured_image_present`를 fail로 기록한다.
+- [ ] 이미지 source가 prepared 상태(업로드 전)이면 Publish Quality Gate가
+      `featured_image_present`를 warning으로 기록한다.
+- [ ] `featured_image_wordpress_media_id`가 있으면 Publish Quality Gate가
+      `featured_image_present`를 pass로 기록한다.
+- [ ] auth 정보(Authorization header/Application Password/API key)가
+      로그에 저장되지 않는다.
+- [ ] image binary가 로그(`publish_logs.details_json`/`pipeline_logs.details_json`)에
+      저장되지 않는다.
+- [ ] `pipeline_logs`는 `event_name` 컬럼 기준으로 저장된다.
+- [ ] article 상세 페이지에 로컬 업로드/외부 URL/기존 media id 지정 UI와
+      저작권 안내 문구가 표시된다.
+- [ ] `npm run lint`/`test`/`build`가 모두 통과한다.
+
 ## AC-9. CI/CD
 - [ ] `main` 브랜치로의 PR 생성 시 GitHub Actions가 lint, typecheck, test를
       자동 실행한다.

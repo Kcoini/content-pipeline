@@ -145,7 +145,18 @@ export type SeoPluginWriteStatus =
 export type FeaturedImageStatus = "not_ready" | "prepared" | "reviewed" | "failed" | "uploaded";
 
 /** Phase 2-6: featured image 원본 소스 종류 */
-export type WordPressMediaSourceType = "none" | "generated_url" | "external_url" | "local_file" | "uploaded";
+export type WordPressMediaSourceType =
+  | "none"
+  | "generated_url"
+  | "external_url"
+  | "local_file"
+  | "uploaded"
+  // Phase 2-19: 수동 대표 이미지 source 설정
+  | "local_upload"
+  | "wordpress_media_existing";
+
+/** Featured Image Workflow: source 설정 자체의 상태 (WordPress 업로드 전 단계). */
+export type FeaturedImageSourceStatus = "none" | "prepared" | "invalid" | "failed";
 
 /** Phase 2-6: WordPress media upload 준비/시도 상태 (safe stub) */
 export type WordPressMediaUploadStatus = "not_ready" | "prepared" | "dry_run" | "uploaded" | "failed" | "skipped";
@@ -254,6 +265,10 @@ export type ArticleRow = {
   featured_image_upload_payload: Record<string, unknown>;
   featured_image_upload_error: string | null;
   featured_image_upload_attempted_at: string | null;
+  /** Featured Image Workflow: source 설정 자체의 상태 (Source Setup 단계) */
+  featured_image_source_status: FeaturedImageSourceStatus;
+  featured_image_source_error: string | null;
+  featured_image_manual_source_saved_at: string | null;
   /** Phase 2-7: 이미지 생성 결과 */
   generated_image_status: GeneratedImageStatus;
   generated_image_provider: ImageGenerationProvider;

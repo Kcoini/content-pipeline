@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Phase 2-19: 수동 업로드된 대표 이미지 임시 저장 경로 (git에 커밋하지 않음)
+/.uploads
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

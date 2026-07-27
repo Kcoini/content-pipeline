@@ -34,6 +34,11 @@ import { runPublishQualityGate } from "@/lib/publish/publish-quality-gate-servic
 import { approvePublicPublish, revokePublicPublishApproval } from "@/lib/publish/public-publish-approval-service";
 import { publishApprovedArticleToWordPress } from "@/lib/publish/wordpress-public-publish-service";
 import { generateFeaturedImage, reviewGeneratedImage } from "@/lib/images/image-generation-service";
+import {
+  saveExternalImageUrl,
+  saveExistingWordPressMedia,
+  saveLocalImageUpload,
+} from "@/lib/images/featured-image-source-service";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -297,6 +302,109 @@ export async function reviewFeaturedImageAction(formData: FormData): Promise<voi
 
   try {
     const result = await reviewFeaturedImage(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 인터넷 이미지 URL을 대표 이미지 source로 저장한다 (Featured Image
+ * Workflow Step 1: Source Setup). AI 이미지 생성 actual integration을
+ * 연결하기 전까지의 임시 운영 방식이며, 사용 권한이 있는 이미지인지는
+ * 사용자가 직접 확인해야 한다.
+ */
+export async function saveExternalImageUrlSourceAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const url = String(formData.get("imageUrl") ?? "");
+  const filename = String(formData.get("filename") ?? "").trim();
+  const mimeType = String(formData.get("mimeType") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await saveExternalImageUrl(articleId, {
+      url,
+      filename: filename.length > 0 ? filename : undefined,
+      mimeType: mimeType.length > 0 ? mimeType : undefined,
+    });
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 로컬 컴퓨터에서 업로드한 이미지 파일을 서버에 저장하고 대표 이미지
+ * source로 등록한다 (Featured Image Workflow Step 1: Source Setup).
+ * image binary는 DB/로그에 저장하지 않는다.
+ */
+export async function saveLocalFeaturedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const file = formData.get("imageFile");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    if (!(file instanceof File) || file.size === 0) {
+      throw new Error("업로드할 이미지 파일을 선택하세요.");
+    }
+
+    const result = await saveLocalImageUpload(articleId, file);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 이미 WordPress Media Library에 있는 media id를 대표 이미지로 직접
+ * 지정한다 (Featured Image Workflow Step 1: Source Setup). 이 경우
+ * WordPress media upload를 다시 수행하지 않는다.
+ */
+export async function saveExistingWordPressMediaSourceAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const mediaIdRaw = String(formData.get("mediaId") ?? "");
+  const mediaUrl = String(formData.get("mediaUrl") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const mediaId = Number(mediaIdRaw);
+    const result = await saveExistingWordPressMedia(articleId, {
+      mediaId,
+      mediaUrl: mediaUrl.length > 0 ? mediaUrl : undefined,
+    });
     message = result.message;
     isError = !result.success;
   } catch (error) {

@@ -84,19 +84,27 @@ export async function savePublishLog(input: SavePublishLogInput): Promise<Publis
   return mapPublishLogRow(data);
 }
 
-/** 특정 기사의 게시 로그를 최신순으로 조회한다. */
+/**
+ * 특정 기사의 게시 로그를 최신순으로 조회한다.
+ * target을 지정하지 않으면 모든 target이 섞인 최신 로그를 조회하므로,
+ * 다른 target(quality gate/human approval/public publish 등)의 로그가
+ * 많이 쌓이면 특정 target(예: wordpress)의 오래된 성공 기록이 limit 밖으로
+ * 밀려날 수 있다. 특정 target의 최신 기록이 필요하면 반드시 target을
+ * 지정해서 호출한다.
+ */
 export async function getPublishLogsByArticleId(
   articleId: string,
-  limit = 20
+  limit = 20,
+  target?: string
 ): Promise<PublishLogEntry[]> {
   const supabase = createServerSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("publish_logs")
-    .select()
-    .eq("article_id", articleId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  let query = supabase.from("publish_logs").select().eq("article_id", articleId);
+  if (target !== undefined) {
+    query = query.eq("target", target);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
 
   if (error) {
     throw new Error(`게시 로그 조회에 실패했습니다: ${error.message}`);

@@ -37,6 +37,9 @@ import {
   checkPublicPublishApprovalStatusAction,
   publishApprovedArticleToWordPressAction,
   checkPublicPublishStatusAction,
+  saveExternalImageUrlSourceAction,
+  saveLocalFeaturedImageAction,
+  saveExistingWordPressMediaSourceAction,
 } from "./actions";
 import { ConfirmSubmitButton } from "./confirm-submit-button";
 import type {
@@ -53,6 +56,7 @@ import type {
   PublishQualityGateStatus,
   PublicPublishApprovalStatus,
   PublicPublishStatus,
+  FeaturedImageSourceStatus,
 } from "@/lib/types/domain";
 import { ARTICLE_MODE_CONFIGS } from "@/lib/articles/article-modes";
 import { WORDPRESS_TARGET, isWordPressPublishEnabled } from "@/lib/publish/publish-service";
@@ -133,6 +137,20 @@ const FEATURED_IMAGE_STATUS_STYLE: Record<FeaturedImageStatus, string> = {
   reviewed: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
   uploaded: "bg-blue-100 text-blue-700",
+};
+
+const FEATURED_IMAGE_SOURCE_STATUS_LABEL: Record<FeaturedImageSourceStatus, string> = {
+  none: "설정 안 됨",
+  prepared: "준비됨",
+  invalid: "유효하지 않음",
+  failed: "저장 실패",
+};
+
+const FEATURED_IMAGE_SOURCE_STATUS_STYLE: Record<FeaturedImageSourceStatus, string> = {
+  none: "bg-zinc-100 text-zinc-500",
+  prepared: "bg-green-100 text-green-700",
+  invalid: "bg-red-100 text-red-700",
+  failed: "bg-red-100 text-red-700",
 };
 
 const MEDIA_UPLOAD_STATUS_LABEL: Record<WordPressMediaUploadStatus, string> = {
@@ -329,17 +347,19 @@ export default async function ArticleDetailPage({
     );
   }
 
-  const [theme, sources, latestEval, logs, publishLogs] = await Promise.all([
+  const [theme, sources, latestEval, logs, wordpressLogs] = await Promise.all([
     getThemeById(article.themeId),
     getSourcesByArticleId(article.id),
     getLatestEvalByArticleId(article.id),
     getLogsByArticleId(article.id, 10),
-    getPublishLogsByArticleId(article.id, 10),
+    // target을 지정하지 않고 최신 N개만 보면 다른 target(quality gate/human
+    // approval/public publish 등)의 로그에 밀려 오래된 wordpress 성공 기록을
+    // 놓칠 수 있으므로, wordpress target은 항상 별도로 조회한다.
+    getPublishLogsByArticleId(article.id, 5, WORDPRESS_TARGET),
   ]);
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
-  const wordpressLogs = publishLogs.filter((log) => log.target === WORDPRESS_TARGET);
   const latestWordPressLog = wordpressLogs[0];
   const hasWordPressSuccess = wordpressLogs.some((log) => log.status === "success");
   const hasFocusKeyword = Boolean(article.targetKeyword && article.targetKeyword.trim());
@@ -917,10 +937,141 @@ export default async function ArticleDetailPage({
           )}
         </section>
 
-        {/* Phase 2-6 / 2-10: WordPress Media Upload Preparation + Actual Test */}
+        {/* Featured Image Workflow Step 1: Source Setup */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-zinc-700">WordPress Media Upload</h2>
+            <h2 className="text-sm font-semibold text-zinc-700">Step 1. 대표 이미지 Source 설정</h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${FEATURED_IMAGE_SOURCE_STATUS_STYLE[article.featuredImageSourceStatus]}`}
+            >
+              {FEATURED_IMAGE_SOURCE_STATUS_LABEL[article.featuredImageSourceStatus]}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            AI 이미지 생성 기능을 연결하기 전까지는 로컬 이미지 업로드 또는
+            인터넷 이미지 URL을 사용하세요. 사용 권한이 있는 이미지만
+            사용해야 합니다.
+          </p>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {/* A. 로컬 이미지 업로드 */}
+            <div className="rounded border border-zinc-200 p-3">
+              <h3 className="text-xs font-semibold text-zinc-700">A. 로컬 이미지 업로드</h3>
+              <form action={saveLocalFeaturedImageAction} className="mt-2 flex flex-col gap-2">
+                <input type="hidden" name="articleId" value={article.id} />
+                <input
+                  type="file"
+                  name="imageFile"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  required
+                  className="text-xs"
+                />
+                <p className="text-[11px] text-zinc-400">허용 확장자: jpg/jpeg/png/webp, 최대 5MB.</p>
+                <button
+                  type="submit"
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                >
+                  대표 이미지 파일 저장
+                </button>
+              </form>
+            </div>
+
+            {/* B. 인터넷 이미지 URL 입력 */}
+            <div className="rounded border border-zinc-200 p-3">
+              <h3 className="text-xs font-semibold text-zinc-700">B. 인터넷 이미지 URL 입력</h3>
+              <form action={saveExternalImageUrlSourceAction} className="mt-2 flex flex-col gap-2">
+                <input type="hidden" name="articleId" value={article.id} />
+                <input
+                  type="url"
+                  name="imageUrl"
+                  placeholder="https://example.com/image.jpg"
+                  required
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                />
+                <input
+                  type="text"
+                  name="filename"
+                  placeholder="파일명 (선택)"
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                />
+                <input
+                  type="text"
+                  name="mimeType"
+                  placeholder="MIME type (선택, 예: image/jpeg)"
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                />
+                <p className="text-[11px] font-medium text-amber-700">
+                  뉴스 기사, 포털, 타인의 블로그 이미지 등 권한이 불분명한
+                  이미지는 사용하지 마세요.
+                </p>
+                <button
+                  type="submit"
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  이미지 URL 저장
+                </button>
+              </form>
+            </div>
+
+            {/* C. 기존 WordPress media_id 직접 입력 */}
+            <div className="rounded border border-zinc-200 p-3">
+              <h3 className="text-xs font-semibold text-zinc-700">C. 기존 WordPress Media 지정</h3>
+              <form action={saveExistingWordPressMediaSourceAction} className="mt-2 flex flex-col gap-2">
+                <input type="hidden" name="articleId" value={article.id} />
+                <input
+                  type="number"
+                  name="mediaId"
+                  placeholder="WordPress media id"
+                  required
+                  min={1}
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                />
+                <input
+                  type="url"
+                  name="mediaUrl"
+                  placeholder="media URL (선택)"
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                />
+                <p className="text-[11px] text-zinc-400">
+                  이미 WordPress Media Library에 있는 이미지의 media id를
+                  입력하면 업로드 없이 바로 사용합니다.
+                </p>
+                <button
+                  type="submit"
+                  className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                >
+                  기존 media id 저장
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <dl className="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-zinc-600">현재 source type</dt>
+              <dd className="text-zinc-500">{article.featuredImageSourceType}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">현재 source status</dt>
+              <dd className="text-zinc-500">{article.featuredImageSourceStatus}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">현재 upload status</dt>
+              <dd className="text-zinc-500">{article.featuredImageUploadStatus}</dd>
+            </div>
+          </dl>
+          {article.featuredImageSourceError && (
+            <p className="mt-3 text-xs text-red-600">source 오류: {article.featuredImageSourceError}</p>
+          )}
+          {article.featuredImageUploadError && (
+            <p className="mt-3 text-xs text-red-600">업로드 오류: {article.featuredImageUploadError}</p>
+          )}
+        </section>
+
+        {/* Featured Image Workflow Step 2: WordPress Media Upload */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">Step 2. WordPress Media Upload</h2>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${MEDIA_UPLOAD_STATUS_STYLE[article.featuredImageUploadStatus]}`}
             >
@@ -1203,10 +1354,10 @@ export default async function ArticleDetailPage({
           )}
         </section>
 
-        {/* Phase 2-11: WordPress Featured Media Draft Publish Test */}
+        {/* Featured Image Workflow Step 3: Featured Media Attach */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-zinc-700">WordPress Featured Media</h2>
+            <h2 className="text-sm font-semibold text-zinc-700">Step 3. Featured Media Attach</h2>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${FEATURED_MEDIA_ATTACH_STATUS_STYLE[article.wordpressFeaturedMediaAttachStatus]}`}
             >

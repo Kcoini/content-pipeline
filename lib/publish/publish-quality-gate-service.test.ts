@@ -90,6 +90,9 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     featuredImageUploadPayload: {},
     featuredImageUploadError: null,
     featuredImageUploadAttemptedAt: null,
+    featuredImageSourceStatus: "none",
+    featuredImageSourceError: null,
+    featuredImageManualSourceSavedAt: null,
     generatedImageStatus: "not_generated",
     generatedImageProvider: "mock",
     generatedImageModel: null,
@@ -232,6 +235,9 @@ describe("runPublishQualityGate", () => {
         articleMode: "monetized_blog",
         featuredImageWordpressMediaId: null,
         featuredImageWordpressUrl: null,
+        featuredImageSourceType: "none",
+        featuredImageUploadStatus: "not_ready",
+        wordpressFeaturedMediaAttachStatus: "not_attached",
         content: makeFullAdSlotContent() + makeLongContent(700),
       })
     );
@@ -240,6 +246,32 @@ describe("runPublishQualityGate", () => {
 
     const item = result.checklist?.find((entry) => entry.key === "featured_image_present");
     expect(item?.status).toBe("fail");
+  });
+
+  it("이미지 source가 prepared 상태(업로드 전)이면 featured_image_present가 warning으로 기록된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        featuredImageWordpressMediaId: null,
+        featuredImageWordpressUrl: null,
+        featuredImageSourceType: "external_url",
+        featuredImageUploadStatus: "prepared",
+        wordpressFeaturedMediaAttachStatus: "not_attached",
+      })
+    );
+
+    const result = await runPublishQualityGate("article-1");
+
+    const item = result.checklist?.find((entry) => entry.key === "featured_image_present");
+    expect(item?.status).toBe("warning");
+  });
+
+  it("featured_image_wordpress_media_id가 있으면 featured_image_present가 pass로 기록된다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ featuredImageWordpressMediaId: 123 }));
+
+    const result = await runPublishQualityGate("article-1");
+
+    const item = result.checklist?.find((entry) => entry.key === "featured_image_present");
+    expect(item?.status).toBe("pass");
   });
 
   it("monetized_blog에서 AD_SLOT marker가 없으면 warning으로 기록된다", async () => {

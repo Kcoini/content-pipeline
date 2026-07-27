@@ -17,6 +17,7 @@ import type {
   PublishQualityGateStatus,
   PublicPublishApprovalStatus,
   PublicPublishStatus,
+  FeaturedImageSourceStatus,
 } from "@/lib/types/domain";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
@@ -148,6 +149,9 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     featuredImageUploadPayload: row.featured_image_upload_payload ?? {},
     featuredImageUploadError: row.featured_image_upload_error,
     featuredImageUploadAttemptedAt: row.featured_image_upload_attempted_at,
+    featuredImageSourceStatus: row.featured_image_source_status ?? "none",
+    featuredImageSourceError: row.featured_image_source_error,
+    featuredImageManualSourceSavedAt: row.featured_image_manual_source_saved_at,
     generatedImageStatus: row.generated_image_status ?? "not_generated",
     generatedImageProvider: row.generated_image_provider ?? "mock",
     generatedImageModel: row.generated_image_model,
@@ -749,6 +753,70 @@ export async function markFeaturedImageReviewed(articleId: string): Promise<Arti
 
   if (error || !data) {
     throw new Error(`대표 이미지 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveFeaturedImageSourceResultInput {
+  sourceType?: WordPressMediaSourceType;
+  sourceStatus: FeaturedImageSourceStatus;
+  sourceUrl?: string | null;
+  localPath?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  /** 'prepared'(source setup 성공) 또는 'uploaded'(기존 WordPress media 지정) 등. */
+  uploadStatus?: WordPressMediaUploadStatus;
+  wordpressMediaId?: number | null;
+  wordpressUrl?: string | null;
+  sourceError?: string | null;
+  uploadError?: string | null;
+}
+
+/**
+ * Featured Image Workflow의 Source Setup 단계 결과를 저장한다.
+ * 외부 URL/로컬 업로드/기존 WordPress media 지정 3가지 경로가 모두 이
+ * 함수를 통해 저장한다. image binary는 이 함수에서 다루지 않는다(경로/URL
+ * 문자열만 저장한다). 검증 실패 시에는 sourceStatus='invalid'/'failed'와
+ * sourceError만 갱신하고 나머지 필드는 그대로 둔다.
+ */
+export async function saveFeaturedImageSourceResult(
+  articleId: string,
+  input: SaveFeaturedImageSourceResultInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<ArticleRow> = {
+    featured_image_source_status: input.sourceStatus,
+  };
+  if (input.sourceType !== undefined) update.featured_image_source_type = input.sourceType;
+  if (input.sourceUrl !== undefined) update.featured_image_source_url = input.sourceUrl;
+  if (input.localPath !== undefined) update.featured_image_local_path = input.localPath;
+  if (input.filename !== undefined) update.featured_image_filename = input.filename;
+  if (input.mimeType !== undefined) update.featured_image_mime_type = input.mimeType;
+  if (input.uploadStatus !== undefined) update.featured_image_upload_status = input.uploadStatus;
+  if (input.wordpressMediaId !== undefined) update.featured_image_wordpress_media_id = input.wordpressMediaId;
+  if (input.wordpressUrl !== undefined) update.featured_image_wordpress_url = input.wordpressUrl;
+  if (input.sourceError !== undefined) update.featured_image_source_error = input.sourceError;
+  if (input.uploadError !== undefined) update.featured_image_upload_error = input.uploadError;
+  if (input.sourceStatus === "prepared" || input.uploadStatus === "uploaded") {
+    update.featured_image_manual_source_saved_at = new Date().toISOString();
+  }
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update(update)
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`대표 이미지 source 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);
