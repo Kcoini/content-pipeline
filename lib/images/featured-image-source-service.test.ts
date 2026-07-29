@@ -236,7 +236,7 @@ describe("saveLocalImageUpload", () => {
   it("성공 시 source_status=prepared, upload_status=prepared로 저장된다", async () => {
     saveLocalUploadFile.mockResolvedValue({
       success: true,
-      localPath: "/tmp/uploads/photo.jpg",
+      url: "https://example-project.supabase.co/storage/v1/object/public/featured-images/article-1/photo.jpg",
       filename: "photo.jpg",
       mimeType: "image/jpeg",
     });
@@ -269,7 +269,7 @@ describe("보안/안전 요구사항", () => {
   it("auth 정보와 image binary가 logs에 저장되지 않는다", async () => {
     saveLocalUploadFile.mockResolvedValue({
       success: true,
-      localPath: "/tmp/uploads/photo.jpg",
+      url: "https://example-project.supabase.co/storage/v1/object/public/featured-images/article-1/photo.jpg",
       filename: "photo.jpg",
       mimeType: "image/jpeg",
     });

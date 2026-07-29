@@ -47,17 +47,23 @@ Step 3. WordPress Featured Media Attach
 
 - jpg/jpeg/png/webp만 허용하며 최대 5MB(기본값, `WORDPRESS_MEDIA_MAX_
   SIZE_MB`로 재정의 가능)를 초과하면 거부한다.
-- `lib/images/featured-image-local-storage.ts`가 실제 디스크 write를
-  전담한다(`.uploads/featured-images/`, git에 커밋되지 않음). image
-  binary는 DB나 로그에 저장하지 않는다(경로 문자열만 저장).
+- `lib/images/featured-image-local-storage.ts`가 실제 업로드를
+  전담한다. 파일을 **Supabase Storage**(`featured-images` bucket, 없으면
+  자동 생성)에 올리고 공개 URL을 받아온다 — 로컬 디스크에는 쓰지 않는다.
+  image binary는 DB나 로그에 저장하지 않는다(공개 URL 문자열만 저장).
 - 성공 시 `featured_image_source_type='local_upload'`,
   `featured_image_source_status='prepared'`,
-  `featured_image_upload_status='prepared'`로 저장된다.
+  `featured_image_source_url`=Supabase Storage 공개 URL,
+  `featured_image_upload_status='prepared'`로 저장된다. 이 URL은 이후
+  Step 2(WordPress Media Upload)에서 기존 external_url 처리 경로(HTTP로
+  이미지를 내려받아 WordPress에 업로드)를 그대로 재사용한다.
 
-**주의(운영 환경)**: 이 구현은 로컬/단일 서버 배포를 전제로 한다.
-Vercel 등 서버리스 환경에서는 파일시스템이 영속적이지 않으므로, 업로드
-직후 곧바로 Step 2(WordPress Media Upload)를 실행하거나 Supabase
-Storage로 교체하는 것을 권장한다.
+**Vercel 등 서버리스 환경 대응**: 로컬 디스크는 요청마다 다른 인스턴스에서
+실행될 수 있어 파일이 영속되지 않는다(예: `ENOENT: no such file or
+directory, mkdir '/var/task/.uploads'`). Supabase Storage를 사용하므로
+이 문제 없이 Vercel에서도 정상 동작한다. 별도의 환경변수 설정은 필요
+없다(`SUPABASE_SECRET_KEY`로 서버 전용 클라이언트가 자동으로 bucket을
+생성/사용한다).
 
 ### existing WordPress media id 사용 방식
 

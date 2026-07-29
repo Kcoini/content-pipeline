@@ -260,10 +260,12 @@ export async function saveExistingWordPressMedia(
 }
 
 /**
- * 로컬 컴퓨터에서 업로드한 이미지 파일을 서버에 저장하고 대표 이미지
- * source로 등록한다 (Step 1: Source Setup). jpg/jpeg/png/webp만 허용하며
- * 최대 크기(기본 5MB)를 초과하면 거부한다. image binary는 DB나 로그에
- * 저장하지 않는다(디스크 경로 문자열만 저장한다).
+ * 로컬 컴퓨터에서 업로드한 이미지 파일을 Supabase Storage에 저장하고
+ * 대표 이미지 source로 등록한다 (Step 1: Source Setup). jpg/jpeg/png/webp만
+ * 허용하며 최대 크기(기본 5MB)를 초과하면 거부한다. image binary는 DB나
+ * 로그에 저장하지 않는다(Supabase Storage의 공개 URL만 저장한다 — 서버리스
+ * 배포 환경에서도 영속적으로 접근 가능하도록 로컬 디스크 대신 Storage를
+ * 사용한다).
  */
 export async function saveLocalImageUpload(articleId: string, file: File): Promise<FeaturedImageSourceResult> {
   const article = await getArticleById(articleId);
@@ -273,7 +275,7 @@ export async function saveLocalImageUpload(articleId: string, file: File): Promi
 
   try {
     const saved = await saveLocalUploadFile(articleId, file);
-    if (!saved.success || !saved.localPath || !saved.filename || !saved.mimeType) {
+    if (!saved.success || !saved.url || !saved.filename || !saved.mimeType) {
       return reportInvalidSource(
         articleId,
         article,
@@ -285,8 +287,8 @@ export async function saveLocalImageUpload(articleId: string, file: File): Promi
     await saveFeaturedImageSourceResult(articleId, {
       sourceType: "local_upload",
       sourceStatus: "prepared",
-      localPath: saved.localPath,
-      sourceUrl: null,
+      localPath: null,
+      sourceUrl: saved.url,
       filename: saved.filename,
       mimeType: saved.mimeType,
       uploadStatus: "prepared",
@@ -299,8 +301,8 @@ export async function saveLocalImageUpload(articleId: string, file: File): Promi
       sourceStatus: "prepared",
       filename: saved.filename,
       mimeType: saved.mimeType,
-      hasUrl: false,
-      hasLocalPath: true,
+      hasUrl: true,
+      hasLocalPath: false,
       hasWordPressMediaId: false,
     };
 

@@ -5,6 +5,10 @@ Next.js + TypeScript + Supabase 기반의 블로그/홈페이지용 기사 자�
 "주제 입력 → 출처 등록/저장 → 계약 검사(Reins) → 기사 초안 생성(draft) →
 AI Evals → 사용자 승인(reviewed)" 순서로 동작하는 콘텐츠 파이프라인이다.
 
+처음 사용한다면 [`docs/user-guide.md`](docs/user-guide.md)(사용설명서 —
+단계별 화면/버튼과 각 단계가 왜 필요한지 설명)를 먼저 읽어보는 것을
+권장한다.
+
 ## 기술 스택
 - Next.js 16 (App Router) / React 19 / TypeScript (strict)
 - Tailwind CSS, shadcn/ui
@@ -123,6 +127,7 @@ GitHub Actions에서 `lint`, `typecheck`(`tsc --noEmit`), `test`를 실행한다
 (`.github/workflows/ci.yml`, Phase 1에서 추가 예정 — `docs/phase-1-plan.md` 참고).
 
 ## 관련 문서
+- `docs/user-guide.md` - 사용설명서 (단계별 화면/버튼과 필요성 설명)
 - `docs/requirements.md` - 요구사항 정의
 - `docs/acceptance-criteria.md` - 기능별 성공 기준
 - `docs/phase-1-plan.md` - Phase 1 구현 계획

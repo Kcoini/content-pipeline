@@ -51,9 +51,9 @@ article 상세 페이지 "대표 이미지 Source 직접 설정" 섹션의 A번�
   - `featured_image_upload_error = null`
 - image binary 자체는 DB나 로그에 저장하지 않는다(경로 문자열만 저장).
 
-**주의(운영 환경)**: 이 구현은 로컬/단일 서버 배포를 전제로 한다. Vercel
-등 서버리스 환경에서는 파일시스템이 영속적이지 않으므로, 운영 환경에서는
-Supabase Storage 등으로 교체하는 것을 권장한다 ("다음 단계 제안" 참고).
+> **업데이트**: 이후 로컬 디스크 저장 방식은 Supabase Storage 업로드로
+> 교체되어, Vercel 등 서버리스 환경에서도 정상 동작한다. 최신 구조는
+> `docs/featured-image-workflow.md`를 참고한다.
 
 ## 2. 인터넷 이미지 URL 방식
 
@@ -177,7 +177,7 @@ limit 10;
 | "허용되지 않는 이미지 형식입니다" | mimeType이 jpg/png/webp가 아님 | 다른 형식으로 변환 후 재업로드하거나 올바른 mimeType 입력 |
 | "파일 크기가 너무 큽니다" | 5MB(기본값) 초과 | 이미지를 압축하거나 `WORDPRESS_MEDIA_MAX_SIZE_MB` 조정 |
 | "WordPress media id를 올바른 양의 정수로 입력해야 합니다" | media id 누락/0 이하 | WordPress Media Library에서 실제 id를 확인 후 입력 |
-| 로컬 업로드 파일이 사라짐(운영 환경) | 서버리스 환경의 파일시스템 비영속성 | 업로드 직후 곧바로 WordPress media upload를 실행하거나, Supabase Storage로 교체 (다음 단계 제안 참고) |
+| (해결됨) 로컬 업로드 파일이 사라짐 | 과거 로컬 디스크 저장 방식의 서버리스 비영속성 문제 | Supabase Storage 업로드로 교체되어 더 이상 발생하지 않음 (`docs/featured-image-workflow.md` 참고) |
 
 ## 다음 단계 제안
 

@@ -1,20 +1,22 @@
-// Phase 2-19: 로컬 컴퓨터에서 업로드한 대표 이미지 파일을 서버 디스크에
-// 저장하는 helper. image binary는 DB/로그에 저장하지 않으며, 이 파일이
-// 실제 디스크 write를 전담한다 (server action에서만 호출).
+// 로컬 컴퓨터에서 업로드한 대표 이미지 파일을 Supabase Storage에 저장하는
+// helper. image binary는 DB/로그에 저장하지 않으며(공개 URL 문자열만
+// 저장), 이 파일이 실제 업로드를 전담한다 (server action에서만 호출).
 //
-// 주의: 이 구현은 로컬/단일 서버 배포를 전제로 한다. Vercel 등 서버리스
-// 환경에서는 파일시스템이 영속적이지 않으므로, 운영 환경에서는 Supabase
-// Storage 등으로 교체하는 것을 권장한다 (docs/phase-2-19-*.md 참고).
+// Vercel 등 서버리스 환경은 파일시스템에 영속적으로 쓸 수 없으므로(요청마다
+// 다른 인스턴스에서 실행될 수 있음), 로컬 디스크 대신 Supabase Storage를
+// 사용한다 — 이렇게 저장한 공개 URL은 이후 WordPress media upload 단계에서
+// 기존 external_url 처리 경로(HTTP로 이미지를 내려받아 업로드)를 그대로
+// 재사용할 수 있다.
 
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isAllowedMimeType, getMaxUploadSizeMb, ALLOWED_MIME_TYPES } from "@/lib/publish/wordpress-media-config";
 
-const UPLOAD_DIR = path.join(process.cwd(), ".uploads", "featured-images");
+const FEATURED_IMAGE_BUCKET = "featured-images";
 
 export interface SaveLocalUploadFileResult {
   success: boolean;
-  localPath?: string;
+  /** Supabase Storage의 공개 URL (WordPress media upload가 external_url처럼 사용한다). */
+  url?: string;
   filename?: string;
   mimeType?: string;
   error?: string;
@@ -25,9 +27,19 @@ function sanitizeFilename(original: string): string {
   return base.length > 0 ? base : "featured-image";
 }
 
+async function ensureBucketExists(
+  supabase: ReturnType<typeof createServerSupabaseClient>
+): Promise<void> {
+  const { error } = await supabase.storage.createBucket(FEATURED_IMAGE_BUCKET, { public: true });
+  if (error && !/already exists/i.test(error.message)) {
+    throw error;
+  }
+}
+
 /**
- * 업로드된 파일(Web File 객체)을 검증(MIME type/크기)한 뒤 서버 디스크에
- * 저장한다. image binary는 반환값에 포함하지 않는다(경로 문자열만 반환).
+ * 업로드된 파일(Web File 객체)을 검증(MIME type/크기)한 뒤 Supabase
+ * Storage에 저장하고 공개 URL을 반환한다. image binary는 반환값에
+ * 포함하지 않는다(URL 문자열만 반환).
  */
 export async function saveLocalUploadFile(articleId: string, file: File): Promise<SaveLocalUploadFileResult> {
   const mimeType = file.type;
@@ -48,17 +60,26 @@ export async function saveLocalUploadFile(articleId: string, file: File): Promis
   }
 
   const safeOriginalName = sanitizeFilename(file.name || "featured-image");
-  const filename = `${articleId}-${Date.now()}-${safeOriginalName}`;
-  const localPath = path.join(UPLOAD_DIR, filename);
+  const objectPath = `${articleId}/${Date.now()}-${safeOriginalName}`;
 
   try {
-    await mkdir(UPLOAD_DIR, { recursive: true });
+    const supabase = createServerSupabaseClient();
+    await ensureBucketExists(supabase);
+
     const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(localPath, buffer);
+    const { error: uploadError } = await supabase.storage
+      .from(FEATURED_IMAGE_BUCKET)
+      .upload(objectPath, buffer, { contentType: mimeType, upsert: false });
+
+    if (uploadError) {
+      return { success: false, error: `파일 저장에 실패했습니다: ${uploadError.message}` };
+    }
+
+    const { data } = supabase.storage.from(FEATURED_IMAGE_BUCKET).getPublicUrl(objectPath);
+
+    return { success: true, url: data.publicUrl, filename: safeOriginalName, mimeType };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: `파일 저장에 실패했습니다: ${message}` };
   }
-
-  return { success: true, localPath, filename: safeOriginalName, mimeType };
 }
