@@ -569,6 +569,43 @@ export type SocialPostRow = {
   latest_performance_score: number | null;
   performance_status: string;
   performance_summary: Record<string, unknown>;
+  // Phase 3-10: Performance-based Rewrite Suggestion
+  latest_rewrite_suggestion_id: string | null;
+  rewrite_suggestion_status: string;
+  rewrite_suggestion_count: number;
+  latest_rewrite_suggested_at: string | null;
+};
+
+export type SocialPostRewriteSuggestionRow = {
+  id: string;
+  social_post_id: string;
+  article_id: string;
+  platform: SocialPlatform;
+  tone_style: ToneStyle;
+  original_performance_status: string | null;
+  original_performance_score: number | null;
+  suggestion_status: string;
+  diagnosis: Record<string, unknown>;
+  suggested_changes: Record<string, unknown>;
+  suggested_title: string | null;
+  suggested_hook: string | null;
+  suggested_body_outline: Record<string, unknown>[];
+  suggested_cta: string | null;
+  suggested_hashtags: string[];
+  suggested_thread_items: Record<string, unknown>[];
+  suggested_card_items: Record<string, unknown>[];
+  suggested_tone_style: string | null;
+  risk_notes: Record<string, unknown>[];
+  quality_notes: Record<string, unknown>[];
+  expected_improvement_reason: string | null;
+  generated_by: string | null;
+  generated_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  applied_at: string | null;
+  rejected_reason: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SocialPostMetricsRow = {
@@ -732,6 +769,13 @@ export interface Database {
         Row: SocialPostMetricsRow;
         Insert: Partial<SocialPostMetricsRow> & Pick<SocialPostMetricsRow, "social_post_id" | "article_id" | "platform">;
         Update: Partial<SocialPostMetricsRow>;
+        Relationships: [];
+      };
+      social_post_rewrite_suggestions: {
+        Row: SocialPostRewriteSuggestionRow;
+        Insert: Partial<SocialPostRewriteSuggestionRow> &
+          Pick<SocialPostRewriteSuggestionRow, "social_post_id" | "article_id" | "platform" | "tone_style">;
+        Update: Partial<SocialPostRewriteSuggestionRow>;
         Relationships: [];
       };
     };

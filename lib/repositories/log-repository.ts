@@ -269,7 +269,15 @@ export type LogEventType =
   | "social_metrics_record_started"
   | "social_metrics_record_completed"
   | "social_metrics_record_failed"
-  | "social_metrics_record_warning";
+  | "social_metrics_record_warning"
+  // Phase 3-10: Performance-based Rewrite Suggestion 이벤트
+  | "social_rewrite_suggestion_started"
+  | "social_rewrite_diagnosis_completed"
+  | "social_rewrite_suggestion_completed"
+  | "social_rewrite_suggestion_blocked"
+  | "social_rewrite_suggestion_failed"
+  | "social_rewrite_suggestion_approved"
+  | "social_rewrite_suggestion_rejected";
 
 export type LogStatus = "success" | "failed" | "info";
 

@@ -64,6 +64,8 @@ import {
   markManualPostingFailed,
 } from "@/lib/social/platform-manual-posting-result-service";
 import { recordSocialPostMetrics } from "@/lib/social/social-metrics-service";
+import { generatePerformanceRewriteSuggestion } from "@/lib/social/performance-rewrite-suggestion-generator";
+import { approveRewriteSuggestion, rejectRewriteSuggestion } from "@/lib/social/rewrite-suggestion-review-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1568,4 +1570,84 @@ export async function refreshSocialPostMetricsAction(formData: FormData): Promis
 
   revalidatePath(`/articles/${articleId}`);
   redirect(`/articles/${articleId}`);
+}
+
+/**
+ * social post의 성과를 진단하고 rule-based 개선 제안을 생성한다
+ * (Phase 3-10). 기존 social_posts 본문은 절대 수정하지 않으며, 실제
+ * 재게시도 수행하지 않는다.
+ */
+export async function generatePerformanceRewriteSuggestionAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generatePerformanceRewriteSuggestion(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** rewrite suggestion을 승인한다 (Phase 3-10). blocked 상태는 승인할 수 없다. */
+export async function approveRewriteSuggestionAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const suggestionId = String(formData.get("suggestionId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await approveRewriteSuggestion(suggestionId, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** rewrite suggestion을 반려한다 (Phase 3-10). */
+export async function rejectRewriteSuggestionAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const suggestionId = String(formData.get("suggestionId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await rejectRewriteSuggestion(suggestionId, APPROVED_BY, reason.length > 0 ? reason : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
 }

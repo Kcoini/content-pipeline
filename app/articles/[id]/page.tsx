@@ -63,10 +63,14 @@ import {
   markManualPostingSkippedAction,
   recordSocialPostMetricsAction,
   refreshSocialPostMetricsAction,
+  generatePerformanceRewriteSuggestionAction,
+  approveRewriteSuggestionAction,
+  rejectRewriteSuggestionAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { listMetricsBySocialPost } from "@/lib/repositories/social-metrics-repository";
 import { buildArticleSocialPerformanceSummary } from "@/lib/social/article-social-performance-summary";
+import { listRewriteSuggestionsBySocialPost } from "@/lib/repositories/social-rewrite-suggestions-repository";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
 import { CopyToClipboardButton } from "./copy-to-clipboard-button";
@@ -417,6 +421,9 @@ export default async function ArticleDetailPage({
 
   const socialPostMetricsHistories = await Promise.all(socialPosts.map((post) => listMetricsBySocialPost(post.id)));
   const socialPostMetricsHistoryById = new Map(socialPosts.map((post, i) => [post.id, socialPostMetricsHistories[i]]));
+
+  const socialPostRewriteSuggestionLists = await Promise.all(socialPosts.map((post) => listRewriteSuggestionsBySocialPost(post.id)));
+  const socialPostRewriteSuggestionsById = new Map(socialPosts.map((post, i) => [post.id, socialPostRewriteSuggestionLists[i]]));
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -3104,6 +3111,154 @@ export default async function ArticleDetailPage({
                                   </tbody>
                                 </table>
                               </div>
+                            </details>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Phase 3-10: Performance Rewrite Suggestion */}
+                      <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                        <p className="font-medium text-zinc-600">Performance Rewrite Suggestion</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          이 제안은 자동으로 적용되지 않습니다. 기존 글은 그대로 유지되며, 사람이
+                          승인하기 전까지 어떤 내용도 바뀌지 않습니다. 실제 재게시도 이 단계에서
+                          수행하지 않습니다.
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          rewrite_suggestion: <span className="font-mono">{post.rewriteSuggestionStatus}</span> · 생성 횟수:{" "}
+                          {post.rewriteSuggestionCount}
+                          {post.latestRewriteSuggestedAt
+                            ? ` · 최근 생성: ${new Date(post.latestRewriteSuggestedAt).toLocaleString("ko-KR")}`
+                            : ""}
+                        </p>
+                        {(post.performanceStatus === "good" || post.performanceStatus === "excellent") && (
+                          <p className="mt-1 text-zinc-500">
+                            성과가 나쁘지 않지만, 추가 개선을 원하시면 제안을 생성할 수 있습니다.
+                          </p>
+                        )}
+                        {post.performanceStatus === "not_measured" && (
+                          <p className="mt-1 text-amber-700">
+                            ⚠ 아직 성과 지표가 입력되지 않았습니다 — metrics 없이도 구조적 개선
+                            제안은 생성되지만 정확도가 낮을 수 있습니다.
+                          </p>
+                        )}
+
+                        <form action={generatePerformanceRewriteSuggestionAction} className="mt-2">
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+                          >
+                            개선 제안 생성
+                          </button>
+                        </form>
+
+                        {(() => {
+                          const suggestions = socialPostRewriteSuggestionsById.get(post.id) ?? [];
+                          if (suggestions.length === 0) return null;
+                          return (
+                            <details className="mt-2">
+                              <summary className="cursor-pointer text-zinc-500">개선 제안 목록 보기 ({suggestions.length}건)</summary>
+                              <ul className="mt-1 flex flex-col gap-2">
+                                {suggestions.map((s) => (
+                                  <li key={s.id} className="rounded border border-zinc-200 bg-zinc-50 p-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-600">
+                                        status: {s.suggestionStatus}
+                                      </span>
+                                      <span className="text-zinc-400">
+                                        원래 성과: {s.originalPerformanceStatus ?? "-"}
+                                        {s.originalPerformanceScore != null ? ` (${s.originalPerformanceScore}점)` : ""}
+                                      </span>
+                                      <span className="text-zinc-400">{new Date(s.generatedAt).toLocaleString("ko-KR")}</span>
+                                    </div>
+                                    {s.suggestedTitle && <p className="mt-1 text-zinc-700">제목 제안: {s.suggestedTitle}</p>}
+                                    {s.suggestedHook && <p className="mt-1 text-zinc-600">hook 제안: {s.suggestedHook}</p>}
+                                    {s.suggestedCta && <p className="mt-1 text-zinc-600">CTA 제안: {s.suggestedCta}</p>}
+                                    {s.suggestedHashtags.length > 0 && (
+                                      <p className="mt-1 text-zinc-500">
+                                        해시태그 제안: {s.suggestedHashtags.map((tag) => `#${tag}`).join(" ")}
+                                      </p>
+                                    )}
+                                    {s.suggestedThreadItems.length > 0 && (
+                                      <ul className="mt-1 list-inside list-decimal text-zinc-600">
+                                        {s.suggestedThreadItems.map((item) => (
+                                          <li key={item.order}>{item.text}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                    {s.suggestedCardItems.length > 0 && (
+                                      <ul className="mt-1 flex flex-col gap-1 text-zinc-600">
+                                        {s.suggestedCardItems.map((item) => (
+                                          <li key={item.order}>
+                                            <strong>{item.heading}</strong>: {item.body}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                    {Array.isArray((s.suggestedChanges as { improvementTargets?: unknown }).improvementTargets) && (
+                                      <p className="mt-1 text-zinc-500">
+                                        개선 대상: {(s.suggestedChanges as { improvementTargets: string[] }).improvementTargets.join(", ")}
+                                      </p>
+                                    )}
+                                    {s.expectedImprovementReason && (
+                                      <p className="mt-1 text-zinc-500">기대 효과: {s.expectedImprovementReason}</p>
+                                    )}
+                                    {s.riskNotes.length > 0 && (
+                                      <div className="mt-1 text-amber-700">
+                                        <p className="font-medium">주의:</p>
+                                        <ul className="list-inside list-disc">
+                                          {s.riskNotes.map((note, i) => (
+                                            <li key={i}>{note}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {s.qualityNotes.length > 0 && (
+                                      <p className="mt-1 text-zinc-500">참고 개선 영역: {s.qualityNotes.join(", ")}</p>
+                                    )}
+                                    {s.rejectedReason && <p className="mt-1 text-red-600">반려 사유: {s.rejectedReason}</p>}
+
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <form action={approveRewriteSuggestionAction}>
+                                        <input type="hidden" name="articleId" value={article.id} />
+                                        <input type="hidden" name="suggestionId" value={s.id} />
+                                        <button
+                                          type="submit"
+                                          disabled={s.suggestionStatus !== "ready" && s.suggestionStatus !== "needs_review"}
+                                          className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          제안 승인
+                                        </button>
+                                      </form>
+                                      <form action={rejectRewriteSuggestionAction} className="flex items-center gap-1">
+                                        <input type="hidden" name="articleId" value={article.id} />
+                                        <input type="hidden" name="suggestionId" value={s.id} />
+                                        <input
+                                          name="reason"
+                                          placeholder="반려 사유 (선택)"
+                                          className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                                        />
+                                        <button
+                                          type="submit"
+                                          className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                                        >
+                                          제안 반려
+                                        </button>
+                                      </form>
+                                      <button
+                                        type="button"
+                                        disabled
+                                        title="다음 단계에서 구현 예정"
+                                        className="rounded border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-400"
+                                      >
+                                        제안 적용 (다음 단계에서 구현)
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
                             </details>
                           );
                         })()}

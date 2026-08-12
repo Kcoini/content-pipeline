@@ -155,6 +155,10 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     latestPerformanceScore: row.latest_performance_score,
     performanceStatus: row.performance_status as SocialPost["performanceStatus"],
     performanceSummary: row.performance_summary,
+    latestRewriteSuggestionId: row.latest_rewrite_suggestion_id,
+    rewriteSuggestionStatus: row.rewrite_suggestion_status as SocialPost["rewriteSuggestionStatus"],
+    rewriteSuggestionCount: row.rewrite_suggestion_count,
+    latestRewriteSuggestedAt: row.latest_rewrite_suggested_at,
   };
 }
 

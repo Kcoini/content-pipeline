@@ -78,6 +78,12 @@ export interface ManualPostingChecklistItem {
 /** Phase 3-9: social post 성과(metrics) 측정 상태. 내부 비교용이며 실제 마케팅 지표가 아니다. */
 export type SocialPerformanceStatus = "not_measured" | "low" | "average" | "good" | "excellent" | "needs_review";
 
+/** Phase 3-10: social_posts에 저장되는 rewrite suggestion 요약 상태. */
+export type SocialRewriteSuggestionSummaryStatus = "not_created" | "suggested" | "approved" | "rejected" | "applied" | "blocked" | "failed";
+
+/** Phase 3-10: social_post_rewrite_suggestions 한 건의 상태. */
+export type RewriteSuggestionStatus = "draft" | "ready" | "needs_review" | "approved" | "rejected" | "applied" | "blocked" | "failed";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -202,6 +208,11 @@ export interface SocialPost {
   latestPerformanceScore: number | null;
   performanceStatus: SocialPerformanceStatus;
   performanceSummary: Record<string, unknown>;
+  /** Phase 3-10: Performance-based Rewrite Suggestion */
+  latestRewriteSuggestionId: string | null;
+  rewriteSuggestionStatus: SocialRewriteSuggestionSummaryStatus;
+  rewriteSuggestionCount: number;
+  latestRewriteSuggestedAt: string | null;
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */
