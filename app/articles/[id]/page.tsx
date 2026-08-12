@@ -61,8 +61,12 @@ import {
   recordManualPostingResultAction,
   markManualPostingFailedAction,
   markManualPostingSkippedAction,
+  recordSocialPostMetricsAction,
+  refreshSocialPostMetricsAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
+import { listMetricsBySocialPost } from "@/lib/repositories/social-metrics-repository";
+import { buildArticleSocialPerformanceSummary } from "@/lib/social/article-social-performance-summary";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
 import { CopyToClipboardButton } from "./copy-to-clipboard-button";
@@ -398,7 +402,7 @@ export default async function ArticleDetailPage({
     );
   }
 
-  const [theme, sources, latestEval, logs, wordpressLogs, socialPosts] = await Promise.all([
+  const [theme, sources, latestEval, logs, wordpressLogs, socialPosts, articlePerformanceSummary] = await Promise.all([
     getThemeById(article.themeId),
     getSourcesByArticleId(article.id),
     getLatestEvalByArticleId(article.id),
@@ -408,7 +412,11 @@ export default async function ArticleDetailPage({
     // 놓칠 수 있으므로, wordpress target은 항상 별도로 조회한다.
     getPublishLogsByArticleId(article.id, 5, WORDPRESS_TARGET),
     listSocialPostsByArticle(article.id),
+    buildArticleSocialPerformanceSummary(article.id),
   ]);
+
+  const socialPostMetricsHistories = await Promise.all(socialPosts.map((post) => listMetricsBySocialPost(post.id)));
+  const socialPostMetricsHistoryById = new Map(socialPosts.map((post, i) => [post.id, socialPostMetricsHistories[i]]));
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -2197,6 +2205,35 @@ export default async function ArticleDetailPage({
             </button>
           </form>
 
+          {/* Phase 3-9: article-level 성과 요약 */}
+          {socialPosts.length > 0 && (
+            <div className="mt-3 rounded border border-zinc-200 bg-zinc-50 p-2 text-xs">
+              <p className="font-medium text-zinc-600">성과 요약 (내부 비교용, 외부 API 미연동)</p>
+              <p className="mt-1 text-zinc-500">
+                측정됨: {articlePerformanceSummary.postsMeasuredCount}개 · 미측정:{" "}
+                {articlePerformanceSummary.postsNotMeasuredCount}개 · best platform:{" "}
+                {articlePerformanceSummary.bestPlatform ?? "-"} · best tone_style:{" "}
+                {articlePerformanceSummary.bestToneStyle ?? "-"}
+              </p>
+              {Object.keys(articlePerformanceSummary.byPlatform).length > 0 && (
+                <p className="mt-1 text-zinc-500">
+                  플랫폼별 최고 점수:{" "}
+                  {Object.entries(articlePerformanceSummary.byPlatform)
+                    .map(([platform, score]) => `${platform}=${score ?? "-"}`)
+                    .join(", ")}
+                </p>
+              )}
+              {Object.keys(articlePerformanceSummary.byToneStyle).length > 0 && (
+                <p className="mt-1 text-zinc-500">
+                  문체별 최고 점수:{" "}
+                  {Object.entries(articlePerformanceSummary.byToneStyle)
+                    .map(([tone, score]) => `${tone}=${score ?? "-"}`)
+                    .join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+
           {socialPosts.length === 0 ? (
             <p className="mt-3 text-xs text-zinc-500">아직 생성된 social post가 없습니다.</p>
           ) : (
@@ -2941,6 +2978,135 @@ export default async function ArticleDetailPage({
                             </button>
                           </form>
                         </div>
+                      </div>
+
+                      {/* Phase 3-9: Performance Metrics */}
+                      <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                        <p className="font-medium text-zinc-600">Performance Metrics</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          이 단계는 외부 API 자동 수집이 아니라 수동 입력입니다. 플랫폼에서
+                          확인한 수치를 입력하면 내부 비교용 성과 점수를 계산합니다. 성과
+                          점수는 절대적인 마케팅 지표가 아니라 플랫폼/문체 비교를 위한 내부
+                          기준입니다.
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          performance_status: <span className="font-mono">{post.performanceStatus}</span>
+                          {post.latestPerformanceScore != null ? ` (${post.latestPerformanceScore}점)` : ""}
+                          {post.latestMetricsRecordedAt
+                            ? ` · 측정: ${new Date(post.latestMetricsRecordedAt).toLocaleString("ko-KR")}`
+                            : ""}
+                        </p>
+                        {post.latestMetricsRecordedAt && (
+                          <p className="mt-1 text-zinc-500">
+                            views {post.latestViews} · impressions {post.latestImpressions} · likes {post.latestLikes} ·
+                            comments {post.latestComments} · shares {post.latestShares} · saves {post.latestSaves} ·
+                            clicks {post.latestClicks} · engagement{" "}
+                            {post.latestEngagementRate != null ? `${(post.latestEngagementRate * 100).toFixed(1)}%` : "-"} · CTR{" "}
+                            {post.latestClickThroughRate != null ? `${(post.latestClickThroughRate * 100).toFixed(1)}%` : "-"}
+                          </p>
+                        )}
+                        {post.manualPostStatus !== "posted" && (
+                          <p className="mt-1 text-amber-700">
+                            ⚠ manual_post_status가 &apos;posted&apos;가 아닙니다. 아직 게시되지 않았을 수 있습니다.
+                          </p>
+                        )}
+
+                        <form action={recordSocialPostMetricsAction} className="mt-2 flex flex-col gap-1">
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <div className="flex flex-wrap gap-2">
+                            <input name="measuredAt" type="datetime-local" className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]" />
+                            <input name="recordedBy" placeholder="입력자" className="w-24 rounded border border-zinc-300 px-1.5 py-1 text-[11px]" />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              ["views", "조회수"],
+                              ["impressions", "노출수"],
+                              ["reach", "도달"],
+                              ["likes", "좋아요"],
+                              ["comments", "댓글"],
+                              ["shares", "공유"],
+                              ["saves", "저장"],
+                              ["clicks", "클릭"],
+                              ["profileVisits", "프로필방문"],
+                              ["follows", "팔로우"],
+                              ["conversionCount", "전환"],
+                            ].map(([name, label]) => (
+                              <label key={name} className="flex flex-col text-[10px] text-zinc-500">
+                                {label}
+                                <input
+                                  name={name}
+                                  type="number"
+                                  min={0}
+                                  className="mt-0.5 w-16 rounded border border-zinc-300 px-1 py-1 text-[11px]"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                          <input name="notes" placeholder="메모 (선택)" className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]" />
+                          <button
+                            type="submit"
+                            className="mt-1 w-fit rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+                          >
+                            Metrics 저장
+                          </button>
+                        </form>
+
+                        <form action={refreshSocialPostMetricsAction} className="mt-2">
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <button
+                            type="submit"
+                            className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                          >
+                            최신 Metrics 새로고침
+                          </button>
+                        </form>
+
+                        {(() => {
+                          const history = socialPostMetricsHistoryById.get(post.id) ?? [];
+                          if (history.length === 0) return null;
+                          return (
+                            <details className="mt-2">
+                              <summary className="cursor-pointer text-zinc-500">Metrics 이력 보기 ({history.length}건)</summary>
+                              <div className="mt-1 overflow-x-auto">
+                                <table className="w-full text-left text-[10px]">
+                                  <thead>
+                                    <tr className="text-zinc-500">
+                                      <th className="pr-2">measured_at</th>
+                                      <th className="pr-2">views</th>
+                                      <th className="pr-2">impressions</th>
+                                      <th className="pr-2">likes</th>
+                                      <th className="pr-2">comments</th>
+                                      <th className="pr-2">shares</th>
+                                      <th className="pr-2">saves</th>
+                                      <th className="pr-2">clicks</th>
+                                      <th className="pr-2">engagement</th>
+                                      <th className="pr-2">score</th>
+                                      <th className="pr-2">recorded_by</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {history.map((m) => (
+                                      <tr key={m.id} className="text-zinc-600">
+                                        <td className="pr-2">{new Date(m.measuredAt).toLocaleString("ko-KR")}</td>
+                                        <td className="pr-2">{m.views}</td>
+                                        <td className="pr-2">{m.impressions}</td>
+                                        <td className="pr-2">{m.likes}</td>
+                                        <td className="pr-2">{m.comments}</td>
+                                        <td className="pr-2">{m.shares}</td>
+                                        <td className="pr-2">{m.saves}</td>
+                                        <td className="pr-2">{m.clicks}</td>
+                                        <td className="pr-2">{m.engagementRate != null ? `${(m.engagementRate * 100).toFixed(1)}%` : "-"}</td>
+                                        <td className="pr-2">{m.performanceScore ?? "-"}</td>
+                                        <td className="pr-2">{m.recordedBy ?? "-"}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          );
+                        })()}
                       </div>
                     </div>
                   </details>

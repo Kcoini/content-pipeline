@@ -75,6 +75,9 @@ export interface ManualPostingChecklistItem {
   status: "pending" | "confirmed";
 }
 
+/** Phase 3-9: social post 성과(metrics) 측정 상태. 내부 비교용이며 실제 마케팅 지표가 아니다. */
+export type SocialPerformanceStatus = "not_measured" | "low" | "average" | "good" | "excellent" | "needs_review";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -184,6 +187,21 @@ export interface SocialPost {
   manualPostRecordedAt: string | null;
   manualPostRecordedBy: string | null;
   manualPostChecklist: Record<string, unknown>[];
+  /** Phase 3-9: Social Metrics Manual Input & Performance Tracking */
+  latestMetricsId: string | null;
+  latestMetricsRecordedAt: string | null;
+  latestViews: number;
+  latestImpressions: number;
+  latestLikes: number;
+  latestComments: number;
+  latestShares: number;
+  latestSaves: number;
+  latestClicks: number;
+  latestEngagementRate: number | null;
+  latestClickThroughRate: number | null;
+  latestPerformanceScore: number | null;
+  performanceStatus: SocialPerformanceStatus;
+  performanceSummary: Record<string, unknown>;
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */

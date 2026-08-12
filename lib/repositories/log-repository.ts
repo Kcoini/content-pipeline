@@ -264,7 +264,12 @@ export type LogEventType =
   | "social_manual_posting_record_blocked"
   | "social_manual_posting_record_failed"
   | "social_manual_posting_skipped"
-  | "social_manual_posting_failed_recorded";
+  | "social_manual_posting_failed_recorded"
+  // Phase 3-9: Social Metrics Manual Input & Performance Tracking 이벤트
+  | "social_metrics_record_started"
+  | "social_metrics_record_completed"
+  | "social_metrics_record_failed"
+  | "social_metrics_record_warning";
 
 export type LogStatus = "success" | "failed" | "info";
 

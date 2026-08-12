@@ -554,6 +554,49 @@ export type SocialPostRow = {
   manual_post_recorded_at: string | null;
   manual_post_recorded_by: string | null;
   manual_post_checklist: Record<string, unknown>[];
+  // Phase 3-9: Social Metrics Manual Input & Performance Tracking
+  latest_metrics_id: string | null;
+  latest_metrics_recorded_at: string | null;
+  latest_views: number;
+  latest_impressions: number;
+  latest_likes: number;
+  latest_comments: number;
+  latest_shares: number;
+  latest_saves: number;
+  latest_clicks: number;
+  latest_engagement_rate: number | null;
+  latest_click_through_rate: number | null;
+  latest_performance_score: number | null;
+  performance_status: string;
+  performance_summary: Record<string, unknown>;
+};
+
+export type SocialPostMetricsRow = {
+  id: string;
+  social_post_id: string;
+  article_id: string;
+  platform: SocialPlatform;
+  measured_at: string;
+  recorded_by: string | null;
+  views: number;
+  impressions: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  clicks: number;
+  profile_visits: number;
+  follows: number;
+  reach: number;
+  engagement_rate: number | null;
+  click_through_rate: number | null;
+  conversion_count: number;
+  conversion_rate: number | null;
+  performance_score: number | null;
+  notes: string | null;
+  raw_metrics: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SocialPostQualityRunRow = {
@@ -683,6 +726,12 @@ export interface Database {
         Insert: Partial<SocialPostApprovalRow> &
           Pick<SocialPostApprovalRow, "social_post_id" | "article_id" | "platform" | "approval_status">;
         Update: Partial<SocialPostApprovalRow>;
+        Relationships: [];
+      };
+      social_post_metrics: {
+        Row: SocialPostMetricsRow;
+        Insert: Partial<SocialPostMetricsRow> & Pick<SocialPostMetricsRow, "social_post_id" | "article_id" | "platform">;
+        Update: Partial<SocialPostMetricsRow>;
         Relationships: [];
       };
     };

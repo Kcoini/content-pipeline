@@ -141,6 +141,20 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     manualPostRecordedAt: row.manual_post_recorded_at,
     manualPostRecordedBy: row.manual_post_recorded_by,
     manualPostChecklist: row.manual_post_checklist ?? [],
+    latestMetricsId: row.latest_metrics_id,
+    latestMetricsRecordedAt: row.latest_metrics_recorded_at,
+    latestViews: row.latest_views,
+    latestImpressions: row.latest_impressions,
+    latestLikes: row.latest_likes,
+    latestComments: row.latest_comments,
+    latestShares: row.latest_shares,
+    latestSaves: row.latest_saves,
+    latestClicks: row.latest_clicks,
+    latestEngagementRate: row.latest_engagement_rate,
+    latestClickThroughRate: row.latest_click_through_rate,
+    latestPerformanceScore: row.latest_performance_score,
+    performanceStatus: row.performance_status as SocialPost["performanceStatus"],
+    performanceSummary: row.performance_summary,
   };
 }
 

@@ -63,6 +63,7 @@ import {
   markManualPostingSkipped,
   markManualPostingFailed,
 } from "@/lib/social/platform-manual-posting-result-service";
+import { recordSocialPostMetrics } from "@/lib/social/social-metrics-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1505,4 +1506,66 @@ export async function markManualPostingSkippedAction(formData: FormData): Promis
     ? `error=${encodeURIComponent(message)}`
     : `publishMessage=${encodeURIComponent(message)}`;
   redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post의 성과 지표(조회수/좋아요/댓글/공유/저장/클릭 등)를 수동으로
+ * 입력한다 (Phase 3-9). 실제 외부 플랫폼 Analytics/Insights API는
+ * 호출하지 않으며, 사람이 플랫폼에서 확인한 수치를 그대로 저장한다.
+ */
+export async function recordSocialPostMetricsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const toNumber = (name: string): number | undefined => {
+      const raw = String(formData.get(name) ?? "").trim();
+      if (raw.length === 0) return undefined;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+    const measuredAtRaw = String(formData.get("measuredAt") ?? "").trim();
+    const recordedBy = String(formData.get("recordedBy") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+
+    const result = await recordSocialPostMetrics(socialPostId, {
+      measuredAt: measuredAtRaw.length > 0 ? new Date(measuredAtRaw).toISOString() : undefined,
+      recordedBy: recordedBy.length > 0 ? recordedBy : APPROVED_BY,
+      views: toNumber("views"),
+      impressions: toNumber("impressions"),
+      reach: toNumber("reach"),
+      likes: toNumber("likes"),
+      comments: toNumber("comments"),
+      shares: toNumber("shares"),
+      saves: toNumber("saves"),
+      clicks: toNumber("clicks"),
+      profileVisits: toNumber("profileVisits"),
+      follows: toNumber("follows"),
+      conversionCount: toNumber("conversionCount"),
+      notes: notes.length > 0 ? notes : undefined,
+    });
+    message = result.warnings && result.warnings.length > 0 ? `${result.message} (경고: ${result.warnings.join(" / ")})` : result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** 최신 Metrics/성과 요약을 새로고침한다 (별도 API 호출 없이 페이지만 다시 렌더링). */
+export async function refreshSocialPostMetricsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
 }
