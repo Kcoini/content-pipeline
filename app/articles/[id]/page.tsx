@@ -50,7 +50,11 @@ import {
   approveSocialPostAction,
   rejectSocialPostAction,
   exportSocialPostAction,
+  editSocialPostAction,
+  requestSocialPostApprovalAction,
+  revokeSocialPostApprovalAction,
 } from "./actions";
+import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { ConfirmSubmitButton } from "./confirm-submit-button";
 import type {
   WordPressMetadataStatus,
@@ -2214,12 +2218,41 @@ export default async function ArticleDetailPage({
                   </p>
                   <p className="mt-1 text-[11px] text-zinc-400">
                     생성: {post.generatedAt ? new Date(post.generatedAt).toLocaleString("ko-KR") : "-"} · 수정:{" "}
-                    {new Date(post.updatedAt).toLocaleString("ko-KR")}
+                    {post.editedAt ? new Date(post.editedAt).toLocaleString("ko-KR") : "-"} · 수정횟수:{" "}
+                    {post.revisionCount} · 승인:{" "}
+                    {post.approvedAt ? new Date(post.approvedAt).toLocaleString("ko-KR") : "-"}
                   </p>
 
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-zinc-500">상세 보기</summary>
+                    <summary className="cursor-pointer text-zinc-500">상세 보기 / 수정</summary>
                     <div className="mt-2 flex flex-col gap-1 rounded bg-zinc-50 p-2">
+                      <div>
+                        <p className="font-medium text-zinc-600">플랫폼 미리보기 ({post.platform})</p>
+                        {(() => {
+                          const preview = formatSocialPostPreview(post);
+                          return (
+                            <div className="mt-1 flex flex-col gap-1 rounded border border-zinc-200 bg-white p-2">
+                              <p className="font-medium text-zinc-700">{preview.heading}</p>
+                              {preview.lines.map((line, i) => (
+                                <p key={i} className="whitespace-pre-wrap text-zinc-600">
+                                  <span className="font-medium text-zinc-500">{line.label}: </span>
+                                  {line.value || "(없음)"}
+                                </p>
+                              ))}
+                              {preview.highlights.length > 0 && (
+                                <div className="text-blue-600">
+                                  <p className="font-medium">질문/토론 유도 문장:</p>
+                                  <ul className="list-inside list-disc">
+                                    {preview.highlights.map((h, i) => (
+                                      <li key={i}>{h}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
                       {post.postBody && <p className="whitespace-pre-wrap text-zinc-600">{post.postBody}</p>}
                       {post.threadItems.length > 0 && (
                         <ul className="list-inside list-decimal text-zinc-600">
@@ -2240,6 +2273,9 @@ export default async function ArticleDetailPage({
                       {post.hashtags.length > 0 && (
                         <p className="text-zinc-500">해시태그: {post.hashtags.map((tag) => `#${tag}`).join(" ")}</p>
                       )}
+                      {post.reviewNotes && <p className="text-zinc-500">검토 메모: {post.reviewNotes}</p>}
+                      {post.rejectionReason && <p className="text-red-600">반려 사유: {post.rejectionReason}</p>}
+                      {post.revokedReason && <p className="text-amber-700">승인 취소 사유: {post.revokedReason}</p>}
                       {typeof post.generationContext.contractName === "string" && (
                         <p className="text-zinc-400">
                           출력 계약: {post.generationContext.contractName}
@@ -2278,7 +2314,99 @@ export default async function ArticleDetailPage({
                       )}
                       {post.errorMessage && <p className="text-red-600">오류: {post.errorMessage}</p>}
 
-                      <div className="mt-2 flex flex-wrap gap-2">
+                      {/* Phase 3-4: 편집 폼. platform은 변경할 수 없다. */}
+                      <form action={editSocialPostAction} className="mt-2 flex flex-col gap-1 rounded border border-zinc-200 bg-white p-2">
+                        <input type="hidden" name="articleId" value={article.id} />
+                        <input type="hidden" name="socialPostId" value={post.id} />
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          post_title
+                          <input
+                            name="postTitle"
+                            defaultValue={post.postTitle ?? ""}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          post_body
+                          <textarea
+                            name="postBody"
+                            defaultValue={post.postBody ?? ""}
+                            rows={4}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          caption
+                          <textarea
+                            name="caption"
+                            defaultValue={post.caption ?? ""}
+                            rows={2}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          excerpt
+                          <textarea
+                            name="excerpt"
+                            defaultValue={post.excerpt ?? ""}
+                            rows={2}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          hashtags (comma-separated)
+                          <input
+                            name="hashtags"
+                            defaultValue={post.hashtags.join(", ")}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          thread_items (JSON: [{"{"}&quot;order&quot;:1,&quot;text&quot;:&quot;...&quot;{"}"}])
+                          <textarea
+                            name="threadItems"
+                            defaultValue={post.threadItems.length > 0 ? JSON.stringify(post.threadItems) : ""}
+                            rows={2}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 font-mono text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          card_items (JSON: [{"{"}&quot;order&quot;:1,&quot;heading&quot;:&quot;...&quot;,&quot;body&quot;:&quot;...&quot;{"}"}])
+                          <textarea
+                            name="cardItems"
+                            defaultValue={post.cardItems.length > 0 ? JSON.stringify(post.cardItems) : ""}
+                            rows={2}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 font-mono text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px] text-zinc-500">
+                          review_notes
+                          <textarea
+                            name="reviewNotes"
+                            defaultValue={post.reviewNotes ?? ""}
+                            rows={1}
+                            className="mt-0.5 rounded border border-zinc-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        {post.approvalStatus === "approved" && (
+                          <p className="text-amber-700">
+                            이미 승인된 글입니다. 수정하면 승인이 초기화되어(not_requested) 재승인이
+                            필요합니다.
+                          </p>
+                        )}
+                        {post.publishStatus === "published" && (
+                          <p className="text-red-600">이미 게시된 글은 수정할 수 없습니다.</p>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={post.publishStatus === "published"}
+                          className="mt-1 w-fit rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          수정 저장
+                        </button>
+                      </form>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <form action={runSocialPostQualityGateAction}>
                           <input type="hidden" name="articleId" value={article.id} />
                           <input type="hidden" name="socialPostId" value={post.id} />
@@ -2286,7 +2414,18 @@ export default async function ArticleDetailPage({
                             type="submit"
                             className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
                           >
-                            Quality Gate 실행
+                            Quality Gate 재실행
+                          </button>
+                        </form>
+                        <form action={requestSocialPostApprovalAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            disabled={post.approvalStatus === "approved"}
+                            className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            승인 요청
                           </button>
                         </form>
                         <form action={approveSocialPostAction}>
@@ -2294,20 +2433,48 @@ export default async function ArticleDetailPage({
                           <input type="hidden" name="socialPostId" value={post.id} />
                           <button
                             type="submit"
-                            disabled={post.qualityStatus !== "ready"}
+                            disabled={
+                              post.qualityStatus !== "ready" ||
+                              post.approvalStatus === "approved" ||
+                              post.publishStatus === "blocked" ||
+                              post.publishStatus === "published"
+                            }
                             className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             승인
                           </button>
                         </form>
-                        <form action={rejectSocialPostAction}>
+                        <form action={rejectSocialPostAction} className="flex items-center gap-1">
                           <input type="hidden" name="articleId" value={article.id} />
                           <input type="hidden" name="socialPostId" value={post.id} />
+                          <input
+                            name="reason"
+                            placeholder="반려 사유"
+                            required
+                            className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                          />
                           <button
                             type="submit"
                             className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
                           >
-                            거부
+                            반려
+                          </button>
+                        </form>
+                        <form action={revokeSocialPostApprovalAction} className="flex items-center gap-1">
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input
+                            name="reason"
+                            placeholder="승인 취소 사유"
+                            required
+                            className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                          />
+                          <button
+                            type="submit"
+                            disabled={post.approvalStatus !== "approved"}
+                            className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            승인 취소
                           </button>
                         </form>
                         <form action={exportSocialPostAction}>

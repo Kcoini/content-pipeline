@@ -506,6 +506,16 @@ export type SocialPostRow = {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 3-4: Social Post Review & Editing Workflow
+  edited_at: string | null;
+  edited_by: string | null;
+  review_notes: string | null;
+  revision_count: number;
+  last_quality_checked_at: string | null;
+  approval_requested_at: string | null;
+  rejection_reason: string | null;
+  revoked_at: string | null;
+  revoked_reason: string | null;
 };
 
 export type SocialPostQualityRunRow = {

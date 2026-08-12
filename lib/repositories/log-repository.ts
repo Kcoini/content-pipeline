@@ -225,7 +225,14 @@ export type LogEventType =
   | "social_context_build_completed"
   | "social_ai_generation_started"
   | "social_ai_generation_completed"
-  | "social_ai_generation_skipped_mock_mode";
+  | "social_ai_generation_skipped_mock_mode"
+  // Phase 3-4: Social Post Review & Editing Workflow 이벤트
+  | "social_post_edit_started"
+  | "social_post_edit_completed"
+  | "social_post_edit_failed"
+  | "social_approval_requested"
+  | "social_approval_revoked"
+  | "social_approval_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

@@ -92,6 +92,15 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     publishedAt: row.published_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    editedAt: row.edited_at,
+    editedBy: row.edited_by,
+    reviewNotes: row.review_notes,
+    revisionCount: row.revision_count,
+    lastQualityCheckedAt: row.last_quality_checked_at,
+    approvalRequestedAt: row.approval_requested_at,
+    rejectionReason: row.rejection_reason,
+    revokedAt: row.revoked_at,
+    revokedReason: row.revoked_reason,
   };
 }
 
@@ -212,6 +221,227 @@ export async function updateSocialPostContent(
   return mapSocialPostRow(data);
 }
 
+export interface SaveSocialPostRevisionPatch {
+  postTitle?: string | null;
+  postBody?: string | null;
+  caption?: string | null;
+  excerpt?: string | null;
+  hashtags?: string[];
+  threadItems?: ThreadItem[];
+  cardItems?: CardItem[];
+  mediaRequirements?: Record<string, unknown>;
+  platformMetadata?: Record<string, unknown>;
+  exportPayload?: Record<string, unknown>;
+  exportFormat?: string | null;
+  reviewNotes?: string | null;
+  toneStyle?: ToneStyle;
+  editedBy?: string;
+}
+
+/**
+ * social post를 사람이 직접 편집해 저장한다 (Phase 3-4). platform은 이
+ * 함수를 통해 변경할 수 없다. 편집 시 revision_count를 1 증가시키고,
+ * quality_status/approval_status를 각각 'not_checked'/'not_requested'로
+ * 되돌려 재검수·재승인을 강제한다. 기존에 승인/거부/취소 상태였더라도
+ * approved_at/approved_by/rejection_reason은 모두 null로 초기화한다.
+ * publish_status가 'published'인 post는 편집을 허용하지 않는다.
+ */
+export async function saveSocialPostRevision(id: string, patch: SaveSocialPostRevisionPatch): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+  if (existing.publishStatus === "published") {
+    throw new Error("이미 게시된 social post는 수정할 수 없습니다.");
+  }
+  if (patch.toneStyle !== undefined) {
+    assertValidToneStyle(patch.toneStyle);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    edited_at: new Date().toISOString(),
+    edited_by: patch.editedBy ?? existing.editedBy ?? null,
+    revision_count: existing.revisionCount + 1,
+    quality_status: "not_checked",
+    quality_score: null,
+    quality_summary: {},
+    approval_status: "not_requested",
+    approved_by: null,
+    approved_at: null,
+    rejection_reason: null,
+    // 이미 게시된(published) social post는 위에서 걸러졌으므로 항상 not_published로 되돌린다.
+    publish_status: "not_published",
+  };
+  if (patch.postTitle !== undefined) update.post_title = patch.postTitle;
+  if (patch.postBody !== undefined) update.post_body = patch.postBody;
+  if (patch.caption !== undefined) update.caption = patch.caption;
+  if (patch.excerpt !== undefined) update.excerpt = patch.excerpt;
+  if (patch.hashtags !== undefined) update.hashtags = patch.hashtags;
+  if (patch.threadItems !== undefined) update.thread_items = patch.threadItems as unknown as Record<string, unknown>[];
+  if (patch.cardItems !== undefined) update.card_items = patch.cardItems as unknown as Record<string, unknown>[];
+  if (patch.mediaRequirements !== undefined) update.media_requirements = patch.mediaRequirements;
+  if (patch.platformMetadata !== undefined) update.platform_metadata = patch.platformMetadata;
+  if (patch.exportPayload !== undefined) update.export_payload = patch.exportPayload;
+  if (patch.exportFormat !== undefined) update.export_format = patch.exportFormat;
+  if (patch.reviewNotes !== undefined) update.review_notes = patch.reviewNotes;
+  if (patch.toneStyle !== undefined) update.tone_style = patch.toneStyle;
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`social post 수정 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** social post의 승인을 요청한다 (approval_status='pending_review'). */
+export async function requestSocialPostApproval(id: string, notes?: string | null): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    approval_status: "pending_review",
+    approval_requested_at: new Date().toISOString(),
+  };
+  if (notes !== undefined) update.review_notes = notes;
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`social post 승인 요청 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** social post를 승인한다. social_post_approvals에도 'approved' 이력을 남긴다. */
+export async function approveSocialPost(id: string, approvedBy: string, notes?: string | null): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      approval_status: "approved",
+      approved_by: approvedBy,
+      approved_at: new Date().toISOString(),
+      rejection_reason: null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post 승인 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  const { error: approvalError } = await supabase.from("social_post_approvals").insert({
+    social_post_id: id,
+    article_id: existing.articleId,
+    platform: existing.platform,
+    approval_status: "approved",
+    approved_by: approvedBy,
+    approval_notes: notes ?? null,
+  });
+  if (approvalError) {
+    throw new Error(`social post 승인 이력 저장에 실패했습니다: ${approvalError.message}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** social post를 반려한다. social_post_approvals에도 'rejected' 이력을 남긴다. */
+export async function rejectSocialPost(id: string, rejectedBy: string, reason: string): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      approval_status: "rejected",
+      rejection_reason: reason,
+      approved_by: null,
+      approved_at: null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post 반려 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  const { error: approvalError } = await supabase.from("social_post_approvals").insert({
+    social_post_id: id,
+    article_id: existing.articleId,
+    platform: existing.platform,
+    approval_status: "rejected",
+    approved_by: rejectedBy,
+    approval_notes: reason,
+  });
+  if (approvalError) {
+    throw new Error(`social post 반려 이력 저장에 실패했습니다: ${approvalError.message}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** social post의 승인을 취소한다. social_post_approvals에도 'revoked' 이력을 남긴다. */
+export async function revokeSocialPostApproval(id: string, revokedBy: string, reason: string): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      approval_status: "revoked",
+      revoked_at: new Date().toISOString(),
+      revoked_reason: reason,
+      approved_by: null,
+      approved_at: null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post 승인 취소 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  const { error: approvalError } = await supabase.from("social_post_approvals").insert({
+    social_post_id: id,
+    article_id: existing.articleId,
+    platform: existing.platform,
+    approval_status: "revoked",
+    approved_by: revokedBy,
+    approval_notes: reason,
+  });
+  if (approvalError) {
+    throw new Error(`social post 승인 취소 이력 저장에 실패했습니다: ${approvalError.message}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
 /**
  * quality gate 실행 결과를 social_posts에 반영하고, 동시에
  * social_post_quality_runs에 실행 이력을 남긴다 (한 번의 호출로 둘 다 처리).
@@ -239,6 +469,7 @@ export async function updateSocialPostQuality(
         blockedReasons: result.blockedReasons,
       },
       reviewed_at: new Date().toISOString(),
+      last_quality_checked_at: new Date().toISOString(),
     })
     .eq("id", id)
     .select()

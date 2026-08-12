@@ -9,8 +9,10 @@ import {
   updateSocialPostQuality,
   updateSocialPostApproval,
   updateSocialPostPublishStatus,
+  saveSocialPostRevision,
   SocialPostNotFoundError,
 } from "@/lib/repositories/social-posts-repository";
+import type { SaveSocialPostRevisionPatch } from "@/lib/repositories/social-posts-repository";
 import { savePublishLog } from "@/lib/repositories/publish-repository";
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
@@ -203,6 +205,7 @@ export async function runSocialPostQualityGateAndSave(socialPostId: string): Pro
       hashtags: existing.hashtags,
       threadItems: existing.threadItems,
       cardItems: existing.cardItems,
+      mediaRequirements: existing.mediaRequirements,
     });
 
     const updated = await updateSocialPostQuality(socialPostId, result);
@@ -345,6 +348,103 @@ export async function exportSocialPostDraft(socialPostId: string): Promise<Expor
     return { success: true, message: "manual export payload를 생성했습니다.", socialPost: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    return { success: false, message };
+  }
+}
+
+/** section 4: quality gate 재실행(rerun) — 편집 후 재검수 등에 사용한다. */
+export const rerunSocialPostQualityGate = runSocialPostQualityGateAndSave;
+
+export interface EditSocialPostInput {
+  postTitle?: string | null;
+  postBody?: string | null;
+  caption?: string | null;
+  excerpt?: string | null;
+  hashtags?: string[];
+  threadItems?: ThreadItem[];
+  cardItems?: CardItem[];
+  mediaRequirements?: Record<string, unknown>;
+  platformMetadata?: Record<string, unknown>;
+  reviewNotes?: string | null;
+  toneStyle?: ToneStyle;
+  editedBy?: string;
+}
+
+export interface EditSocialPostResult extends GenericSocialResult {
+  socialPost?: SocialPost;
+}
+
+/**
+ * social post의 콘텐츠를 사람이 직접 수정한다 (Phase 3-4). 수정 후
+ * revision_count 증가, quality_status/approval_status 초기화가 이루어지며
+ * (repository에서 처리), export_payload도 최신 콘텐츠 기준으로 재생성해
+ * 함께 저장한다. logs에는 어떤 필드가 바뀌었는지(changedFields)만 남기고
+ * 본문 전체는 남기지 않는다.
+ */
+export async function editSocialPostContent(
+  socialPostId: string,
+  input: EditSocialPostInput
+): Promise<EditSocialPostResult> {
+  const existing = await getSocialPostById(socialPostId);
+  if (!existing) {
+    return { success: false, message: `social post를 찾을 수 없습니다: ${socialPostId}` };
+  }
+
+  const changedFields = Object.keys(input).filter((key) => key !== "editedBy" && input[key as keyof EditSocialPostInput] !== undefined);
+
+  await logSocialEvent(
+    "social_post_edit_started",
+    "info",
+    `social post(${socialPostId})의 수정을 시작합니다.`,
+    existing.articleId,
+    { socialPostId, platform: existing.platform, changedFields }
+  );
+
+  try {
+    const merged: SocialPost = {
+      ...existing,
+      postTitle: input.postTitle !== undefined ? input.postTitle : existing.postTitle,
+      postBody: input.postBody !== undefined ? input.postBody : existing.postBody,
+      caption: input.caption !== undefined ? input.caption : existing.caption,
+      hashtags: input.hashtags !== undefined ? input.hashtags : existing.hashtags,
+      threadItems: input.threadItems !== undefined ? input.threadItems : existing.threadItems,
+      cardItems: input.cardItems !== undefined ? input.cardItems : existing.cardItems,
+    };
+    const { format, payload } = buildExportPayload(merged);
+
+    const patch: SaveSocialPostRevisionPatch = {
+      ...input,
+      exportPayload: payload,
+      exportFormat: format,
+    };
+    const updated = await saveSocialPostRevision(socialPostId, patch);
+
+    await logSocialEvent(
+      "social_post_edit_completed",
+      "success",
+      `social post(${socialPostId})의 수정을 완료했습니다 (revision_count: ${updated.revisionCount}).`,
+      existing.articleId,
+      {
+        socialPostId,
+        platform: existing.platform,
+        changedFields,
+        revisionCount: updated.revisionCount,
+        postBodyLength: updated.postBody?.length ?? 0,
+        captionLength: updated.caption?.length ?? 0,
+        hashtagCount: updated.hashtags.length,
+        threadItemCount: updated.threadItems.length,
+        cardItemCount: updated.cardItems.length,
+      }
+    );
+
+    return { success: true, message: "social post 수정 내용을 저장했습니다.", socialPost: updated };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    await logSocialEvent("social_post_edit_failed", "failed", `social post 수정 실패: ${message}`, existing.articleId, {
+      socialPostId,
+      platform: existing.platform,
+      changedFields,
+    });
     return { success: false, message };
   }
 }

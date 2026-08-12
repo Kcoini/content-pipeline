@@ -41,12 +41,18 @@ import {
 } from "@/lib/images/featured-image-source-service";
 import {
   generatePlaceholderDraft,
-  runSocialPostQualityGateAndSave,
-  decideSocialPostApproval,
+  rerunSocialPostQualityGate,
   exportSocialPostDraft,
+  editSocialPostContent,
 } from "@/lib/social/social-post-service";
 import { generateSocialDraft } from "@/lib/social/social-draft-generation-service";
-import { isSocialPlatform, isToneStyle } from "@/lib/social/social-platform-types";
+import {
+  requestApproval as requestSocialPostApprovalService,
+  approveSocialPost as approveSocialPostService,
+  rejectSocialPost as rejectSocialPostService,
+  revokeApproval as revokeSocialPostApprovalService,
+} from "@/lib/social/social-post-approval-service";
+import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -998,7 +1004,7 @@ export async function runSocialPostQualityGateAction(formData: FormData): Promis
   let isError: boolean;
 
   try {
-    const result = await runSocialPostQualityGateAndSave(socialPostId);
+    const result = await rerunSocialPostQualityGate(socialPostId);
     message = result.message;
     isError = !result.success;
   } catch (error) {
@@ -1014,16 +1020,119 @@ export async function runSocialPostQualityGateAction(formData: FormData): Promis
   redirect(`/articles/${articleId}?${query}`);
 }
 
-/** social post를 승인한다. quality_status가 'ready'가 아니면 차단된다. */
+/** social post의 콘텐츠(제목/본문/캡션/해시태그/thread/card 등)를 수정한다 (Phase 3-4). */
+export async function editSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const postTitle = formData.get("postTitle");
+    const postBody = formData.get("postBody");
+    const caption = formData.get("caption");
+    const excerpt = formData.get("excerpt");
+    const hashtagsRaw = formData.get("hashtags");
+    const threadItemsRaw = formData.get("threadItems");
+    const cardItemsRaw = formData.get("cardItems");
+    const reviewNotes = formData.get("reviewNotes");
+
+    const hashtags =
+      typeof hashtagsRaw === "string"
+        ? hashtagsRaw
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0)
+        : undefined;
+
+    let threadItems: ThreadItem[] | undefined;
+    if (typeof threadItemsRaw === "string" && threadItemsRaw.trim().length > 0) {
+      const parsed: unknown = JSON.parse(threadItemsRaw);
+      if (!Array.isArray(parsed)) throw new Error("thread_items는 배열이어야 합니다.");
+      threadItems = parsed.map((item, index) => ({
+        order: typeof (item as { order?: unknown }).order === "number" ? (item as { order: number }).order : index + 1,
+        text: String((item as { text?: unknown }).text ?? ""),
+      }));
+    }
+
+    let cardItems: CardItem[] | undefined;
+    if (typeof cardItemsRaw === "string" && cardItemsRaw.trim().length > 0) {
+      const parsed: unknown = JSON.parse(cardItemsRaw);
+      if (!Array.isArray(parsed)) throw new Error("card_items는 배열이어야 합니다.");
+      cardItems = parsed.map((item, index) => ({
+        order: typeof (item as { order?: unknown }).order === "number" ? (item as { order: number }).order : index + 1,
+        heading: String((item as { heading?: unknown }).heading ?? ""),
+        body: String((item as { body?: unknown }).body ?? ""),
+      }));
+    }
+
+    const result = await editSocialPostContent(socialPostId, {
+      postTitle: typeof postTitle === "string" ? postTitle : undefined,
+      postBody: typeof postBody === "string" ? postBody : undefined,
+      caption: typeof caption === "string" ? caption : undefined,
+      excerpt: typeof excerpt === "string" ? excerpt : undefined,
+      hashtags,
+      threadItems,
+      cardItems,
+      reviewNotes: typeof reviewNotes === "string" ? reviewNotes : undefined,
+      editedBy: APPROVED_BY,
+    });
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** social post의 승인을 요청한다 (approval_status='pending_review'). */
+export async function requestSocialPostApprovalAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await requestSocialPostApprovalService(socialPostId, notes.length > 0 ? notes : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post를 승인한다. quality_status가 'ready'가 아니거나, publish_status가
+ * blocked/published이거나, 이미 승인된 경우 차단된다.
+ */
 export async function approveSocialPostAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
   const socialPostId = String(formData.get("socialPostId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
 
   let message: string;
   let isError: boolean;
 
   try {
-    const result = await decideSocialPostApproval(socialPostId, "approved", APPROVED_BY);
+    const result = await approveSocialPostService(socialPostId, APPROVED_BY, notes.length > 0 ? notes : undefined);
     message = result.message;
     isError = !result.success;
   } catch (error) {
@@ -1039,16 +1148,49 @@ export async function approveSocialPostAction(formData: FormData): Promise<void>
   redirect(`/articles/${articleId}?${query}`);
 }
 
-/** social post를 거부한다. */
+/** social post를 반려한다 (반려 사유 필수). */
 export async function rejectSocialPostAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
   const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
 
   let message: string;
   let isError: boolean;
 
   try {
-    const result = await decideSocialPostApproval(socialPostId, "rejected", APPROVED_BY);
+    if (reason.length === 0) {
+      throw new Error("반려 사유를 입력하세요.");
+    }
+    const result = await rejectSocialPostService(socialPostId, APPROVED_BY, reason);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** social post의 승인을 취소한다 (승인된 post만 대상, 사유 필수). */
+export async function revokeSocialPostApprovalAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    if (reason.length === 0) {
+      throw new Error("승인 취소 사유를 입력하세요.");
+    }
+    const result = await revokeSocialPostApprovalService(socialPostId, APPROVED_BY, reason);
     message = result.message;
     isError = !result.success;
   } catch (error) {

@@ -7,6 +7,7 @@ const getSocialPostById = vi.fn();
 const updateSocialPostQuality = vi.fn();
 const updateSocialPostApproval = vi.fn();
 const updateSocialPostPublishStatus = vi.fn();
+const saveSocialPostRevision = vi.fn();
 const savePublishLog = vi.fn();
 const logEvent = vi.fn();
 const buildSocialWritingContext = vi.fn();
@@ -17,6 +18,7 @@ vi.mock("@/lib/repositories/social-posts-repository", () => ({
   updateSocialPostQuality: (...args: unknown[]) => updateSocialPostQuality(...args),
   updateSocialPostApproval: (...args: unknown[]) => updateSocialPostApproval(...args),
   updateSocialPostPublishStatus: (...args: unknown[]) => updateSocialPostPublishStatus(...args),
+  saveSocialPostRevision: (...args: unknown[]) => saveSocialPostRevision(...args),
   SocialPostNotFoundError: class SocialPostNotFoundError extends Error {},
 }));
 vi.mock("@/lib/repositories/publish-repository", () => ({
@@ -29,8 +31,14 @@ vi.mock("./social-writing-context-builder", () => ({
   buildSocialWritingContext: (...args: unknown[]) => buildSocialWritingContext(...args),
 }));
 
-const { generatePlaceholderDraft, runSocialPostQualityGateAndSave, decideSocialPostApproval, exportSocialPostDraft } =
-  await import("./social-post-service");
+const {
+  generatePlaceholderDraft,
+  runSocialPostQualityGateAndSave,
+  rerunSocialPostQualityGate,
+  decideSocialPostApproval,
+  exportSocialPostDraft,
+  editSocialPostContent,
+} = await import("./social-post-service");
 
 function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWritingContext {
   return {
@@ -113,6 +121,15 @@ function makeSocialPost(overrides: Partial<SocialPost> = {}): SocialPost {
     publishedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+    editedAt: null,
+    editedBy: null,
+    reviewNotes: null,
+    revisionCount: 0,
+    lastQualityCheckedAt: null,
+    approvalRequestedAt: null,
+    rejectionReason: null,
+    revokedAt: null,
+    revokedReason: null,
     ...overrides,
   };
 }
@@ -123,6 +140,7 @@ beforeEach(() => {
   updateSocialPostQuality.mockReset();
   updateSocialPostApproval.mockReset();
   updateSocialPostPublishStatus.mockReset();
+  saveSocialPostRevision.mockReset();
   savePublishLog.mockReset();
   logEvent.mockReset();
   buildSocialWritingContext.mockReset();
@@ -257,6 +275,86 @@ describe("exportSocialPostDraft", () => {
 
     expect(result.success).toBe(true);
     expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "social_export_completed" }));
+  });
+});
+
+describe("rerunSocialPostQualityGate (Phase 3-4)", () => {
+  it("재실행 성공 시 quality_status/quality_score가 업데이트된다", async () => {
+    getSocialPostById.mockResolvedValue(makeSocialPost({ postBody: "충분히 긴 본문 내용입니다. ".repeat(30) }));
+    updateSocialPostQuality.mockResolvedValue(makeSocialPost({ qualityStatus: "ready", qualityScore: 95 }));
+
+    const result = await rerunSocialPostQualityGate("social-post-1");
+
+    expect(result.success).toBe(true);
+    expect(updateSocialPostQuality).toHaveBeenCalled();
+    expect(result.socialPost?.qualityStatus).toBe("ready");
+  });
+});
+
+describe("editSocialPostContent (Phase 3-4)", () => {
+  it("x 플랫폼은 thread_items를 편집할 수 있다", async () => {
+    getSocialPostById.mockResolvedValue(makeSocialPost({ platform: "x", threadItems: [{ order: 1, text: "기존" }] }));
+    saveSocialPostRevision.mockImplementation(async (id, patch) =>
+      makeSocialPost({ platform: "x", threadItems: patch.threadItems, revisionCount: 1 })
+    );
+
+    const result = await editSocialPostContent("social-post-1", {
+      threadItems: [
+        { order: 1, text: "수정된 첫 항목" },
+        { order: 2, text: "수정된 두번째 항목" },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(saveSocialPostRevision).toHaveBeenCalledWith(
+      "social-post-1",
+      expect.objectContaining({ threadItems: expect.arrayContaining([expect.objectContaining({ text: "수정된 첫 항목" })]) })
+    );
+  });
+
+  it("instagram은 card_items를 편집할 수 있다", async () => {
+    getSocialPostById.mockResolvedValue(
+      makeSocialPost({ platform: "instagram", cardItems: [{ order: 1, heading: "h", body: "b" }] })
+    );
+    saveSocialPostRevision.mockImplementation(async (id, patch) =>
+      makeSocialPost({ platform: "instagram", cardItems: patch.cardItems, revisionCount: 1 })
+    );
+
+    const result = await editSocialPostContent("social-post-1", {
+      cardItems: [{ order: 1, heading: "새 제목", body: "새 본문" }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(saveSocialPostRevision).toHaveBeenCalledWith(
+      "social-post-1",
+      expect.objectContaining({ cardItems: expect.arrayContaining([expect.objectContaining({ heading: "새 제목" })]) })
+    );
+  });
+
+  it("수정 후 export_payload가 재생성되어 저장된다", async () => {
+    getSocialPostById.mockResolvedValue(makeSocialPost({ platform: "naver_blog", postBody: "기존 본문" }));
+    saveSocialPostRevision.mockImplementation(async (id, patch) => makeSocialPost({ ...patch, revisionCount: 1 }));
+
+    await editSocialPostContent("social-post-1", { postBody: "새 본문" });
+
+    expect(saveSocialPostRevision).toHaveBeenCalledWith(
+      "social-post-1",
+      expect.objectContaining({ exportPayload: expect.any(Object), exportFormat: expect.any(String) })
+    );
+  });
+
+  it("logs에 full post_body/full caption/API key/auth token이 저장되지 않는다", async () => {
+    const longBody = "매우 긴 수정 본문입니다. ".repeat(50);
+    getSocialPostById.mockResolvedValue(makeSocialPost());
+    saveSocialPostRevision.mockResolvedValue(makeSocialPost({ postBody: longBody, revisionCount: 1 }));
+
+    await editSocialPostContent("social-post-1", { postBody: longBody });
+
+    const serialized = JSON.stringify(logEvent.mock.calls).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("api_key");
+    expect(serialized).not.toContain("app_password");
+    expect(serialized).not.toContain(longBody.toLowerCase());
   });
 });
 

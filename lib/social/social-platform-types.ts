@@ -114,6 +114,16 @@ export interface SocialPost {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Phase 3-4: Review & Editing Workflow */
+  editedAt: string | null;
+  editedBy: string | null;
+  reviewNotes: string | null;
+  revisionCount: number;
+  lastQualityCheckedAt: string | null;
+  approvalRequestedAt: string | null;
+  rejectionReason: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
 }
 
 /** social_posts row 하나를 새로 만들 때 필요한 최소 입력. */

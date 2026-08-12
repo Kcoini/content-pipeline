@@ -13,6 +13,11 @@ const {
   mapSocialPostRow,
   InvalidSocialPlatformError,
   InvalidToneStyleError,
+  saveSocialPostRevision,
+  requestSocialPostApproval,
+  approveSocialPost,
+  rejectSocialPost,
+  revokeSocialPostApproval,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -48,6 +53,15 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     published_at: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+    edited_at: null,
+    edited_by: null,
+    review_notes: null,
+    revision_count: 0,
+    last_quality_checked_at: null,
+    approval_requested_at: null,
+    rejection_reason: null,
+    revoked_at: null,
+    revoked_reason: null,
     ...overrides,
   };
 }
@@ -156,5 +170,97 @@ describe("mapSocialPostRow", () => {
 
     expect(post).not.toHaveProperty("articleContent");
     expect(post).not.toHaveProperty("rawContent");
+  });
+});
+
+describe("saveSocialPostRevision (Phase 3-4)", () => {
+  it("수정 시 revision_count가 증가하고 quality_status/approval_status가 초기화된다", async () => {
+    const row = makeSocialPostRow({
+      revision_count: 2,
+      quality_status: "ready",
+      approval_status: "approved",
+      approved_by: "editor",
+      approved_at: "2026-01-02T00:00:00.000Z",
+    });
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await saveSocialPostRevision("social-post-1", { postTitle: "새 제목" });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        revision_count: 3,
+        quality_status: "not_checked",
+        approval_status: "not_requested",
+        approved_by: null,
+        approved_at: null,
+        rejection_reason: null,
+        post_title: "새 제목",
+      })
+    );
+  });
+
+  it("게시된(published) social post는 수정할 수 없다", async () => {
+    const row = makeSocialPostRow({ publish_status: "published" });
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await expect(saveSocialPostRevision("social-post-1", { postTitle: "새 제목" })).rejects.toThrow();
+  });
+});
+
+describe("승인/반려/승인취소 (Phase 3-4)", () => {
+  it("requestSocialPostApproval은 approval_status를 pending_review로 바꾼다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await requestSocialPostApproval("social-post-1", "검토 부탁드립니다");
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ approval_status: "pending_review" })
+    );
+  });
+
+  it("approveSocialPost 성공 시 social_post_approvals에 approved 이력을 남긴다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    await approveSocialPost("social-post-1", "editor", "확인했습니다");
+
+    expect(from).toHaveBeenCalledWith("social_post_approvals");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ approval_status: "approved", approved_by: "editor" })
+    );
+  });
+
+  it("rejectSocialPost 성공 시 social_post_approvals에 rejected 이력을 남긴다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    await rejectSocialPost("social-post-1", "editor", "문체가 부적절합니다");
+
+    expect(from).toHaveBeenCalledWith("social_post_approvals");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ approval_status: "rejected", approval_notes: "문체가 부적절합니다" })
+    );
+  });
+
+  it("revokeSocialPostApproval 성공 시 social_post_approvals에 revoked 이력을 남긴다", async () => {
+    const row = makeSocialPostRow({ approval_status: "approved", approved_by: "editor" });
+    const chain = makeChain({ data: row, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    await revokeSocialPostApproval("social-post-1", "editor", "재검토 필요");
+
+    expect(from).toHaveBeenCalledWith("social_post_approvals");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ approval_status: "revoked", approval_notes: "재검토 필요" })
+    );
   });
 });
