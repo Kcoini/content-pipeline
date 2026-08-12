@@ -244,7 +244,16 @@ export type LogEventType =
   | "social_platform_publish_guard_completed"
   | "social_platform_publish_guard_needs_revision"
   | "social_platform_publish_guard_blocked"
-  | "social_platform_publish_guard_failed";
+  | "social_platform_publish_guard_failed"
+  // Phase 3-7: Platform Publish Dry-run & Export Handoff 이벤트
+  | "social_platform_publish_dry_run_started"
+  | "social_platform_publish_dry_run_completed"
+  | "social_platform_publish_dry_run_blocked"
+  | "social_platform_publish_dry_run_failed"
+  | "social_platform_handoff_started"
+  | "social_platform_handoff_completed"
+  | "social_platform_handoff_blocked"
+  | "social_platform_handoff_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

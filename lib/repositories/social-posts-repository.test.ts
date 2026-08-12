@@ -24,6 +24,10 @@ const {
   updatePlatformPublishGuardResult,
   markPlatformPublishGuardFailed,
   listPublishingReadySocialPostsByArticle,
+  updatePlatformPublishDryRunResult,
+  updatePlatformHandoffResult,
+  listDryRunReadySocialPostsByArticle,
+  listHandoffReadySocialPostsByArticle,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -82,6 +86,17 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     platform_publish_guard_checked_at: null,
     platform_publish_ready: false,
     platform_publish_blocked_reason: null,
+    platform_publish_dry_run_status: "not_created",
+    platform_publish_dry_run_payload: {},
+    platform_publish_dry_run_error: null,
+    platform_publish_dry_run_created_at: null,
+    platform_publish_dry_run_created_by: null,
+    handoff_status: "not_started",
+    handoff_payload: {},
+    handoff_notes: null,
+    handoff_completed_at: null,
+    handoff_completed_by: null,
+    handoff_error: null,
     ...overrides,
   };
 }
@@ -390,6 +405,66 @@ describe("platform publishing guard (Phase 3-6)", () => {
     const result = await listPublishingReadySocialPostsByArticle("article-1");
 
     expect(chain.eq).toHaveBeenCalledWith("platform_publish_ready", true);
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe("platform publish dry-run / handoff (Phase 3-7)", () => {
+  it("updatePlatformPublishDryRunResult는 status='ready'일 때 created_at/created_by를 함께 저장한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updatePlatformPublishDryRunResult("social-post-1", {
+      status: "ready",
+      dryRunPayload: { type: "manual_copy_handoff" },
+      handoffPayload: { type: "manual_copy_handoff" },
+      createdBy: "editor",
+      handoffStatus: "ready",
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform_publish_dry_run_status: "ready",
+        platform_publish_dry_run_created_by: "editor",
+        handoff_status: "ready",
+      })
+    );
+  });
+
+  it("updatePlatformHandoffResult는 status='completed'일 때 completed_at/completed_by를 저장한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updatePlatformHandoffResult("social-post-1", { status: "completed", completedBy: "editor", notes: "확인함" });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ handoff_status: "completed", handoff_notes: "확인함" })
+    );
+  });
+
+  it("listDryRunReadySocialPostsByArticle는 platform_publish_dry_run_status='ready'인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ platform_publish_dry_run_status: "ready" })];
+    const chain = makeChain({ data: rows, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await listDryRunReadySocialPostsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("platform_publish_dry_run_status", "ready");
+    expect(result).toHaveLength(1);
+  });
+
+  it("listHandoffReadySocialPostsByArticle는 handoff_status='ready'인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ handoff_status: "ready" })];
+    const chain = makeChain({ data: rows, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await listHandoffReadySocialPostsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("handoff_status", "ready");
     expect(result).toHaveLength(1);
   });
 });

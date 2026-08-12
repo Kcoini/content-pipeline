@@ -532,6 +532,18 @@ export type SocialPostRow = {
   platform_publish_guard_checked_at: string | null;
   platform_publish_ready: boolean;
   platform_publish_blocked_reason: string | null;
+  // Phase 3-7: Platform Publish Dry-run & Export Handoff
+  platform_publish_dry_run_status: string;
+  platform_publish_dry_run_payload: Record<string, unknown>;
+  platform_publish_dry_run_error: string | null;
+  platform_publish_dry_run_created_at: string | null;
+  platform_publish_dry_run_created_by: string | null;
+  handoff_status: string;
+  handoff_payload: Record<string, unknown>;
+  handoff_notes: string | null;
+  handoff_completed_at: string | null;
+  handoff_completed_by: string | null;
+  handoff_error: string | null;
 };
 
 export type SocialPostQualityRunRow = {

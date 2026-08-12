@@ -55,6 +55,8 @@ import {
 import { generateManualExport } from "@/lib/social/social-manual-export-service";
 import { recordSocialPostCopied } from "@/lib/social/social-copy-tracking-service";
 import { runPlatformPublishingGuard } from "@/lib/social/platform-publishing-guard-service";
+import { createPlatformPublishDryRun } from "@/lib/social/platform-publish-dry-run-service";
+import { completePlatformExportHandoff } from "@/lib/social/platform-export-handoff-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1309,6 +1311,65 @@ export async function runPlatformPublishingGuardAction(formData: FormData): Prom
 
   try {
     const result = await runPlatformPublishingGuard(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post의 플랫폼별 게시 직전 dry-run payload를 생성한다 (Phase 3-7).
+ * platform_publish_ready=true이고 platform_publish_guard_status='ready'인
+ * 경우에만 성공하며, 실제 외부 플랫폼 게시 API는 호출하지 않는다.
+ */
+export async function createPlatformPublishDryRunAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await createPlatformPublishDryRun(socialPostId, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post의 export handoff를 완료 처리한다 (Phase 3-7). 사람이
+ * dry-run 결과를 최종 확인하고 수동 게시할 준비를 마쳤다는 뜻일 뿐,
+ * 실제 외부 게시 완료가 아니며 publish_status를 바꾸지 않는다.
+ */
+export async function completePlatformExportHandoffAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await completePlatformExportHandoff(socialPostId, APPROVED_BY, notes.length > 0 ? notes : undefined);
     message = result.message;
     isError = !result.success;
   } catch (error) {

@@ -21,6 +21,8 @@ import {
   type SocialPostPublishStatus,
   type SocialPostExportStatus,
   type PlatformPublishGuardResult,
+  type PlatformPublishDryRunStatus,
+  type HandoffStatus,
   type ThreadItem,
   type CardItem,
 } from "@/lib/social/social-platform-types";
@@ -117,6 +119,17 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     platformPublishGuardCheckedAt: row.platform_publish_guard_checked_at,
     platformPublishReady: row.platform_publish_ready,
     platformPublishBlockedReason: row.platform_publish_blocked_reason,
+    platformPublishDryRunStatus: row.platform_publish_dry_run_status as SocialPost["platformPublishDryRunStatus"],
+    platformPublishDryRunPayload: row.platform_publish_dry_run_payload,
+    platformPublishDryRunError: row.platform_publish_dry_run_error,
+    platformPublishDryRunCreatedAt: row.platform_publish_dry_run_created_at,
+    platformPublishDryRunCreatedBy: row.platform_publish_dry_run_created_by,
+    handoffStatus: row.handoff_status as SocialPost["handoffStatus"],
+    handoffPayload: row.handoff_payload,
+    handoffNotes: row.handoff_notes,
+    handoffCompletedAt: row.handoff_completed_at,
+    handoffCompletedBy: row.handoff_completed_by,
+    handoffError: row.handoff_error,
   };
 }
 
@@ -793,6 +806,121 @@ export async function listPublishingReadySocialPostsByArticle(articleId: string)
 
   if (error) {
     throw new Error(`게시 가능한 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+export interface UpdatePlatformPublishDryRunResultPatch {
+  status: PlatformPublishDryRunStatus;
+  dryRunPayload?: Record<string, unknown>;
+  handoffPayload?: Record<string, unknown>;
+  error?: string | null;
+  createdBy?: string | null;
+  handoffStatus?: HandoffStatus;
+}
+
+/**
+ * platform publish dry-run 결과를 social_posts에 저장한다 (Phase 3-7).
+ * 실제 게시는 하지 않으며, publish_status를 바꾸지 않는다.
+ */
+export async function updatePlatformPublishDryRunResult(
+  id: string,
+  patch: UpdatePlatformPublishDryRunResultPatch
+): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    platform_publish_dry_run_status: patch.status,
+    platform_publish_dry_run_error: patch.error ?? null,
+  };
+  if (patch.dryRunPayload !== undefined) update.platform_publish_dry_run_payload = patch.dryRunPayload;
+  if (patch.handoffPayload !== undefined) update.handoff_payload = patch.handoffPayload;
+  if (patch.handoffStatus !== undefined) update.handoff_status = patch.handoffStatus;
+  if (patch.status === "ready") {
+    update.platform_publish_dry_run_created_at = new Date().toISOString();
+    update.platform_publish_dry_run_created_by = patch.createdBy ?? null;
+  }
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`platform publish dry-run 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+export interface UpdatePlatformHandoffResultPatch {
+  status: HandoffStatus;
+  notes?: string | null;
+  completedBy?: string | null;
+  error?: string | null;
+}
+
+/**
+ * export handoff 결과를 social_posts에 저장한다 (Phase 3-7). handoff
+ * completed는 사람이 게시할 준비를 마쳤다는 뜻이며, publish_status를
+ * 'published'로 바꾸지 않는다.
+ */
+export async function updatePlatformHandoffResult(id: string, patch: UpdatePlatformHandoffResultPatch): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    handoff_status: patch.status,
+    handoff_error: patch.error ?? null,
+  };
+  if (patch.notes !== undefined) update.handoff_notes = patch.notes;
+  if (patch.status === "completed") {
+    update.handoff_completed_at = new Date().toISOString();
+    update.handoff_completed_by = patch.completedBy ?? null;
+  }
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`export handoff 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** dry-run 실행에 필요한 social post 하나를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getSocialPostForDryRun(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+/** 특정 기사에서 platform_publish_dry_run_status='ready'인 social post만 조회한다. */
+export async function listDryRunReadySocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("platform_publish_dry_run_status", "ready")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`dry-run 준비된 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 기사에서 handoff_status='ready'인 social post만 조회한다. */
+export async function listHandoffReadySocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("handoff_status", "ready")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`handoff 준비된 social post 목록 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);

@@ -55,7 +55,10 @@ import {
   generateManualExportAction,
   recordSocialPostCopiedAction,
   runPlatformPublishingGuardAction,
+  createPlatformPublishDryRunAction,
+  completePlatformExportHandoffAction,
 } from "./actions";
+import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
 import { CopyToClipboardButton } from "./copy-to-clipboard-button";
@@ -2730,6 +2733,84 @@ export default async function ArticleDetailPage({
                             {post.platformPublishGuardStatus === "not_checked" ? "게시 가능성 검사 실행" : "Guard 재실행"}
                           </button>
                         </form>
+                      </div>
+
+                      {/* Phase 3-7: Platform Publish Dry-run & Export Handoff */}
+                      <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                        <p className="font-medium text-zinc-600">Platform Publish Dry-run &amp; Handoff</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          이 단계는 실제 게시가 아니라 게시 직전 dry-run payload 생성입니다. Handoff
+                          완료는 실제 게시 완료가 아니라, 사람이 수동 게시할 준비가 끝났다는
+                          의미입니다. 각 플랫폼에 게시하기 전 최종 내용, 이미지, 링크, 정책 위반
+                          가능성을 확인하세요.
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          dry-run: <span className="font-mono">{post.platformPublishDryRunStatus}</span>
+                          {post.platformPublishDryRunCreatedAt
+                            ? ` (${new Date(post.platformPublishDryRunCreatedAt).toLocaleString("ko-KR")})`
+                            : ""}{" "}
+                          · handoff: <span className="font-mono">{post.handoffStatus}</span>
+                          {post.handoffCompletedAt
+                            ? ` (${new Date(post.handoffCompletedAt).toLocaleString("ko-KR")} by ${post.handoffCompletedBy ?? "-"})`
+                            : ""}
+                        </p>
+                        {post.handoffNotes && <p className="mt-1 text-zinc-500">handoff 메모: {post.handoffNotes}</p>}
+                        {post.platformPublishDryRunError && (
+                          <p className="mt-1 text-red-600">dry-run 오류: {post.platformPublishDryRunError}</p>
+                        )}
+                        {post.handoffError && <p className="mt-1 text-red-600">handoff 오류: {post.handoffError}</p>}
+
+                        {post.platformPublishDryRunStatus === "ready" &&
+                          (() => {
+                            const preview = formatPlatformPublishDryRunPreview(post);
+                            return (
+                              <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                                <p className="font-medium text-zinc-600">{preview.heading}</p>
+                                {preview.lines.map((line, i) => (
+                                  <p key={i} className="mt-1 whitespace-pre-wrap text-zinc-600">
+                                    <span className="font-medium text-zinc-500">{line.label}: </span>
+                                    {line.value || "(없음)"}
+                                  </p>
+                                ))}
+                              </div>
+                            );
+                          })()}
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <form action={createPlatformPublishDryRunAction}>
+                            <input type="hidden" name="articleId" value={article.id} />
+                            <input type="hidden" name="socialPostId" value={post.id} />
+                            <button
+                              type="submit"
+                              disabled={
+                                !post.platformPublishReady ||
+                                post.platformPublishGuardStatus !== "ready" ||
+                                post.approvalStatus !== "approved" ||
+                                (post.exportStatus !== "ready" && post.exportStatus !== "exported") ||
+                                post.publishStatus === "published"
+                              }
+                              className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {post.platformPublishDryRunStatus === "not_created" ? "Publish Dry-run 생성" : "Dry-run 재생성"}
+                            </button>
+                          </form>
+                          <form action={completePlatformExportHandoffAction} className="flex items-center gap-1">
+                            <input type="hidden" name="articleId" value={article.id} />
+                            <input type="hidden" name="socialPostId" value={post.id} />
+                            <input
+                              name="notes"
+                              placeholder="handoff 메모 (선택)"
+                              className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                            />
+                            <button
+                              type="submit"
+                              disabled={post.platformPublishDryRunStatus !== "ready" || post.publishStatus === "published"}
+                              className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Handoff 완료 처리
+                            </button>
+                          </form>
+                        </div>
                       </div>
                     </div>
                   </details>

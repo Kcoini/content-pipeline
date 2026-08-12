@@ -59,6 +59,12 @@ export type SocialPostExportStatus = "not_exported" | "ready" | "exported" | "bl
 /** Phase 3-6: 플랫폼별 게시 가능 조건 검사 상태. 실제 게시 여부와는 별개의 트랙이다. */
 export type PlatformPublishGuardStatus = "not_checked" | "ready" | "needs_revision" | "blocked" | "failed";
 
+/** Phase 3-7: 플랫폼별 게시 직전 dry-run payload 생성 상태. 실제 게시 여부와는 별개의 트랙이다. */
+export type PlatformPublishDryRunStatus = "not_created" | "ready" | "blocked" | "failed";
+
+/** Phase 3-7: 사람이 dry-run 결과를 확인하고 수동 게시 준비를 마쳤는지 상태. 실제 게시 완료를 의미하지 않는다. */
+export type HandoffStatus = "not_started" | "ready" | "completed" | "blocked" | "failed";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -146,6 +152,18 @@ export interface SocialPost {
   platformPublishGuardCheckedAt: string | null;
   platformPublishReady: boolean;
   platformPublishBlockedReason: string | null;
+  /** Phase 3-7: Platform Publish Dry-run & Export Handoff */
+  platformPublishDryRunStatus: PlatformPublishDryRunStatus;
+  platformPublishDryRunPayload: Record<string, unknown>;
+  platformPublishDryRunError: string | null;
+  platformPublishDryRunCreatedAt: string | null;
+  platformPublishDryRunCreatedBy: string | null;
+  handoffStatus: HandoffStatus;
+  handoffPayload: Record<string, unknown>;
+  handoffNotes: string | null;
+  handoffCompletedAt: string | null;
+  handoffCompletedBy: string | null;
+  handoffError: string | null;
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */
