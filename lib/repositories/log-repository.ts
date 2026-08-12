@@ -253,7 +253,18 @@ export type LogEventType =
   | "social_platform_handoff_started"
   | "social_platform_handoff_completed"
   | "social_platform_handoff_blocked"
-  | "social_platform_handoff_failed";
+  | "social_platform_handoff_failed"
+  // Phase 3-8: Platform Manual Posting Checklist & Result Recording 이벤트
+  | "social_manual_posting_prepare_started"
+  | "social_manual_posting_prepare_completed"
+  | "social_manual_posting_prepare_blocked"
+  | "social_manual_posting_prepare_failed"
+  | "social_manual_posting_record_started"
+  | "social_manual_posting_record_completed"
+  | "social_manual_posting_record_blocked"
+  | "social_manual_posting_record_failed"
+  | "social_manual_posting_skipped"
+  | "social_manual_posting_failed_recorded";
 
 export type LogStatus = "success" | "failed" | "info";
 

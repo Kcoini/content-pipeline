@@ -544,6 +544,16 @@ export type SocialPostRow = {
   handoff_completed_at: string | null;
   handoff_completed_by: string | null;
   handoff_error: string | null;
+  // Phase 3-8: Platform Manual Posting Checklist & Result Recording
+  manual_post_status: string;
+  manual_post_url: string | null;
+  manual_posted_at: string | null;
+  manual_posted_by: string | null;
+  manual_post_result_notes: string | null;
+  manual_post_error: string | null;
+  manual_post_recorded_at: string | null;
+  manual_post_recorded_by: string | null;
+  manual_post_checklist: Record<string, unknown>[];
 };
 
 export type SocialPostQualityRunRow = {

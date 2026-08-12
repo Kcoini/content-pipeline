@@ -57,6 +57,10 @@ import {
   runPlatformPublishingGuardAction,
   createPlatformPublishDryRunAction,
   completePlatformExportHandoffAction,
+  prepareManualPostingRecordAction,
+  recordManualPostingResultAction,
+  markManualPostingFailedAction,
+  markManualPostingSkippedAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
@@ -2808,6 +2812,132 @@ export default async function ArticleDetailPage({
                               className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Handoff 완료 처리
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+
+                      {/* Phase 3-8: Manual Posting Result */}
+                      <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                        <p className="font-medium text-zinc-600">Manual Posting Result</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          이 단계는 자동 게시가 아니라, 사람이 수동으로 게시한 결과를 기록하는
+                          기능입니다. 게시 URL을 입력하면 시스템에서 해당 플랫폼 게시 완료 상태로
+                          관리합니다. 잘못 기록한 경우 이후 수정/취소 기능을 별도 단계에서 구현할
+                          수 있습니다.
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          manual_post: <span className="font-mono">{post.manualPostStatus}</span> · publish_status:{" "}
+                          <span className="font-mono">{post.publishStatus}</span>
+                          {post.manualPostedAt
+                            ? ` · 게시: ${new Date(post.manualPostedAt).toLocaleString("ko-KR")} by ${post.manualPostedBy ?? "-"}`
+                            : ""}
+                        </p>
+                        {post.manualPostUrl && (
+                          <p className="mt-1 break-all text-zinc-600">
+                            게시 URL:{" "}
+                            <a href={post.manualPostUrl} target="_blank" rel="noreferrer" className="text-indigo-600 underline">
+                              {post.manualPostUrl}
+                            </a>
+                          </p>
+                        )}
+                        {post.manualPostResultNotes && <p className="mt-1 text-zinc-500">메모: {post.manualPostResultNotes}</p>}
+                        {post.manualPostError && <p className="mt-1 text-red-600">오류: {post.manualPostError}</p>}
+                        {post.manualPostStatus === "posted" && (
+                          <p className="mt-1 text-amber-700">
+                            ⚠ 이미 게시 완료로 기록되어 있습니다. 다시 기록하면 중복 기록이 됩니다.
+                          </p>
+                        )}
+                        {post.handoffStatus !== "completed" && (
+                          <p className="mt-1 text-amber-700">⚠ handoff가 완료되지 않아 기록 버튼이 비활성화됩니다.</p>
+                        )}
+                        {post.manualPostChecklist.length > 0 && (
+                          <ul className="mt-1 list-inside list-disc text-zinc-500">
+                            {post.manualPostChecklist.map((item, i) => (
+                              <li key={i}>{String((item as { label?: unknown }).label ?? "")}</li>
+                            ))}
+                          </ul>
+                        )}
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <form action={prepareManualPostingRecordAction}>
+                            <input type="hidden" name="articleId" value={article.id} />
+                            <input type="hidden" name="socialPostId" value={post.id} />
+                            <button
+                              type="submit"
+                              disabled={post.handoffStatus !== "completed"}
+                              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              수동 게시 체크리스트 준비
+                            </button>
+                          </form>
+                        </div>
+
+                        <form action={recordManualPostingResultAction} className="mt-2 flex flex-col gap-1">
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <div className="flex flex-wrap gap-2">
+                            <input
+                              name="manualPostUrl"
+                              placeholder="게시 URL (https://...)"
+                              className="min-w-[220px] flex-1 rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                            />
+                            <input
+                              name="manualPostedAt"
+                              type="datetime-local"
+                              className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                            />
+                            <input
+                              name="manualPostedBy"
+                              placeholder="게시자"
+                              className="w-24 rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                            />
+                          </div>
+                          <input
+                            name="notes"
+                            placeholder="메모 (선택)"
+                            className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                          />
+                          <button
+                            type="submit"
+                            disabled={post.handoffStatus !== "completed"}
+                            className="w-fit rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            수동 게시 완료 기록
+                          </button>
+                        </form>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <form action={markManualPostingFailedAction} className="flex items-center gap-1">
+                            <input type="hidden" name="articleId" value={article.id} />
+                            <input type="hidden" name="socialPostId" value={post.id} />
+                            <input
+                              name="reason"
+                              placeholder="실패 사유"
+                              className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                            />
+                            <button
+                              type="submit"
+                              disabled={post.handoffStatus !== "completed"}
+                              className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              수동 게시 실패 기록
+                            </button>
+                          </form>
+                          <form action={markManualPostingSkippedAction} className="flex items-center gap-1">
+                            <input type="hidden" name="articleId" value={article.id} />
+                            <input type="hidden" name="socialPostId" value={post.id} />
+                            <input
+                              name="reason"
+                              placeholder="스킵 사유"
+                              className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                            />
+                            <button
+                              type="submit"
+                              disabled={post.handoffStatus !== "completed"}
+                              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              수동 게시 스킵 기록
                             </button>
                           </form>
                         </div>

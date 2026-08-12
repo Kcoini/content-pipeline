@@ -23,6 +23,8 @@ import {
   type PlatformPublishGuardResult,
   type PlatformPublishDryRunStatus,
   type HandoffStatus,
+  type ManualPostStatus,
+  type ManualPostingChecklistItem,
   type ThreadItem,
   type CardItem,
 } from "@/lib/social/social-platform-types";
@@ -130,6 +132,15 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     handoffCompletedAt: row.handoff_completed_at,
     handoffCompletedBy: row.handoff_completed_by,
     handoffError: row.handoff_error,
+    manualPostStatus: row.manual_post_status as SocialPost["manualPostStatus"],
+    manualPostUrl: row.manual_post_url,
+    manualPostedAt: row.manual_posted_at,
+    manualPostedBy: row.manual_posted_by,
+    manualPostResultNotes: row.manual_post_result_notes,
+    manualPostError: row.manual_post_error,
+    manualPostRecordedAt: row.manual_post_recorded_at,
+    manualPostRecordedBy: row.manual_post_recorded_by,
+    manualPostChecklist: row.manual_post_checklist ?? [],
   };
 }
 
@@ -921,6 +932,116 @@ export async function listHandoffReadySocialPostsByArticle(articleId: string): P
 
   if (error) {
     throw new Error(`handoff 준비된 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** manual posting checklist를 준비 상태로 저장한다 (Phase 3-8). */
+export async function updateManualPostingChecklist(id: string, checklist: ManualPostingChecklistItem[]): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      manual_post_status: "ready_to_record",
+      manual_post_checklist: checklist as unknown as Record<string, unknown>[],
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`manual posting checklist 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+export interface UpdateManualPostingResultPatch {
+  status: ManualPostStatus;
+  manualPostUrl?: string | null;
+  manualPostedAt?: string | null;
+  manualPostedBy?: string | null;
+  notes?: string | null;
+  error?: string | null;
+  recordedBy?: string | null;
+  /** status='posted'일 때만 publish_status/post_url/published_at을 함께 갱신한다. */
+  markPublished?: boolean;
+}
+
+/**
+ * 수동 게시 결과를 social_posts에 저장한다 (Phase 3-8). status='posted'
+ * 이고 markPublished=true인 경우에만 publish_status='published'로
+ * 전환한다 — 이는 API 자동 게시가 아니라 사람이 직접 게시했다는 기록
+ * 이라는 사실을 manual_post_result_notes/manual_post_status로 함께
+ * 남긴다.
+ */
+export async function updateManualPostingResult(id: string, patch: UpdateManualPostingResultPatch): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    manual_post_status: patch.status,
+    manual_post_error: patch.error ?? null,
+    manual_post_recorded_at: new Date().toISOString(),
+    manual_post_recorded_by: patch.recordedBy ?? null,
+  };
+  if (patch.manualPostUrl !== undefined) update.manual_post_url = patch.manualPostUrl;
+  if (patch.manualPostedAt !== undefined) update.manual_posted_at = patch.manualPostedAt;
+  if (patch.manualPostedBy !== undefined) update.manual_posted_by = patch.manualPostedBy;
+  if (patch.notes !== undefined) update.manual_post_result_notes = patch.notes;
+
+  if (patch.status === "posted" && patch.markPublished) {
+    update.publish_status = "published";
+    update.published_at = patch.manualPostedAt ?? new Date().toISOString();
+    if (patch.manualPostUrl) update.post_url = patch.manualPostUrl;
+  }
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`수동 게시 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** manual posting 처리에 필요한 social post 하나를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getSocialPostForManualPosting(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+/** 특정 기사에서 manual_post_status='ready_to_record'인 social post만 조회한다. */
+export async function listManualPostingReadySocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("manual_post_status", "ready_to_record")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`manual posting 준비된 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 기사에서 manual_post_status='posted'인 social post만 조회한다. */
+export async function listManualPostedSocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("manual_post_status", "posted")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`수동 게시 완료된 social post 목록 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);

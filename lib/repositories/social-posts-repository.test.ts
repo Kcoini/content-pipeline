@@ -28,6 +28,10 @@ const {
   updatePlatformHandoffResult,
   listDryRunReadySocialPostsByArticle,
   listHandoffReadySocialPostsByArticle,
+  updateManualPostingChecklist,
+  updateManualPostingResult,
+  listManualPostingReadySocialPostsByArticle,
+  listManualPostedSocialPostsByArticle,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -97,6 +101,15 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     handoff_completed_at: null,
     handoff_completed_by: null,
     handoff_error: null,
+    manual_post_status: "not_recorded",
+    manual_post_url: null,
+    manual_posted_at: null,
+    manual_posted_by: null,
+    manual_post_result_notes: null,
+    manual_post_error: null,
+    manual_post_recorded_at: null,
+    manual_post_recorded_by: null,
+    manual_post_checklist: [],
     ...overrides,
   };
 }
@@ -465,6 +478,79 @@ describe("platform publish dry-run / handoff (Phase 3-7)", () => {
     const result = await listHandoffReadySocialPostsByArticle("article-1");
 
     expect(chain.eq).toHaveBeenCalledWith("handoff_status", "ready");
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe("manual posting result recording (Phase 3-8)", () => {
+  it("updateManualPostingChecklist는 manual_post_status='ready_to_record'와 checklist를 저장한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateManualPostingChecklist("social-post-1", [{ key: "k", label: "l", status: "pending" }]);
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ manual_post_status: "ready_to_record", manual_post_checklist: expect.any(Array) })
+    );
+  });
+
+  it("updateManualPostingResult는 status='posted'+markPublished=true일 때 publish_status/post_url/published_at을 함께 갱신한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateManualPostingResult("social-post-1", {
+      status: "posted",
+      manualPostUrl: "https://blog.naver.com/myid/1",
+      manualPostedAt: "2026-02-01T00:00:00.000Z",
+      markPublished: true,
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manual_post_status: "posted",
+        manual_post_url: "https://blog.naver.com/myid/1",
+        publish_status: "published",
+        post_url: "https://blog.naver.com/myid/1",
+        published_at: "2026-02-01T00:00:00.000Z",
+      })
+    );
+  });
+
+  it("updateManualPostingResult는 status='failed'일 때 publish_status를 건드리지 않는다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateManualPostingResult("social-post-1", { status: "failed", error: "실패 사유" });
+
+    const call = (chain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.manual_post_status).toBe("failed");
+    expect(call.publish_status).toBeUndefined();
+  });
+
+  it("listManualPostingReadySocialPostsByArticle는 manual_post_status='ready_to_record'인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ manual_post_status: "ready_to_record" })];
+    const chain = makeChain({ data: rows, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await listManualPostingReadySocialPostsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("manual_post_status", "ready_to_record");
+    expect(result).toHaveLength(1);
+  });
+
+  it("listManualPostedSocialPostsByArticle는 manual_post_status='posted'인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ manual_post_status: "posted" })];
+    const chain = makeChain({ data: rows, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await listManualPostedSocialPostsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("manual_post_status", "posted");
     expect(result).toHaveLength(1);
   });
 });

@@ -65,6 +65,16 @@ export type PlatformPublishDryRunStatus = "not_created" | "ready" | "blocked" | 
 /** Phase 3-7: 사람이 dry-run 결과를 확인하고 수동 게시 준비를 마쳤는지 상태. 실제 게시 완료를 의미하지 않는다. */
 export type HandoffStatus = "not_started" | "ready" | "completed" | "blocked" | "failed";
 
+/** Phase 3-8: 사람이 실제 플랫폼에 수동으로 게시한 결과 기록 상태. 'posted'는 API 자동 게시가 아니라 사람이 직접 게시했다는 기록이다. */
+export type ManualPostStatus = "not_recorded" | "ready_to_record" | "posted" | "skipped" | "failed" | "blocked";
+
+/** Phase 3-8: manual posting checklist 항목 하나. */
+export interface ManualPostingChecklistItem {
+  key: string;
+  label: string;
+  status: "pending" | "confirmed";
+}
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -164,6 +174,16 @@ export interface SocialPost {
   handoffCompletedAt: string | null;
   handoffCompletedBy: string | null;
   handoffError: string | null;
+  /** Phase 3-8: Platform Manual Posting Checklist & Result Recording */
+  manualPostStatus: ManualPostStatus;
+  manualPostUrl: string | null;
+  manualPostedAt: string | null;
+  manualPostedBy: string | null;
+  manualPostResultNotes: string | null;
+  manualPostError: string | null;
+  manualPostRecordedAt: string | null;
+  manualPostRecordedBy: string | null;
+  manualPostChecklist: Record<string, unknown>[];
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */

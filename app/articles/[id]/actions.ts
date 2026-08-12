@@ -57,6 +57,12 @@ import { recordSocialPostCopied } from "@/lib/social/social-copy-tracking-servic
 import { runPlatformPublishingGuard } from "@/lib/social/platform-publishing-guard-service";
 import { createPlatformPublishDryRun } from "@/lib/social/platform-publish-dry-run-service";
 import { completePlatformExportHandoff } from "@/lib/social/platform-export-handoff-service";
+import {
+  prepareManualPostingRecord,
+  recordManualPostingResult,
+  markManualPostingSkipped,
+  markManualPostingFailed,
+} from "@/lib/social/platform-manual-posting-result-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1370,6 +1376,122 @@ export async function completePlatformExportHandoffAction(formData: FormData): P
 
   try {
     const result = await completePlatformExportHandoff(socialPostId, APPROVED_BY, notes.length > 0 ? notes : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** social post의 수동 게시 체크리스트를 준비한다 (Phase 3-8). handoff_status='completed'가 아니면 차단된다. */
+export async function prepareManualPostingRecordAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await prepareManualPostingRecord(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 사람이 실제로 플랫폼에 게시한 결과를 기록한다 (Phase 3-8). 실제 외부
+ * 플랫폼 게시 API는 호출하지 않으며, 이 액션은 수동 게시 결과를 기록할
+ * 뿐이다. 성공 시 publish_status='published'로 전환된다.
+ */
+export async function recordManualPostingResultAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const manualPostUrl = String(formData.get("manualPostUrl") ?? "").trim();
+  const manualPostedAtRaw = String(formData.get("manualPostedAt") ?? "").trim();
+  const manualPostedBy = String(formData.get("manualPostedBy") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const manualPostedAt = manualPostedAtRaw.length > 0 ? new Date(manualPostedAtRaw).toISOString() : undefined;
+    const result = await recordManualPostingResult(socialPostId, {
+      manualPostUrl,
+      manualPostedAt,
+      manualPostedBy: manualPostedBy.length > 0 ? manualPostedBy : APPROVED_BY,
+      notes: notes.length > 0 ? notes : undefined,
+    });
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** 사람이 게시를 시도했지만 실패한 경우를 기록한다 (Phase 3-8). publish_status는 바뀌지 않는다. */
+export async function markManualPostingFailedAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await markManualPostingFailed(socialPostId, { reason: reason.length > 0 ? reason : undefined, recordedBy: APPROVED_BY });
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** 사람이 게시를 시도하지 않기로 했거나 보류한 경우를 기록한다 (Phase 3-8). publish_status는 바뀌지 않는다. */
+export async function markManualPostingSkippedAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await markManualPostingSkipped(socialPostId, { reason: reason.length > 0 ? reason : undefined, recordedBy: APPROVED_BY });
     message = result.message;
     isError = !result.success;
   } catch (error) {
