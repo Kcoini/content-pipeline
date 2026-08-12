@@ -211,7 +211,15 @@ export type LogEventType =
   | "social_approval_started"
   | "social_approval_completed"
   | "social_approval_rejected"
-  | "social_export_completed";
+  | "social_export_completed"
+  // Phase 3-2: Prompt / Context / Contract Structure 이벤트
+  | "social_prompt_assembly_started"
+  | "social_prompt_assembly_completed"
+  | "social_contract_validation_started"
+  | "social_contract_validation_completed"
+  | "social_draft_generation_started"
+  | "social_draft_generation_completed"
+  | "social_draft_generation_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

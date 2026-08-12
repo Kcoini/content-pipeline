@@ -45,6 +45,7 @@ import {
   decideSocialPostApproval,
   exportSocialPostDraft,
 } from "@/lib/social/social-post-service";
+import { generateSocialDraft } from "@/lib/social/social-draft-generation-service";
 import { isSocialPlatform, isToneStyle } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -928,6 +929,43 @@ export async function generatePlaceholderSocialPostAction(formData: FormData): P
     }
 
     const result = await generatePlaceholderDraft(articleId, platformRaw, toneStyleRaw);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Prompt/Context/Contract 구조(Phase 3-2)를 실제로 엮어 social post draft를
+ * 생성한다. SOCIAL_AI_GENERATION_ENABLED=false(기본값)이면 mock 생성으로
+ * 동작하며, 실제 플랫폼 게시는 수행하지 않는다.
+ */
+export async function generateSocialDraftAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const platformRaw = String(formData.get("platform") ?? "");
+  const toneStyleRaw = String(formData.get("toneStyle") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    if (!isSocialPlatform(platformRaw)) {
+      throw new Error(`지원하지 않는 platform입니다: ${platformRaw}`);
+    }
+    if (!isToneStyle(toneStyleRaw)) {
+      throw new Error(`지원하지 않는 tone_style입니다: ${toneStyleRaw}`);
+    }
+
+    const result = await generateSocialDraft(articleId, platformRaw, toneStyleRaw);
     message = result.message;
     isError = !result.success;
   } catch (error) {

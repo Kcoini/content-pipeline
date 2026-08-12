@@ -5,7 +5,7 @@
 
 import { getArticleById } from "@/lib/repositories/article-repository";
 import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
-import { getPlatformWritingConfig } from "./platform-writing-config";
+import { getPlatformWritingConfig, getSocialOutputContractName } from "./platform-writing-config";
 import { getToneStyleConfig } from "./tone-style-config";
 import type {
   SocialPlatform,
@@ -13,6 +13,20 @@ import type {
   PlatformWritingConfig,
   ToneStyleConfig,
 } from "./social-platform-types";
+
+/** 모든 플랫폼/문체에 공통으로 적용되는 안전 규칙 요약 (prompts/safety/*.md의 핵심만 요약). */
+const COMMON_SAFETY_RULES: readonly string[] = [
+  "협박형 문장 금지",
+  "공포 조장 금지",
+  "허위 단정 금지",
+  "보장성 수익 표현 금지",
+  "광고 클릭 유도 금지",
+  "개인정보 노출 금지",
+  "출처 없는 의료/금융/법률 단정 금지",
+  "원문 기사 복사 금지",
+  "타인 비방 금지",
+  "플랫폼 정책 위반 가능 표현 금지",
+];
 
 const EXCERPT_MAX_LENGTH = 600;
 const MAX_SOURCE_SUMMARIES = 5;
@@ -50,6 +64,10 @@ export interface SocialWritingContext {
   toneStyle: ToneStyle;
   platformConfig: PlatformWritingConfig;
   toneStyleConfig: ToneStyleConfig;
+  /** 공통 + 플랫폼 + 문체별 금지 표현을 사람이 읽기 쉬운 규칙 문장으로 요약한 목록. */
+  safetyRules: string[];
+  /** `contracts/social/*.schema.json` 파일명 (출력 계약 이름). */
+  outputContractName: string;
 }
 
 /** article.content(마크다운/HTML 섞인 원문)에서 태그/기호를 제거한 순수 텍스트로 짧게 요약한다. */
@@ -94,6 +112,12 @@ export async function buildSocialWritingContext(
 
   const keyPoints = Array.from(new Set(sources.flatMap((source) => source.keyPoints))).slice(0, MAX_KEY_POINTS);
 
+  const platformConfig = getPlatformWritingConfig(options.platform);
+  const toneStyleConfig = getToneStyleConfig(options.toneStyle);
+  const safetyRules = Array.from(
+    new Set([...COMMON_SAFETY_RULES, ...platformConfig.prohibitedPatterns, ...toneStyleConfig.prohibitedPatterns])
+  );
+
   return {
     articleId: article.id,
     title: article.title,
@@ -108,7 +132,9 @@ export async function buildSocialWritingContext(
     sourceSummaries,
     platform: options.platform,
     toneStyle: options.toneStyle,
-    platformConfig: getPlatformWritingConfig(options.platform),
-    toneStyleConfig: getToneStyleConfig(options.toneStyle),
+    platformConfig,
+    toneStyleConfig,
+    safetyRules,
+    outputContractName: getSocialOutputContractName(options.platform),
   };
 }

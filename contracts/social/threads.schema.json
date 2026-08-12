@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://content-pipeline.local/contracts/social/threads.schema.json",
+  "title": "threads social post output contract",
+  "description": "social_posts 저장 구조와 호환되는 threads 플랫폼 출력 계약. dry-run 또는 manual copy 전제이며 실제 Threads API 게시는 하지 않는다.",
+  "type": "object",
+  "properties": {
+    "platform": { "const": "threads" },
+    "tone_style": {
+      "type": "string",
+      "enum": [
+        "explanatory",
+        "informational",
+        "persuasive",
+        "warning",
+        "loss_aversion",
+        "curiosity",
+        "comparison",
+        "story"
+      ]
+    },
+    "post_title": { "type": ["string", "null"] },
+    "post_body": { "type": "string", "minLength": 1 },
+    "caption": { "type": ["string", "null"] },
+    "excerpt": { "type": ["string", "null"] },
+    "hashtags": { "type": "array", "items": { "type": "string" } },
+    "thread_items": { "type": "array", "items": { "type": "object" } },
+    "card_items": { "type": "array", "items": { "type": "object" } },
+    "media_requirements": { "type": "object" },
+    "platform_metadata": { "type": "object" },
+    "safety_notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["platform", "tone_style", "post_body"],
+  "additionalProperties": true
+}

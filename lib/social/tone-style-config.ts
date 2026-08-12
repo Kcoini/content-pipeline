@@ -85,3 +85,19 @@ export const TONE_STYLE_CONFIGS: Record<ToneStyle, ToneStyleConfig> = {
 export function getToneStyleConfig(toneStyle: ToneStyle): ToneStyleConfig {
   return TONE_STYLE_CONFIGS[toneStyle];
 }
+
+/** toneStyle → `prompts/tones/*.md` 파일명 매핑 (Phase 3-2, loss_aversion만 하이픈 표기). */
+export const TONE_PROMPT_FILENAMES: Record<ToneStyle, string> = {
+  explanatory: "explanatory.md",
+  informational: "informational.md",
+  persuasive: "persuasive.md",
+  warning: "warning.md",
+  loss_aversion: "loss-aversion.md",
+  curiosity: "curiosity.md",
+  comparison: "comparison.md",
+  story: "story.md",
+};
+
+export function getToneStylePromptFilename(toneStyle: ToneStyle): string {
+  return TONE_PROMPT_FILENAMES[toneStyle];
+}

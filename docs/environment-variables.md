@@ -67,6 +67,12 @@ cp .env.example .env.local
 | `IMAGE_GENERATION_TIMEOUT_MS` | 실제 provider 호출 타임아웃(ms). 기본값 `30000`. |
 | `OPENAI_API_KEY` | `IMAGE_GENERATION_PROVIDER=openai`일 때만 사용. 서버 코드에서만 사용한다. |
 
+## Multi-platform Writing
+
+| 변수 | 설명 |
+|---|---|
+| `SOCIAL_AI_GENERATION_ENABLED` | `true`이면 (다음 단계에서) 실제 Claude API로 platform/tone별 social post를 생성하고, `false`(기본값)이면 mock 생성으로 대체한다. 현재는 `true`로 설정해도 실제 AI 호출이 구현되어 있지 않다. |
+
 ## 안전 기본값 원칙
 
 위 `*_ENABLED` 플래그는 모두 기본값이 `false`(또는 `none`/`mock`)이다.

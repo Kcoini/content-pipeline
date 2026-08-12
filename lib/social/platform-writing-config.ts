@@ -153,3 +153,27 @@ export const PLATFORM_WRITING_CONFIGS: Record<SocialPlatform, PlatformWritingCon
 export function getPlatformWritingConfig(platform: SocialPlatform): PlatformWritingConfig {
   return PLATFORM_WRITING_CONFIGS[platform];
 }
+
+/** platform → `contracts/social/*.schema.json` 파일명 매핑 (Phase 3-2). */
+export const SOCIAL_OUTPUT_CONTRACT_FILENAMES: Record<SocialPlatform, string> = {
+  wordpress_blog: "wordpress-blog.schema.json",
+  naver_blog: "naver-blog.schema.json",
+  naver_cafe: "naver-cafe.schema.json",
+  x: "x-thread.schema.json",
+  threads: "threads.schema.json",
+  instagram: "instagram-caption.schema.json",
+};
+
+/** platform → `prompts/social/*.md` 파일명 매핑 (Phase 3-2). */
+export const SOCIAL_PLATFORM_PROMPT_FILENAMES: Record<SocialPlatform, string> = {
+  wordpress_blog: "wordpress-blog.md",
+  naver_blog: "naver-blog.md",
+  naver_cafe: "naver-cafe.md",
+  x: "x-thread.md",
+  threads: "threads.md",
+  instagram: "instagram-caption.md",
+};
+
+export function getSocialOutputContractName(platform: SocialPlatform): string {
+  return SOCIAL_OUTPUT_CONTRACT_FILENAMES[platform];
+}

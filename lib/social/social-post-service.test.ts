@@ -74,6 +74,8 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
       guidance: [],
       prohibitedPatterns: [],
     },
+    safetyRules: ["협박형 문장 금지", "광고 클릭 유도 금지"],
+    outputContractName: "naver-blog.schema.json",
     ...overrides,
   };
 }

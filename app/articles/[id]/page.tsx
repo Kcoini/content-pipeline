@@ -43,6 +43,7 @@ import {
   saveLocalFeaturedImageAction,
   saveExistingWordPressMediaSourceAction,
   generatePlaceholderSocialPostAction,
+  generateSocialDraftAction,
   refreshSocialPostsAction,
   runSocialPostQualityGateAction,
   approveSocialPostAction,
@@ -2114,10 +2115,13 @@ export default async function ArticleDetailPage({
           <h2 className="text-sm font-semibold text-zinc-700">Multi-platform Writing</h2>
           <p className="mt-1 text-xs text-zinc-500">
             이 기사를 WordPress 외 다른 플랫폼(네이버 블로그/카페, X,
-            Threads, Instagram)용 글로 변환하는 기능의 기초 구조입니다.
-            아직 실제 AI 글 생성이나 실제 플랫폼 게시는 연결되어 있지
-            않으며, 아래 &ldquo;새 플랫폼 글 초안 생성 준비&rdquo;는 구조 테스트용
-            placeholder draft만 생성합니다.
+            Threads, Instagram)용 글로 변환하는 기능입니다. &ldquo;플랫폼
+            글 초안 생성&rdquo;은 platform/tone별 prompt·context·출력
+            계약(contract) 구조를 실제로 조립해 mock 결과를 생성하고
+            검증합니다(SOCIAL_AI_GENERATION_ENABLED=false 기본값 — 실제
+            AI 호출/실제 플랫폼 게시는 아직 연결되어 있지 않습니다).
+            &ldquo;새 플랫폼 글 초안 생성 준비&rdquo;는 구조 테스트용
+            placeholder draft만 만드는 더 단순한 버전입니다.
           </p>
 
           <form action={generatePlaceholderSocialPostAction} className="mt-3 flex flex-wrap items-end gap-2">
@@ -2142,6 +2146,13 @@ export default async function ArticleDetailPage({
                 ))}
               </select>
             </label>
+            <button
+              type="submit"
+              formAction={generateSocialDraftAction}
+              className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+            >
+              플랫폼 글 초안 생성
+            </button>
             <button
               type="submit"
               className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
@@ -2216,6 +2227,12 @@ export default async function ArticleDetailPage({
                       )}
                       {post.hashtags.length > 0 && (
                         <p className="text-zinc-500">해시태그: {post.hashtags.map((tag) => `#${tag}`).join(" ")}</p>
+                      )}
+                      {typeof post.generationContext.contractName === "string" && (
+                        <p className="text-zinc-400">
+                          출력 계약: {post.generationContext.contractName}
+                          {post.generationContext.mock ? " (mock 생성)" : ""}
+                        </p>
                       )}
                       {post.errorMessage && <p className="text-red-600">오류: {post.errorMessage}</p>}
 
