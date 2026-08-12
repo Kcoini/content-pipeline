@@ -3,11 +3,19 @@ import type { SocialPost } from "./social-platform-types";
 import type { SocialWritingContext } from "./social-writing-context-builder";
 
 const createSocialPostDraft = vi.fn();
+const updateSocialPostQuality = vi.fn();
+const updateSocialPostPublishStatus = vi.fn();
 const logEvent = vi.fn();
 const buildSocialWritingContext = vi.fn();
+const generateSocialPostWithAI = vi.fn();
 
 vi.mock("@/lib/repositories/social-posts-repository", () => ({
   createSocialPostDraft: (...args: unknown[]) => createSocialPostDraft(...args),
+  updateSocialPostQuality: (...args: unknown[]) => updateSocialPostQuality(...args),
+  updateSocialPostPublishStatus: (...args: unknown[]) => updateSocialPostPublishStatus(...args),
+}));
+vi.mock("./social-ai-client", () => ({
+  generateSocialPostWithAI: (...args: unknown[]) => generateSocialPostWithAI(...args),
 }));
 vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
@@ -85,11 +93,16 @@ function makeSocialPost(overrides: Partial<SocialPost> = {}): SocialPost {
 
 beforeEach(() => {
   createSocialPostDraft.mockReset();
+  updateSocialPostQuality.mockReset();
+  updateSocialPostPublishStatus.mockReset();
   logEvent.mockReset();
   buildSocialWritingContext.mockReset();
+  generateSocialPostWithAI.mockReset();
 
   buildSocialWritingContext.mockResolvedValue(makeContext());
   createSocialPostDraft.mockImplementation(async (input) => makeSocialPost(input));
+  updateSocialPostQuality.mockImplementation(async (id, result) => makeSocialPost({ id, qualityStatus: result.status, qualityScore: result.score }));
+  updateSocialPostPublishStatus.mockImplementation(async (id, patch) => makeSocialPost({ id, publishStatus: patch.status }));
   logEvent.mockResolvedValue({});
 });
 
@@ -159,5 +172,96 @@ describe("generateSocialDraft", () => {
     expect(serialized).not.toContain("app_password");
     // context.excerpt(원문에서 파생된 긴 텍스트)가 통째로 로그에 들어가지 않아야 함
     expect(serialized).not.toContain("장기요양보험 신청 절차를 정리했습니다. 장기요양보험");
+  });
+
+  it("wordpress_blog draft를 생성할 수 있다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog") })
+    );
+
+    const result = await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    expect(result.success).toBe(true);
+    expect(createSocialPostDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ postTitle: expect.any(String), postBody: expect.any(String) })
+    );
+  });
+
+  it("naver_cafe draft를 생성할 수 있다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "naver_cafe", platformConfig: getPlatformWritingConfig("naver_cafe") })
+    );
+
+    const result = await generateSocialDraft("article-1", "naver_cafe", "curiosity");
+
+    expect(result.success).toBe(true);
+    expect(createSocialPostDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ postTitle: expect.any(String), postBody: expect.any(String) })
+    );
+  });
+
+  it("threads draft는 post_body를 생성한다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "threads", platformConfig: getPlatformWritingConfig("threads") })
+    );
+
+    const result = await generateSocialDraft("article-1", "threads", "story");
+
+    expect(result.success).toBe(true);
+    expect(createSocialPostDraft).toHaveBeenCalledWith(expect.objectContaining({ postBody: expect.any(String) }));
+  });
+
+  it("quality gate 결과가 social_posts에 반영된다 (updateSocialPostQuality 호출)", async () => {
+    await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    expect(updateSocialPostQuality).toHaveBeenCalledWith(
+      "social-post-1",
+      expect.objectContaining({ status: expect.any(String), score: expect.any(Number) })
+    );
+  });
+
+  it("SOCIAL_AI_GENERATION_ENABLED=true이면 social-ai-client를 호출한다", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: true,
+      output: { post_title: "AI 제목", post_body: "AI가 생성한 본문입니다." },
+      usage: { inputTokens: 120, outputTokens: 80 },
+    });
+
+    const result = await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    expect(result.success).toBe(true);
+    expect(generateSocialPostWithAI).toHaveBeenCalledTimes(1);
+    expect(createSocialPostDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ postTitle: "AI 제목", postBody: "AI가 생성한 본문입니다." })
+    );
+    vi.unstubAllEnvs();
+  });
+
+  it("SOCIAL_AI_GENERATION_ENABLED=true인데 AI 호출이 실패하면 안전한 실패를 반환한다", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    generateSocialPostWithAI.mockResolvedValue({ ok: false, error: "AI 호출 실패" });
+
+    const result = await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    expect(result.success).toBe(false);
+    expect(createSocialPostDraft).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it("logs에 API로 생성된 full post body가 저장되지 않는다 (AI 모드)", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    const fullBody = "AI가 생성한 매우 긴 본문입니다. ".repeat(50);
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: true,
+      output: { post_title: "AI 제목", post_body: fullBody },
+      usage: { inputTokens: 120, outputTokens: 80 },
+    });
+
+    await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    const serialized = JSON.stringify(logEvent.mock.calls);
+    expect(serialized).not.toContain(fullBody);
+    vi.unstubAllEnvs();
   });
 });

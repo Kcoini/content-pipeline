@@ -74,7 +74,8 @@ export function assembleSocialWritingPrompt(context: SocialWritingContext): Asse
 
   const systemPrompt = [
     "당신은 멀티 플랫폼 콘텐츠 에디터입니다.",
-    "아래 platform/tone/safety 규칙을 반드시 지켜 JSON만 출력하세요 (그 외 텍스트는 출력하지 마세요).",
+    "아래 platform/tone/safety 규칙을 반드시 지켜 JSON만 출력하세요.",
+    "markdown code fence(```)를 사용하지 말고, JSON 객체 하나만 출력하세요. 그 외 설명 텍스트는 절대 출력하지 마세요.",
     "출처에 없는 사실을 단정하지 마세요. 원문을 그대로 복사하지 마세요.",
     "사람이 승인하기 전에는 어떤 경우에도 실제 게시가 이루어지지 않습니다.",
     "",
@@ -85,7 +86,25 @@ export function assembleSocialWritingPrompt(context: SocialWritingContext): Asse
     "## Safety 규칙",
     safetyPrompt,
     `## 출력 계약: ${context.outputContractName}`,
-    "위 platform 프롬프트의 '출력 JSON 형식'을 그대로 따르세요.",
+    "위 platform 프롬프트의 '출력 JSON 형식'을 그대로 따르세요. 공통 필드 예시:",
+    JSON.stringify(
+      {
+        platform: context.platform,
+        tone_style: context.toneStyle,
+        post_title: "...",
+        post_body: "...",
+        caption: null,
+        excerpt: "...",
+        hashtags: ["..."],
+        thread_items: [],
+        card_items: [],
+        media_requirements: {},
+        platform_metadata: {},
+        safety_notes: [],
+      },
+      null,
+      2
+    ),
   ].join("\n\n");
 
   const userPrompt = buildUserPrompt(context);

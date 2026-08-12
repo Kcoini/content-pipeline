@@ -7,6 +7,7 @@ import { getLogsByArticleId } from "@/lib/harness/logger";
 import { getPublishLogsByArticleId } from "@/lib/repositories/publish-repository";
 import { listSocialPostsByArticle } from "@/lib/repositories/social-posts-repository";
 import { SOCIAL_PLATFORMS, TONE_STYLES } from "@/lib/social/social-platform-types";
+import { isSocialAiGenerationEnabled } from "@/lib/social/social-ai-generation-config";
 import type { ArticleStatus } from "@/lib/types/domain";
 import {
   approveArticleAction,
@@ -2117,12 +2118,23 @@ export default async function ArticleDetailPage({
             이 기사를 WordPress 외 다른 플랫폼(네이버 블로그/카페, X,
             Threads, Instagram)용 글로 변환하는 기능입니다. &ldquo;플랫폼
             글 초안 생성&rdquo;은 platform/tone별 prompt·context·출력
-            계약(contract) 구조를 실제로 조립해 mock 결과를 생성하고
-            검증합니다(SOCIAL_AI_GENERATION_ENABLED=false 기본값 — 실제
-            AI 호출/실제 플랫폼 게시는 아직 연결되어 있지 않습니다).
-            &ldquo;새 플랫폼 글 초안 생성 준비&rdquo;는 구조 테스트용
-            placeholder draft만 만드는 더 단순한 버전입니다.
+            계약(contract) 구조를 조립해 결과를 생성하고 자동으로 quality
+            gate까지 실행합니다. &ldquo;새 플랫폼 글 초안 생성 준비&rdquo;는
+            구조 테스트용 placeholder draft만 만드는 더 단순한 버전입니다.
           </p>
+          {isSocialAiGenerationEnabled() ? (
+            <p className="mt-1 text-xs font-medium text-indigo-700">
+              AI 생성 모드입니다 (SOCIAL_AI_GENERATION_ENABLED=true). 실제
+              Claude API로 초안을 생성합니다 — 게시 전 반드시 사람의 승인이
+              필요하며, 생성된 글은 아직 어디에도 실제로 게시되지 않습니다.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              현재 mock/dry-run 생성 모드입니다 (SOCIAL_AI_GENERATION_ENABLED=false).
+              실제 AI 호출 없이 구조 검증용 mock 결과만 생성합니다. 생성된
+              글은 아직 어디에도 실제로 게시되지 않습니다.
+            </p>
+          )}
 
           <form action={generatePlaceholderSocialPostAction} className="mt-3 flex flex-wrap items-end gap-2">
             <input type="hidden" name="articleId" value={article.id} />
@@ -2231,8 +2243,38 @@ export default async function ArticleDetailPage({
                       {typeof post.generationContext.contractName === "string" && (
                         <p className="text-zinc-400">
                           출력 계약: {post.generationContext.contractName}
-                          {post.generationContext.mock ? " (mock 생성)" : ""}
+                          {post.generationContext.mock ? " (mock 생성)" : " (AI 생성)"}
                         </p>
+                      )}
+                      {Array.isArray((post.qualitySummary as { blockedReasons?: unknown }).blockedReasons) &&
+                        ((post.qualitySummary as { blockedReasons: string[] }).blockedReasons.length > 0) && (
+                          <div className="text-red-600">
+                            <p className="font-medium">차단 사유:</p>
+                            <ul className="list-inside list-disc">
+                              {(post.qualitySummary as { blockedReasons: string[] }).blockedReasons.map((reason, i) => (
+                                <li key={i}>{reason}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      {Array.isArray((post.qualitySummary as { warnings?: unknown }).warnings) &&
+                        ((post.qualitySummary as { warnings: string[] }).warnings.length > 0) && (
+                          <div className="text-amber-700">
+                            <p className="font-medium">경고:</p>
+                            <ul className="list-inside list-disc">
+                              {(post.qualitySummary as { warnings: string[] }).warnings.map((warning, i) => (
+                                <li key={i}>{warning}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      {Object.keys(post.exportPayload).length > 0 && (
+                        <div className="text-zinc-500">
+                          <p className="font-medium text-zinc-600">export payload ({post.exportFormat}):</p>
+                          <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-1 text-[10px]">
+                            {JSON.stringify(post.exportPayload, null, 2)}
+                          </pre>
+                        </div>
                       )}
                       {post.errorMessage && <p className="text-red-600">오류: {post.errorMessage}</p>}
 

@@ -219,7 +219,13 @@ export type LogEventType =
   | "social_contract_validation_completed"
   | "social_draft_generation_started"
   | "social_draft_generation_completed"
-  | "social_draft_generation_failed";
+  | "social_draft_generation_failed"
+  // Phase 3-3: Platform Writing Templates & Real Draft Generation 이벤트
+  | "social_context_build_started"
+  | "social_context_build_completed"
+  | "social_ai_generation_started"
+  | "social_ai_generation_completed"
+  | "social_ai_generation_skipped_mock_mode";
 
 export type LogStatus = "success" | "failed" | "info";
 

@@ -71,7 +71,10 @@ cp .env.example .env.local
 
 | 변수 | 설명 |
 |---|---|
-| `SOCIAL_AI_GENERATION_ENABLED` | `true`이면 (다음 단계에서) 실제 Claude API로 platform/tone별 social post를 생성하고, `false`(기본값)이면 mock 생성으로 대체한다. 현재는 `true`로 설정해도 실제 AI 호출이 구현되어 있지 않다. |
+| `SOCIAL_AI_GENERATION_ENABLED` | `true`이면 실제 Claude API로 platform/tone별 social post를 생성하고, `false`(기본값)이면 mock 생성으로 대체한다. 실제 호출 시 `ANTHROPIC_API_KEY`(Phase 1-4와 동일)를 재사용한다. |
+| `SOCIAL_AI_MODEL` | 실제 AI 생성 시 사용할 모델명. 비워두면 안전한 기본값(`claude-sonnet-4-5`)을 사용한다. |
+| `SOCIAL_AI_MAX_TOKENS` | 실제 AI 생성 시 `max_tokens`. 비워두면 기본값(`3000`)을 사용한다. |
+| `SOCIAL_AI_TEMPERATURE` | 실제 AI 생성 시 `temperature`(0~1). 비워두면 기본값(`0.7`)을 사용한다. |
 
 ## 안전 기본값 원칙
 
