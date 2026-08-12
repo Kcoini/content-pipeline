@@ -90,6 +90,32 @@ export type SocialPostVersionStatus = "current" | "archived" | "superseded" | "d
 /** Phase 3-12: 원본 vs rewrite version 비교 상태. */
 export type VersionComparisonStatus = "not_compared" | "original_better" | "rewrite_better" | "similar" | "needs_review" | "blocked" | "failed";
 
+/** Phase 3-13: rewrite version 전용 재승인 상태. approval_status와 별도로 관리된다. */
+export type RewriteReapprovalStatus = "not_requested" | "pending_review" | "approved" | "rejected" | "revoked" | "blocked" | "failed";
+
+/** Phase 3-13: rewrite version 전용 재export 상태. export_status와 별도로 관리된다. */
+export type RewriteReexportStatus = "not_started" | "ready" | "exported" | "blocked" | "failed";
+
+/**
+ * Phase 3-13: rewrite version이 재게시 준비 과정 중 어디에 있는지 요약한
+ * 상태. social_posts.rewrite_republish_workflow_status 컬럼(check
+ * 제약)과 정확히 일치한다 — 그 외 세부 안내는 nextAction 텍스트로 전달한다.
+ */
+export type RewriteRepublishWorkflowStatus =
+  | "not_started"
+  | "ready_for_reapproval"
+  | "reapproval_pending"
+  | "reapproved"
+  | "reexport_ready"
+  | "reexported"
+  | "guard_ready"
+  | "dry_run_ready"
+  | "handoff_ready"
+  | "handoff_completed"
+  | "manual_post_recorded"
+  | "blocked"
+  | "failed";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -237,6 +263,20 @@ export interface SocialPost {
   versionComparisonScore: number | null;
   recommendedForRepost: boolean;
   versionComparisonCheckedAt: string | null;
+  /** Phase 3-13: Rewrite Re-approval & Re-export Workflow */
+  rewriteReapprovalStatus: RewriteReapprovalStatus;
+  rewriteReapprovalRequestedAt: string | null;
+  rewriteReapprovalRequestedBy: string | null;
+  rewriteReapprovedAt: string | null;
+  rewriteReapprovedBy: string | null;
+  rewriteReapprovalNotes: string | null;
+  rewriteReapprovalError: string | null;
+  rewriteReexportStatus: RewriteReexportStatus;
+  rewriteReexportedAt: string | null;
+  rewriteReexportedBy: string | null;
+  rewriteReexportError: string | null;
+  rewriteRepublishWorkflowStatus: RewriteRepublishWorkflowStatus;
+  rewriteRepublishWorkflowSummary: Record<string, unknown>;
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */

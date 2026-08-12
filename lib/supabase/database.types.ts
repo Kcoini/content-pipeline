@@ -592,6 +592,20 @@ export type SocialPostRow = {
   version_comparison_score: number | null;
   recommended_for_repost: boolean;
   version_comparison_checked_at: string | null;
+  // Phase 3-13: Rewrite Re-approval & Re-export Workflow
+  rewrite_reapproval_status: string;
+  rewrite_reapproval_requested_at: string | null;
+  rewrite_reapproval_requested_by: string | null;
+  rewrite_reapproved_at: string | null;
+  rewrite_reapproved_by: string | null;
+  rewrite_reapproval_notes: string | null;
+  rewrite_reapproval_error: string | null;
+  rewrite_reexport_status: string;
+  rewrite_reexported_at: string | null;
+  rewrite_reexported_by: string | null;
+  rewrite_reexport_error: string | null;
+  rewrite_republish_workflow_status: string;
+  rewrite_republish_workflow_summary: Record<string, unknown>;
 };
 
 export type SocialPostVersionComparisonRow = {

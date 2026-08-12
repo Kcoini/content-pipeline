@@ -40,6 +40,13 @@ const {
   updateVersionComparisonSummary,
   listRewriteVersionsNeedingComparison,
   listRecommendedRewriteVersions,
+  updateRewriteReapprovalStatus,
+  updateRewriteReexportStatus,
+  updateRewriteRepublishWorkflowStatus,
+  getRewriteVersionForReapproval,
+  listRewriteVersionsReadyForReapproval,
+  listRewriteVersionsReadyForReexport,
+  listRewriteRepublishWorkflowByArticle,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -134,6 +141,19 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     version_comparison_score: null,
     recommended_for_repost: false,
     version_comparison_checked_at: null,
+    rewrite_reapproval_status: "not_requested",
+    rewrite_reapproval_requested_at: null,
+    rewrite_reapproval_requested_by: null,
+    rewrite_reapproved_at: null,
+    rewrite_reapproved_by: null,
+    rewrite_reapproval_notes: null,
+    rewrite_reapproval_error: null,
+    rewrite_reexport_status: "not_started",
+    rewrite_reexported_at: null,
+    rewrite_reexported_by: null,
+    rewrite_reexport_error: null,
+    rewrite_republish_workflow_status: "not_started",
+    rewrite_republish_workflow_summary: {},
     ...overrides,
   };
 }
@@ -147,6 +167,7 @@ function makeChain(result: { data: unknown; error: unknown }) {
   chain.update = vi.fn(self);
   chain.delete = vi.fn(self);
   chain.eq = vi.fn(self);
+  chain.neq = vi.fn(self);
   chain.in = vi.fn(self);
   chain.order = vi.fn(self);
   chain.limit = vi.fn(self);
@@ -684,6 +705,92 @@ describe("version comparison (Phase 3-12)", () => {
     const result = await listRecommendedRewriteVersions("article-1");
 
     expect(chain.eq).toHaveBeenCalledWith("recommended_for_repost", true);
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe("rewrite reapproval/reexport/workflow (Phase 3-13)", () => {
+  it("updateRewriteReapprovalStatus는 rewrite_reapproval_status와 함께 approval_status도 저장할 수 있다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow({ rewrite_reapproval_status: "approved" }), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateRewriteReapprovalStatus("social-post-2", {
+      rewriteReapprovalStatus: "approved",
+      approvalStatus: "approved",
+      approvedBy: "editor",
+      approvedAt: "2026-01-17T00:00:00.000Z",
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ rewrite_reapproval_status: "approved", approval_status: "approved", approved_by: "editor" })
+    );
+  });
+
+  it("updateRewriteReexportStatus는 rewrite_reexport_status와 export 관련 필드를 저장한다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow({ rewrite_reexport_status: "exported" }), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateRewriteReexportStatus("social-post-2", {
+      rewriteReexportStatus: "exported",
+      exportStatus: "exported",
+      exportPayload: { exportTitle: "제목" },
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ rewrite_reexport_status: "exported", export_status: "exported" })
+    );
+  });
+
+  it("updateRewriteRepublishWorkflowStatus는 status/summary를 저장한다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow({ rewrite_republish_workflow_status: "reapproved" }), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateRewriteRepublishWorkflowStatus("social-post-2", { status: "reapproved", summary: { qualityStatus: "ready" } });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ rewrite_republish_workflow_status: "reapproved", rewrite_republish_workflow_summary: { qualityStatus: "ready" } })
+    );
+  });
+
+  it("getRewriteVersionForReapproval은 social post를 조회한다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow(), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await getRewriteVersionForReapproval("social-post-1");
+
+    expect(result?.id).toBe("social-post-1");
+  });
+
+  it("listRewriteVersionsReadyForReapproval은 추천되고 아직 요청 전인 rewrite version만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ is_rewrite_version: true, recommended_for_repost: true, rewrite_reapproval_status: "not_requested" })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRewriteVersionsReadyForReapproval("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("rewrite_reapproval_status", "not_requested");
+    expect(result).toHaveLength(1);
+  });
+
+  it("listRewriteVersionsReadyForReexport는 재승인 완료 & 미export인 rewrite version만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ is_rewrite_version: true, rewrite_reapproval_status: "approved" })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRewriteVersionsReadyForReexport("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("rewrite_reapproval_status", "approved");
+    expect(result).toHaveLength(1);
+  });
+
+  it("listRewriteRepublishWorkflowByArticle는 is_rewrite_version=true인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ is_rewrite_version: true })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRewriteRepublishWorkflowByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("is_rewrite_version", true);
     expect(result).toHaveLength(1);
   });
 });

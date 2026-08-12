@@ -69,6 +69,13 @@ import {
   applyRewriteSuggestionAction,
   recheckRewriteVersionQualityAction,
   compareRewriteVersionAction,
+  requestRewriteReapprovalAction,
+  approveRewriteReapprovalAction,
+  rejectRewriteReapprovalAction,
+  revokeRewriteReapprovalAction,
+  prepareRewriteReexportAction,
+  generateRewriteReexportPayloadAction,
+  refreshRewriteRepublishWorkflowStatusAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { listMetricsBySocialPost } from "@/lib/repositories/social-metrics-repository";
@@ -2327,7 +2334,7 @@ export default async function ArticleDetailPage({
                     )}
                   </p>
 
-                  {/* Phase 3-11/3-12: Version History (+ 비교 상태) */}
+                  {/* Phase 3-11/3-12/3-13: Version History (+ 비교/재승인/재export 상태) */}
                   {(() => {
                     const chain = versionChainByPostId.get(post.id) ?? [];
                     if (chain.length <= 1) return null;
@@ -2341,9 +2348,15 @@ export default async function ArticleDetailPage({
                               {v.isRewriteVersion
                                 ? ` · quality: ${v.qualityStatus === "not_checked" ? "재검사 필요" : v.qualityStatus} · 비교: ${
                                     v.versionComparisonStatus === "not_compared" ? "비교 필요" : v.versionComparisonStatus
-                                  }`
+                                  } · 재승인: ${v.rewriteReapprovalStatus} · 재export: ${v.rewriteReexportStatus} · workflow: ${v.rewriteRepublishWorkflowStatus}`
                                 : ""}
                               {v.recommendedForRepost ? " · 재게시 후보" : ""}
+                              {v.rewriteReapprovalStatus === "pending_review" ? " · 재승인 대기" : ""}
+                              {v.rewriteReexportStatus === "exported" ? " · 재Export 완료" : ""}
+                              {v.handoffStatus === "completed" ? " · Handoff 완료" : ""}
+                              {v.manualPostStatus === "posted" ? " · 수동 재게시 기록 완료" : ""}
+                              {v.postUrl ? ` · URL: ${v.postUrl}` : ""}
+                              {v.latestPerformanceScore != null ? ` · 성과: ${v.latestPerformanceScore}점` : ""}
                               {v.id === post.id ? " ← 현재 카드" : ""}
                             </li>
                           ))}
@@ -3527,6 +3540,127 @@ export default async function ArticleDetailPage({
                               </button>
                             </form>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Phase 3-13: Rewrite Re-approval & Re-export Workflow */}
+                      {post.isRewriteVersion && (
+                        <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                          <p className="font-medium text-zinc-600">
+                            Rewrite Republish Workflow
+                            {post.recommendedForRepost && (
+                              <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">재게시 후보</span>
+                            )}
+                          </p>
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            추천된 rewrite version도 자동 게시되지 않습니다. 재승인 후 다시 Export,
+                            Guard, Dry-run, Handoff 과정을 거쳐야 합니다. 원본 게시글과 성과 기록은
+                            보존됩니다.
+                          </p>
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            workflow: <span className="font-mono">{post.rewriteRepublishWorkflowStatus}</span> · 재승인:{" "}
+                            <span className="font-mono">{post.rewriteReapprovalStatus}</span> · 재export:{" "}
+                            <span className="font-mono">{post.rewriteReexportStatus}</span>
+                          </p>
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            approval: {post.approvalStatus} · quality: {post.qualityStatus} · export: {post.exportStatus} · guard:{" "}
+                            {post.platformPublishGuardStatus} · dry-run: {post.platformPublishDryRunStatus} · handoff: {post.handoffStatus} ·
+                            manual_post: {post.manualPostStatus}
+                          </p>
+                          {post.qualityStatus !== "ready" && (
+                            <p className="mt-1 text-amber-700">⚠ quality_status가 ready가 아닙니다 — 재승인 요청 전 Quality Recheck를 먼저 실행하세요.</p>
+                          )}
+                          {post.rewriteReapprovalError && <p className="mt-1 text-red-600">재승인 오류: {post.rewriteReapprovalError}</p>}
+                          {post.rewriteReexportError && <p className="mt-1 text-red-600">재export 오류: {post.rewriteReexportError}</p>}
+
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <form action={requestRewriteReapprovalAction} className="flex items-center gap-1">
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input name="notes" placeholder="메모 (선택)" className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]" />
+                              <button
+                                type="submit"
+                                disabled={post.rewriteReapprovalStatus !== "not_requested"}
+                                className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                재승인 요청
+                              </button>
+                            </form>
+                            <form action={approveRewriteReapprovalAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                disabled={post.rewriteReapprovalStatus !== "pending_review"}
+                                className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                재승인 승인
+                              </button>
+                            </form>
+                            <form action={rejectRewriteReapprovalAction} className="flex items-center gap-1">
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input name="reason" placeholder="반려 사유" className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]" />
+                              <button
+                                type="submit"
+                                disabled={post.rewriteReapprovalStatus !== "pending_review"}
+                                className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                재승인 반려
+                              </button>
+                            </form>
+                            <form action={revokeRewriteReapprovalAction} className="flex items-center gap-1">
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input name="reason" placeholder="취소 사유" className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]" />
+                              <button
+                                type="submit"
+                                disabled={post.rewriteReapprovalStatus !== "approved"}
+                                className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                재승인 취소
+                              </button>
+                            </form>
+                            <form action={prepareRewriteReexportAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                disabled={post.rewriteReapprovalStatus !== "approved"}
+                                className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                재Export 준비
+                              </button>
+                            </form>
+                            <form action={generateRewriteReexportPayloadAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                disabled={post.rewriteReapprovalStatus !== "approved"}
+                                className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                재Export 생성
+                              </button>
+                            </form>
+                            <form action={refreshRewriteRepublishWorkflowStatusAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                              >
+                                Workflow 상태 새로고침
+                              </button>
+                            </form>
+                          </div>
+                          {post.rewriteReexportStatus === "exported" && (
+                            <p className="mt-2 text-zinc-500">
+                              재export가 완료되었습니다 — 위 &quot;Platform Publishing Guard&quot;/&quot;Platform
+                              Publish Dry-run &amp; Handoff&quot;/&quot;Manual Posting Result&quot; 섹션의 기존
+                              버튼을 이어서 사용하세요.
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>

@@ -25,6 +25,9 @@ import {
   type HandoffStatus,
   type ManualPostStatus,
   type ManualPostingChecklistItem,
+  type RewriteReapprovalStatus,
+  type RewriteReexportStatus,
+  type RewriteRepublishWorkflowStatus,
   type ThreadItem,
   type CardItem,
 } from "@/lib/social/social-platform-types";
@@ -175,6 +178,19 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     versionComparisonScore: row.version_comparison_score,
     recommendedForRepost: row.recommended_for_repost,
     versionComparisonCheckedAt: row.version_comparison_checked_at,
+    rewriteReapprovalStatus: row.rewrite_reapproval_status as SocialPost["rewriteReapprovalStatus"],
+    rewriteReapprovalRequestedAt: row.rewrite_reapproval_requested_at,
+    rewriteReapprovalRequestedBy: row.rewrite_reapproval_requested_by,
+    rewriteReapprovedAt: row.rewrite_reapproved_at,
+    rewriteReapprovedBy: row.rewrite_reapproved_by,
+    rewriteReapprovalNotes: row.rewrite_reapproval_notes,
+    rewriteReapprovalError: row.rewrite_reapproval_error,
+    rewriteReexportStatus: row.rewrite_reexport_status as SocialPost["rewriteReexportStatus"],
+    rewriteReexportedAt: row.rewrite_reexported_at,
+    rewriteReexportedBy: row.rewrite_reexported_by,
+    rewriteReexportError: row.rewrite_reexport_error,
+    rewriteRepublishWorkflowStatus: row.rewrite_republish_workflow_status as SocialPost["rewriteRepublishWorkflowStatus"],
+    rewriteRepublishWorkflowSummary: row.rewrite_republish_workflow_summary,
   };
 }
 
@@ -1280,6 +1296,173 @@ export async function listRecommendedRewriteVersions(articleId: string): Promise
 
   if (error) {
     throw new Error(`재게시 후보 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+export interface UpdateRewriteReapprovalStatusPatch {
+  rewriteReapprovalStatus: RewriteReapprovalStatus;
+  requestedAt?: string | null;
+  requestedBy?: string | null;
+  reapprovedAt?: string | null;
+  reapprovedBy?: string | null;
+  notes?: string | null;
+  error?: string | null;
+  approvalStatus?: SocialPost["approvalStatus"];
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+}
+
+/** rewrite version의 재승인(reapproval) 상태를 갱신한다 (Phase 3-13). 필요 시 approval_status도 함께 맞춘다. */
+export async function updateRewriteReapprovalStatus(id: string, patch: UpdateRewriteReapprovalStatusPatch): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    rewrite_reapproval_status: patch.rewriteReapprovalStatus,
+    rewrite_reapproval_error: patch.error ?? null,
+  };
+  if (patch.requestedAt !== undefined) update.rewrite_reapproval_requested_at = patch.requestedAt;
+  if (patch.requestedBy !== undefined) update.rewrite_reapproval_requested_by = patch.requestedBy;
+  if (patch.reapprovedAt !== undefined) update.rewrite_reapproved_at = patch.reapprovedAt;
+  if (patch.reapprovedBy !== undefined) update.rewrite_reapproved_by = patch.reapprovedBy;
+  if (patch.notes !== undefined) update.rewrite_reapproval_notes = patch.notes;
+  if (patch.approvalStatus !== undefined) update.approval_status = patch.approvalStatus;
+  if (patch.approvedBy !== undefined) update.approved_by = patch.approvedBy;
+  if (patch.approvedAt !== undefined) update.approved_at = patch.approvedAt;
+  if (patch.rejectionReason !== undefined) update.rejection_reason = patch.rejectionReason;
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`rewrite 재승인 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+export interface UpdateRewriteReexportStatusPatch {
+  rewriteReexportStatus: RewriteReexportStatus;
+  reexportedAt?: string | null;
+  reexportedBy?: string | null;
+  error?: string | null;
+  exportStatus?: SocialPost["exportStatus"];
+  exportPayload?: Record<string, unknown>;
+  exportFormat?: string | null;
+  exportedAt?: string | null;
+  exportedBy?: string | null;
+}
+
+/** rewrite version의 재export(reexport) 상태를 갱신한다 (Phase 3-13). 원본의 export_payload는 건드리지 않는다. */
+export async function updateRewriteReexportStatus(id: string, patch: UpdateRewriteReexportStatusPatch): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    rewrite_reexport_status: patch.rewriteReexportStatus,
+    rewrite_reexport_error: patch.error ?? null,
+  };
+  if (patch.reexportedAt !== undefined) update.rewrite_reexported_at = patch.reexportedAt;
+  if (patch.reexportedBy !== undefined) update.rewrite_reexported_by = patch.reexportedBy;
+  if (patch.exportStatus !== undefined) update.export_status = patch.exportStatus;
+  if (patch.exportPayload !== undefined) update.export_payload = patch.exportPayload;
+  if (patch.exportFormat !== undefined) update.export_format = patch.exportFormat;
+  if (patch.exportedAt !== undefined) update.exported_at = patch.exportedAt;
+  if (patch.exportedBy !== undefined) update.exported_by = patch.exportedBy;
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`rewrite 재export 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+export interface UpdateRewriteRepublishWorkflowStatusPatch {
+  status: RewriteRepublishWorkflowStatus;
+  summary?: Record<string, unknown>;
+}
+
+/** rewrite version의 재게시 준비 workflow 상태 요약을 갱신한다 (Phase 3-13). */
+export async function updateRewriteRepublishWorkflowStatus(
+  id: string,
+  patch: UpdateRewriteRepublishWorkflowStatusPatch
+): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    rewrite_republish_workflow_status: patch.status,
+  };
+  if (patch.summary !== undefined) update.rewrite_republish_workflow_summary = patch.summary;
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`rewrite republish workflow 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** 재승인 처리에 필요한 rewrite version social post 하나를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getRewriteVersionForReapproval(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+/** 특정 기사에서 재승인 요청 대상(추천된, 아직 요청 전인) rewrite version만 조회한다. */
+export async function listRewriteVersionsReadyForReapproval(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .eq("recommended_for_repost", true)
+    .eq("rewrite_reapproval_status", "not_requested")
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`재승인 대상 rewrite version 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 기사에서 재export 가능한(재승인 완료, 아직 export 전인) rewrite version만 조회한다. */
+export async function listRewriteVersionsReadyForReexport(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .eq("rewrite_reapproval_status", "approved")
+    .neq("rewrite_reexport_status", "exported")
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`재export 대상 rewrite version 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 기사에 속한 모든 rewrite version의 재게시 workflow 상태를 조회한다. */
+export async function listRewriteRepublishWorkflowByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`기사별 rewrite republish workflow 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);

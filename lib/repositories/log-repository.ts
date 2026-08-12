@@ -294,7 +294,22 @@ export type LogEventType =
   | "social_rewrite_version_comparison_started"
   | "social_rewrite_version_comparison_completed"
   | "social_rewrite_version_comparison_blocked"
-  | "social_rewrite_version_comparison_failed";
+  | "social_rewrite_version_comparison_failed"
+  // Phase 3-13: Rewrite Re-approval & Re-export Workflow 이벤트
+  | "social_rewrite_reapproval_requested"
+  | "social_rewrite_reapproval_approved"
+  | "social_rewrite_reapproval_rejected"
+  | "social_rewrite_reapproval_revoked"
+  | "social_rewrite_reapproval_blocked"
+  | "social_rewrite_reapproval_failed"
+  | "social_rewrite_reexport_prepare_started"
+  | "social_rewrite_reexport_prepare_completed"
+  | "social_rewrite_reexport_started"
+  | "social_rewrite_reexport_completed"
+  | "social_rewrite_reexport_blocked"
+  | "social_rewrite_reexport_failed"
+  | "social_rewrite_republish_workflow_refreshed"
+  | "social_rewrite_republish_workflow_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 
