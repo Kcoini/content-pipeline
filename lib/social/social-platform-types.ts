@@ -87,6 +87,9 @@ export type RewriteSuggestionStatus = "draft" | "ready" | "needs_review" | "appr
 /** Phase 3-11: social_posts 버전 상태. */
 export type SocialPostVersionStatus = "current" | "archived" | "superseded" | "draft" | "rejected";
 
+/** Phase 3-12: 원본 vs rewrite version 비교 상태. */
+export type VersionComparisonStatus = "not_compared" | "original_better" | "rewrite_better" | "similar" | "needs_review" | "blocked" | "failed";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -228,6 +231,12 @@ export interface SocialPost {
   rewriteAppliedBy: string | null;
   rewriteApplicationNotes: string | null;
   isRewriteVersion: boolean;
+  /** Phase 3-12: Rewrite Version Quality Recheck & Comparison */
+  latestVersionComparisonId: string | null;
+  versionComparisonStatus: VersionComparisonStatus;
+  versionComparisonScore: number | null;
+  recommendedForRepost: boolean;
+  versionComparisonCheckedAt: string | null;
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */

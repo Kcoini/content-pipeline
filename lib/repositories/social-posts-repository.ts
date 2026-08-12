@@ -170,6 +170,11 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     rewriteAppliedBy: row.rewrite_applied_by,
     rewriteApplicationNotes: row.rewrite_application_notes,
     isRewriteVersion: row.is_rewrite_version,
+    latestVersionComparisonId: row.latest_version_comparison_id,
+    versionComparisonStatus: row.version_comparison_status as SocialPost["versionComparisonStatus"],
+    versionComparisonScore: row.version_comparison_score,
+    recommendedForRepost: row.recommended_for_repost,
+    versionComparisonCheckedAt: row.version_comparison_checked_at,
   };
 }
 
@@ -1202,6 +1207,79 @@ export async function listRewriteVersionsByRoot(rootSocialPostId: string): Promi
 
   if (error) {
     throw new Error(`root social post 기준 버전 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 버전 비교에 필요한 social post 하나를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getSocialPostForVersionComparison(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+export interface UpdateVersionComparisonSummaryPatch {
+  latestVersionComparisonId: string;
+  versionComparisonStatus: SocialPost["versionComparisonStatus"];
+  versionComparisonScore?: number | null;
+  recommendedForRepost?: boolean;
+}
+
+/** social_posts의 버전 비교 요약 컬럼을 갱신한다 (Phase 3-12). */
+export async function updateVersionComparisonSummary(id: string, patch: UpdateVersionComparisonSummaryPatch): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      latest_version_comparison_id: patch.latestVersionComparisonId,
+      version_comparison_status: patch.versionComparisonStatus,
+      version_comparison_score: patch.versionComparisonScore ?? null,
+      recommended_for_repost: patch.recommendedForRepost ?? false,
+      version_comparison_checked_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post 버전 비교 요약 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** 특정 기사에서 아직 비교하지 않은(version_comparison_status='not_compared') rewrite version만 조회한다. */
+export async function listRewriteVersionsNeedingComparison(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .eq("version_comparison_status", "not_compared")
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`비교 필요한 rewrite version 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 기사에서 재게시 후보(recommended_for_repost=true)로 표시된 social post만 조회한다. */
+export async function listRecommendedRewriteVersions(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("recommended_for_repost", true)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`재게시 후보 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);

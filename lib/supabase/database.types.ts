@@ -586,6 +586,44 @@ export type SocialPostRow = {
   rewrite_applied_by: string | null;
   rewrite_application_notes: string | null;
   is_rewrite_version: boolean;
+  // Phase 3-12: Rewrite Version Quality Recheck & Comparison
+  latest_version_comparison_id: string | null;
+  version_comparison_status: string;
+  version_comparison_score: number | null;
+  recommended_for_repost: boolean;
+  version_comparison_checked_at: string | null;
+};
+
+export type SocialPostVersionComparisonRow = {
+  id: string;
+  article_id: string;
+  root_social_post_id: string;
+  original_social_post_id: string;
+  rewrite_social_post_id: string;
+  rewrite_source_suggestion_id: string | null;
+  platform: SocialPlatform;
+  original_version_number: number | null;
+  rewrite_version_number: number | null;
+  original_quality_status: string | null;
+  original_quality_score: number | null;
+  rewrite_quality_status: string | null;
+  rewrite_quality_score: number | null;
+  original_performance_status: string | null;
+  original_performance_score: number | null;
+  rewrite_performance_status: string | null;
+  rewrite_performance_score: number | null;
+  comparison_status: string;
+  comparison_score: number | null;
+  recommended_social_post_id: string | null;
+  recommendation_reason: string | null;
+  comparison_summary: Record<string, unknown>;
+  checklist: Record<string, unknown>[];
+  warnings: Record<string, unknown>[];
+  failures: Record<string, unknown>[];
+  compared_by: string | null;
+  compared_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SocialPostVersionRow = {
@@ -818,6 +856,13 @@ export interface Database {
         Insert: Partial<SocialPostVersionRow> &
           Pick<SocialPostVersionRow, "social_post_id" | "article_id" | "root_social_post_id" | "version_number" | "platform" | "tone_style">;
         Update: Partial<SocialPostVersionRow>;
+        Relationships: [];
+      };
+      social_post_version_comparisons: {
+        Row: SocialPostVersionComparisonRow;
+        Insert: Partial<SocialPostVersionComparisonRow> &
+          Pick<SocialPostVersionComparisonRow, "article_id" | "root_social_post_id" | "original_social_post_id" | "rewrite_social_post_id" | "platform">;
+        Update: Partial<SocialPostVersionComparisonRow>;
         Relationships: [];
       };
     };

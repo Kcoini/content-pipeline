@@ -70,6 +70,68 @@ export interface SocialPostVersion {
   createdAt: string;
 }
 
+/** Phase 3-12: 원본 vs rewrite version 비교 결과(social_post_version_comparisons row). */
+export interface SocialPostVersionComparison {
+  id: string;
+  articleId: string;
+  rootSocialPostId: string;
+  originalSocialPostId: string;
+  rewriteSocialPostId: string;
+  rewriteSourceSuggestionId: string | null;
+  platform: SocialPlatform;
+  originalVersionNumber: number | null;
+  rewriteVersionNumber: number | null;
+  originalQualityStatus: string | null;
+  originalQualityScore: number | null;
+  rewriteQualityStatus: string | null;
+  rewriteQualityScore: number | null;
+  originalPerformanceStatus: string | null;
+  originalPerformanceScore: number | null;
+  rewritePerformanceStatus: string | null;
+  rewritePerformanceScore: number | null;
+  comparisonStatus: "not_compared" | "original_better" | "rewrite_better" | "similar" | "needs_review" | "blocked" | "failed";
+  comparisonScore: number | null;
+  recommendedSocialPostId: string | null;
+  recommendationReason: string | null;
+  comparisonSummary: Record<string, unknown>;
+  checklist: { key: string; label: string; status: "pass" | "warning" | "fail" | "blocked"; message: string }[];
+  warnings: string[];
+  failures: string[];
+  comparedBy: string | null;
+  comparedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVersionComparisonInput {
+  articleId: string;
+  rootSocialPostId: string;
+  originalSocialPostId: string;
+  rewriteSocialPostId: string;
+  rewriteSourceSuggestionId?: string | null;
+  platform: SocialPlatform;
+  originalVersionNumber?: number | null;
+  rewriteVersionNumber?: number | null;
+  originalQualityStatus?: string | null;
+  originalQualityScore?: number | null;
+  rewriteQualityStatus?: string | null;
+  rewriteQualityScore?: number | null;
+  originalPerformanceStatus?: string | null;
+  originalPerformanceScore?: number | null;
+  rewritePerformanceStatus?: string | null;
+  rewritePerformanceScore?: number | null;
+  comparisonStatus: SocialPostVersionComparison["comparisonStatus"];
+  comparisonScore?: number | null;
+  recommendedSocialPostId?: string | null;
+  recommendationReason?: string | null;
+  comparisonSummary?: Record<string, unknown>;
+  checklist?: SocialPostVersionComparison["checklist"];
+  warnings?: string[];
+  failures?: string[];
+  comparedBy?: string | null;
+  comparedAt?: string | null;
+}
+
 export interface CreateSocialPostVersionInput {
   socialPostId: string;
   articleId: string;

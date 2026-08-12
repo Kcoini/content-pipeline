@@ -36,6 +36,10 @@ const {
   updateSocialPostVersionStatus,
   listRewriteVersionsByArticle,
   listRewriteVersionsByRoot,
+  getSocialPostForVersionComparison,
+  updateVersionComparisonSummary,
+  listRewriteVersionsNeedingComparison,
+  listRecommendedRewriteVersions,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -125,6 +129,11 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     rewrite_applied_by: null,
     rewrite_application_notes: null,
     is_rewrite_version: false,
+    latest_version_comparison_id: null,
+    version_comparison_status: "not_compared",
+    version_comparison_score: null,
+    recommended_for_repost: false,
+    version_comparison_checked_at: null,
     ...overrides,
   };
 }
@@ -627,5 +636,54 @@ describe("rewrite versioning (Phase 3-11)", () => {
 
     expect(chain.eq).toHaveBeenCalledWith("root_social_post_id", "social-post-1");
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("version comparison (Phase 3-12)", () => {
+  it("getSocialPostForVersionComparison은 social post를 조회한다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow(), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await getSocialPostForVersionComparison("social-post-1");
+
+    expect(result?.id).toBe("social-post-1");
+  });
+
+  it("updateVersionComparisonSummary는 latest_version_comparison_id/version_comparison_status를 저장한다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow({ version_comparison_status: "rewrite_better" }), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateVersionComparisonSummary("social-post-2", {
+      latestVersionComparisonId: "comparison-1",
+      versionComparisonStatus: "rewrite_better",
+      versionComparisonScore: 90,
+      recommendedForRepost: true,
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ latest_version_comparison_id: "comparison-1", version_comparison_status: "rewrite_better", recommended_for_repost: true })
+    );
+  });
+
+  it("listRewriteVersionsNeedingComparison은 not_compared인 rewrite version만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ is_rewrite_version: true, version_comparison_status: "not_compared" })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRewriteVersionsNeedingComparison("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("version_comparison_status", "not_compared");
+    expect(result).toHaveLength(1);
+  });
+
+  it("listRecommendedRewriteVersions는 recommended_for_repost=true인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ recommended_for_repost: true })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRecommendedRewriteVersions("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("recommended_for_repost", true);
+    expect(result).toHaveLength(1);
   });
 });

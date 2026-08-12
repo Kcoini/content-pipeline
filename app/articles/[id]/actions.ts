@@ -67,6 +67,8 @@ import { recordSocialPostMetrics } from "@/lib/social/social-metrics-service";
 import { generatePerformanceRewriteSuggestion } from "@/lib/social/performance-rewrite-suggestion-generator";
 import { approveRewriteSuggestion, rejectRewriteSuggestion } from "@/lib/social/rewrite-suggestion-review-service";
 import { applyRewriteSuggestion } from "@/lib/social/rewrite-application-service";
+import { recheckRewriteVersionQuality } from "@/lib/social/rewrite-version-quality-recheck-service";
+import { compareRewriteVersion } from "@/lib/social/rewrite-version-comparison-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1669,6 +1671,59 @@ export async function applyRewriteSuggestionAction(formData: FormData): Promise<
 
   try {
     const result = await applyRewriteSuggestion(suggestionId, APPROVED_BY, notes.length > 0 ? notes : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** rewrite version의 quality gate를 다시 실행한다 (Phase 3-12). 실제 게시는 수행하지 않는다. */
+export async function recheckRewriteVersionQualityAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await recheckRewriteVersionQuality(socialPostId, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * rewrite version을 원본과 비교한다 (Phase 3-12). 비교 결과는 사람이
+ * 판단하기 위한 보조 지표일 뿐이며, 실제 게시나 원본 교체는 하지 않는다.
+ */
+export async function compareRewriteVersionAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await compareRewriteVersion(socialPostId, APPROVED_BY);
     message = result.message;
     isError = !result.success;
   } catch (error) {

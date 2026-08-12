@@ -67,6 +67,8 @@ import {
   approveRewriteSuggestionAction,
   rejectRewriteSuggestionAction,
   applyRewriteSuggestionAction,
+  recheckRewriteVersionQualityAction,
+  compareRewriteVersionAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { listMetricsBySocialPost } from "@/lib/repositories/social-metrics-repository";
@@ -74,6 +76,8 @@ import { buildArticleSocialPerformanceSummary } from "@/lib/social/article-socia
 import { listRewriteSuggestionsBySocialPost } from "@/lib/repositories/social-rewrite-suggestions-repository";
 import { buildRewriteApplicationPreview } from "@/lib/social/rewrite-application-preview-builder";
 import { listRewriteVersionsByRoot } from "@/lib/repositories/social-posts-repository";
+import { buildRewriteVersionComparisonPreview } from "@/lib/social/rewrite-version-comparison-preview-builder";
+import { getVersionComparisonById } from "@/lib/repositories/social-version-comparisons-repository";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
 import { CopyToClipboardButton } from "./copy-to-clipboard-button";
@@ -387,10 +391,10 @@ export default async function ArticleDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; publishMessage?: string }>;
+  searchParams: Promise<{ error?: string; publishMessage?: string; socialPostId?: string }>;
 }) {
   const { id } = await params;
-  const { error, publishMessage } = await searchParams;
+  const { error, publishMessage, socialPostId: highlightedSocialPostId } = await searchParams;
 
   const article = await getArticleById(id);
 
@@ -439,6 +443,18 @@ export default async function ArticleDetailPage({
 
   const versionChains = await Promise.all(socialPosts.map((post) => listRewriteVersionsByRoot(post.rootSocialPostId ?? post.id)));
   const versionChainByPostId = new Map(socialPosts.map((post, i) => [post.id, versionChains[i]]));
+
+  const rewriteVersionPosts = socialPosts.filter((post) => post.isRewriteVersion && (post.rewriteAppliedFromSocialPostId || post.parentSocialPostId));
+  const comparisonPreviewEntries = await Promise.all(
+    rewriteVersionPosts.map(async (post) => [post.id, await buildRewriteVersionComparisonPreview(post.id)] as const)
+  );
+  const comparisonPreviewByPostId = new Map(comparisonPreviewEntries);
+
+  const postsWithSavedComparison = socialPosts.filter((post) => post.latestVersionComparisonId);
+  const savedComparisonEntries = await Promise.all(
+    postsWithSavedComparison.map(async (post) => [post.id, await getVersionComparisonById(post.latestVersionComparisonId!)] as const)
+  );
+  const savedComparisonByPostId = new Map(savedComparisonEntries);
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -2261,7 +2277,13 @@ export default async function ArticleDetailPage({
           ) : (
             <ul className="mt-3 flex flex-col gap-2">
               {socialPosts.map((post) => (
-                <li key={post.id} className="rounded border border-zinc-200 p-3 text-xs">
+                <li
+                  key={post.id}
+                  id={`social-post-${post.id}`}
+                  className={`rounded border p-3 text-xs ${
+                    highlightedSocialPostId === post.id ? "border-indigo-400 ring-2 ring-indigo-300" : "border-zinc-200"
+                  }`}
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.platform}</span>
                     <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.toneStyle}</span>
@@ -2297,9 +2319,15 @@ export default async function ArticleDetailPage({
                     {post.rewriteAppliedAt
                       ? ` · rewrite 적용: ${new Date(post.rewriteAppliedAt).toLocaleString("ko-KR")} by ${post.rewriteAppliedBy ?? "-"}`
                       : ""}
+                    {post.isRewriteVersion
+                      ? ` · 비교: ${post.versionComparisonStatus}${post.versionComparisonScore != null ? ` (${post.versionComparisonScore}점)` : ""}`
+                      : ""}
+                    {post.recommendedForRepost && (
+                      <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 font-medium text-indigo-700">재게시 후보</span>
+                    )}
                   </p>
 
-                  {/* Phase 3-11: Version History */}
+                  {/* Phase 3-11/3-12: Version History (+ 비교 상태) */}
                   {(() => {
                     const chain = versionChainByPostId.get(post.id) ?? [];
                     if (chain.length <= 1) return null;
@@ -2310,6 +2338,12 @@ export default async function ArticleDetailPage({
                           {chain.map((v) => (
                             <li key={v.id} className={v.id === post.id ? "font-medium text-zinc-700" : ""}>
                               v{v.versionNumber} ({v.versionStatus}) — {v.postTitle || v.caption || "(제목 없음)"}
+                              {v.isRewriteVersion
+                                ? ` · quality: ${v.qualityStatus === "not_checked" ? "재검사 필요" : v.qualityStatus} · 비교: ${
+                                    v.versionComparisonStatus === "not_compared" ? "비교 필요" : v.versionComparisonStatus
+                                  }`
+                                : ""}
+                              {v.recommendedForRepost ? " · 재게시 후보" : ""}
                               {v.id === post.id ? " ← 현재 카드" : ""}
                             </li>
                           ))}
@@ -3350,6 +3384,151 @@ export default async function ArticleDetailPage({
                           );
                         })()}
                       </div>
+
+                      {/* Phase 3-12: Rewrite Version Quality Recheck & Comparison */}
+                      {post.isRewriteVersion && (
+                        <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                          <p className="font-medium text-zinc-600">Rewrite Version Comparison</p>
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            비교 결과는 자동 게시가 아니라 사람이 판단하기 위한 보조 지표입니다. 추천
+                            버전도 다시 Approval, Export, Guard, Handoff 과정을 거쳐야 합니다. 성과
+                            데이터가 없는 rewrite version은 품질 기준 중심으로 비교합니다.
+                          </p>
+                          {post.qualityStatus === "not_checked" && (
+                            <p className="mt-1 text-amber-700">⚠ 아직 quality gate를 실행하지 않았습니다 — 먼저 Quality Recheck를 실행하세요.</p>
+                          )}
+                          {post.versionComparisonStatus === "blocked" && (
+                            <p className="mt-1 text-red-600">이 버전은 비교 결과 blocked 상태여서 추천할 수 없습니다.</p>
+                          )}
+
+                          {/* 저장된 비교 결과 요약 + 추천 버전 열기 */}
+                          {(() => {
+                            const saved = savedComparisonByPostId.get(post.id);
+                            if (!saved) return null;
+                            return (
+                              <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                                <p className="text-zinc-600">
+                                  comparison_status: <span className="font-medium">{saved.comparisonStatus}</span>
+                                  {saved.comparisonScore != null ? ` · comparison_score: ${saved.comparisonScore}` : ""}
+                                  {post.recommendedForRepost && (
+                                    <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 font-medium text-indigo-700">재게시 후보</span>
+                                  )}
+                                </p>
+                                {saved.recommendationReason && (
+                                  <p className="mt-1 text-zinc-500">recommendation_reason: {saved.recommendationReason}</p>
+                                )}
+                                <p className="mt-1 text-zinc-500">
+                                  recommended_social_post_id: {saved.recommendedSocialPostId ?? "없음"}
+                                </p>
+
+                                {saved.recommendedSocialPostId ? (
+                                  <div className="mt-2">
+                                    <a
+                                      href={`/articles/${article.id}?socialPostId=${saved.recommendedSocialPostId}#social-post-${saved.recommendedSocialPostId}`}
+                                      className="inline-block rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+                                    >
+                                      추천 버전 열기
+                                    </a>
+                                    <p className="mt-1 text-[11px] text-zinc-400">
+                                      추천 버전 열기는 자동 게시가 아닙니다 — 추천된 social post를 확인하기 위한 이동
+                                      버튼입니다. 추천 버전도 다시 Approval, Export, Guard, Handoff 과정을 거쳐야
+                                      합니다.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="mt-1 font-medium text-zinc-500">추천 버전 없음 / 검토 필요</p>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {(() => {
+                            const preview = comparisonPreviewByPostId.get(post.id);
+                            if (!preview || !preview.ok || !preview.original || !preview.rewrite) return null;
+                            return (
+                              <div className="mt-2 overflow-x-auto">
+                                <table className="w-full text-left text-[11px]">
+                                  <thead>
+                                    <tr className="text-zinc-500">
+                                      <th className="pr-2"> </th>
+                                      <th className="pr-2">원본 (v{preview.original.versionNumber})</th>
+                                      <th className="pr-2">rewrite (v{preview.rewrite.versionNumber})</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="text-zinc-700">
+                                    <tr>
+                                      <td className="pr-2 text-zinc-500">quality</td>
+                                      <td className="pr-2">{preview.original.qualityStatus} ({preview.original.qualityScore ?? "-"})</td>
+                                      <td className="pr-2">{preview.rewrite.qualityStatus} ({preview.rewrite.qualityScore ?? "-"})</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="pr-2 text-zinc-500">performance</td>
+                                      <td className="pr-2">{preview.original.performanceStatus} ({preview.original.performanceScore ?? "-"})</td>
+                                      <td className="pr-2">{preview.rewrite.performanceStatus} ({preview.rewrite.performanceScore ?? "-"})</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="pr-2 text-zinc-500">제목</td>
+                                      <td className="pr-2">{preview.original.postTitlePreview ?? "-"}</td>
+                                      <td className="pr-2">{preview.rewrite.postTitlePreview ?? "-"}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="pr-2 text-zinc-500">해시태그/스레드/카드</td>
+                                      <td className="pr-2">
+                                        {preview.original.hashtagCount}/{preview.original.threadItemCount}/{preview.original.cardItemCount}
+                                      </td>
+                                      <td className="pr-2">
+                                        {preview.rewrite.hashtagCount}/{preview.rewrite.threadItemCount}/{preview.rewrite.cardItemCount}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                                {preview.differences.length > 0 && (
+                                  <ul className="mt-1 list-inside list-disc text-zinc-500">
+                                    {preview.differences.map((d, i) => (
+                                      <li key={i}>{d}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {preview.warnings.map((w, i) => (
+                                  <p key={i} className="mt-1 text-amber-700">
+                                    ⚠ {w}
+                                  </p>
+                                ))}
+                                {preview.recommendationPreview && (
+                                  <p className="mt-1 text-zinc-600">
+                                    예상 추천: <span className="font-medium">{preview.recommendationPreview.comparisonStatus}</span> —{" "}
+                                    {preview.recommendationPreview.recommendationReason}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <form action={recheckRewriteVersionQualityAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+                              >
+                                Rewrite Version Quality Recheck 실행
+                              </button>
+                            </form>
+                            <form action={compareRewriteVersionAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                disabled={!post.parentSocialPostId && !post.rewriteAppliedFromSocialPostId}
+                                className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                원본과 비교 실행
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </details>
                 </li>

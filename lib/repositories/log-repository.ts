@@ -285,7 +285,16 @@ export type LogEventType =
   | "social_rewrite_application_completed"
   | "social_rewrite_application_blocked"
   | "social_rewrite_application_failed"
-  | "social_rewrite_version_created";
+  | "social_rewrite_version_created"
+  // Phase 3-12: Rewrite Version Quality Recheck & Comparison 이벤트
+  | "social_rewrite_version_quality_recheck_started"
+  | "social_rewrite_version_quality_recheck_completed"
+  | "social_rewrite_version_quality_recheck_blocked"
+  | "social_rewrite_version_quality_recheck_failed"
+  | "social_rewrite_version_comparison_started"
+  | "social_rewrite_version_comparison_completed"
+  | "social_rewrite_version_comparison_blocked"
+  | "social_rewrite_version_comparison_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 
