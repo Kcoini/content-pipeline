@@ -309,7 +309,15 @@ export type LogEventType =
   | "social_rewrite_reexport_blocked"
   | "social_rewrite_reexport_failed"
   | "social_rewrite_republish_workflow_refreshed"
-  | "social_rewrite_republish_workflow_failed";
+  | "social_rewrite_republish_workflow_failed"
+  // Phase 3-14: Rewrite Performance Tracking & Original-vs-Rewrite Result Comparison 이벤트
+  | "social_rewrite_performance_comparison_preview_started"
+  | "social_rewrite_performance_comparison_preview_completed"
+  | "social_rewrite_performance_comparison_started"
+  | "social_rewrite_performance_comparison_completed"
+  | "social_rewrite_performance_comparison_needs_more_data"
+  | "social_rewrite_performance_comparison_blocked"
+  | "social_rewrite_performance_comparison_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

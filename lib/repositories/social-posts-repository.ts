@@ -28,6 +28,8 @@ import {
   type RewriteReapprovalStatus,
   type RewriteReexportStatus,
   type RewriteRepublishWorkflowStatus,
+  type RewritePerformanceComparisonStatus,
+  type RewritePerformanceWinner,
   type ThreadItem,
   type CardItem,
 } from "@/lib/social/social-platform-types";
@@ -191,6 +193,13 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     rewriteReexportError: row.rewrite_reexport_error,
     rewriteRepublishWorkflowStatus: row.rewrite_republish_workflow_status as SocialPost["rewriteRepublishWorkflowStatus"],
     rewriteRepublishWorkflowSummary: row.rewrite_republish_workflow_summary,
+    latestRewritePerformanceComparisonId: row.latest_rewrite_performance_comparison_id,
+    rewritePerformanceComparisonStatus: row.rewrite_performance_comparison_status as SocialPost["rewritePerformanceComparisonStatus"],
+    rewritePerformanceWinner: row.rewrite_performance_winner as SocialPost["rewritePerformanceWinner"],
+    rewritePerformanceScoreDelta: row.rewrite_performance_score_delta,
+    rewritePerformanceImprovementRate: row.rewrite_performance_improvement_rate,
+    rewritePerformanceCheckedAt: row.rewrite_performance_checked_at,
+    rewritePerformanceSummary: row.rewrite_performance_summary,
   };
 }
 
@@ -1463,6 +1472,87 @@ export async function listRewriteRepublishWorkflowByArticle(articleId: string): 
 
   if (error) {
     throw new Error(`기사별 rewrite republish workflow 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 성과 비교 처리에 필요한 rewrite version social post 하나를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getSocialPostForRewritePerformanceComparison(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+export interface UpdateRewritePerformanceComparisonSummaryPatch {
+  latestRewritePerformanceComparisonId: string;
+  rewritePerformanceComparisonStatus: RewritePerformanceComparisonStatus;
+  rewritePerformanceWinner?: RewritePerformanceWinner | null;
+  rewritePerformanceScoreDelta?: number | null;
+  rewritePerformanceImprovementRate?: number | null;
+  rewritePerformanceSummary?: Record<string, unknown>;
+}
+
+/** social_posts의 rewrite 성과 비교 요약 컬럼을 갱신한다 (Phase 3-14). */
+export async function updateRewritePerformanceComparisonSummary(
+  id: string,
+  patch: UpdateRewritePerformanceComparisonSummaryPatch
+): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      latest_rewrite_performance_comparison_id: patch.latestRewritePerformanceComparisonId,
+      rewrite_performance_comparison_status: patch.rewritePerformanceComparisonStatus,
+      rewrite_performance_winner: patch.rewritePerformanceWinner ?? null,
+      rewrite_performance_score_delta: patch.rewritePerformanceScoreDelta ?? null,
+      rewrite_performance_improvement_rate: patch.rewritePerformanceImprovementRate ?? null,
+      rewrite_performance_summary: patch.rewritePerformanceSummary ?? {},
+      rewrite_performance_checked_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post rewrite 성과 비교 요약 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** 특정 기사에서 성과 비교 대상(수동 게시 완료된 rewrite version)만 조회한다. */
+export async function listRewriteVersionsReadyForPerformanceComparison(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .eq("manual_post_status", "posted")
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`성과 비교 대상 rewrite version 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 기사에서 rewrite_performance_winner='rewrite'인(성과 개선이 확인된) rewrite version만 조회한다. */
+export async function listRewritePerformanceWinners(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .eq("rewrite_performance_winner", "rewrite")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`rewrite 성과 우승 목록 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);

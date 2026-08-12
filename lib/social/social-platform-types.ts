@@ -116,6 +116,24 @@ export type RewriteRepublishWorkflowStatus =
   | "blocked"
   | "failed";
 
+/**
+ * Phase 3-14: 원본 social_post와 rewrite version의 수동 입력 metrics를
+ * 비교한 결과 상태. 절대적인 마케팅 성공 지표가 아니라 내부 비교용
+ * 참고 자료다.
+ */
+export type RewritePerformanceComparisonStatus =
+  | "not_compared"
+  | "rewrite_won"
+  | "original_won"
+  | "similar"
+  | "inconclusive"
+  | "needs_more_data"
+  | "blocked"
+  | "failed";
+
+/** Phase 3-14: 원본과 rewrite 중 어느 쪽 성과가 더 나은지에 대한 판단. */
+export type RewritePerformanceWinner = "original" | "rewrite" | "tie" | "none";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -277,6 +295,94 @@ export interface SocialPost {
   rewriteReexportError: string | null;
   rewriteRepublishWorkflowStatus: RewriteRepublishWorkflowStatus;
   rewriteRepublishWorkflowSummary: Record<string, unknown>;
+  /** Phase 3-14: Rewrite Performance Tracking & Original-vs-Rewrite Result Comparison */
+  latestRewritePerformanceComparisonId: string | null;
+  rewritePerformanceComparisonStatus: RewritePerformanceComparisonStatus;
+  rewritePerformanceWinner: RewritePerformanceWinner | null;
+  rewritePerformanceScoreDelta: number | null;
+  rewritePerformanceImprovementRate: number | null;
+  rewritePerformanceCheckedAt: string | null;
+  rewritePerformanceSummary: Record<string, unknown>;
+}
+
+/** Phase 3-14: social_rewrite_performance_comparisons 한 건의 도메인 타입. */
+export interface RewritePerformanceComparison {
+  id: string;
+  articleId: string;
+  rootSocialPostId: string;
+  originalSocialPostId: string;
+  rewriteSocialPostId: string;
+  rewriteSourceSuggestionId: string | null;
+  versionComparisonId: string | null;
+  platform: SocialPlatform;
+  toneStyle: ToneStyle | null;
+  originalVersionNumber: number | null;
+  rewriteVersionNumber: number | null;
+
+  originalMetricsId: string | null;
+  originalMeasuredAt: string | null;
+  originalViews: number;
+  originalImpressions: number;
+  originalReach: number;
+  originalLikes: number;
+  originalComments: number;
+  originalShares: number;
+  originalSaves: number;
+  originalClicks: number;
+  originalProfileVisits: number;
+  originalFollows: number;
+  originalConversionCount: number;
+  originalEngagementRate: number | null;
+  originalClickThroughRate: number | null;
+  originalConversionRate: number | null;
+  originalPerformanceScore: number | null;
+  originalPerformanceStatus: string | null;
+
+  rewriteMetricsId: string | null;
+  rewriteMeasuredAt: string | null;
+  rewriteViews: number;
+  rewriteImpressions: number;
+  rewriteReach: number;
+  rewriteLikes: number;
+  rewriteComments: number;
+  rewriteShares: number;
+  rewriteSaves: number;
+  rewriteClicks: number;
+  rewriteProfileVisits: number;
+  rewriteFollows: number;
+  rewriteConversionCount: number;
+  rewriteEngagementRate: number | null;
+  rewriteClickThroughRate: number | null;
+  rewriteConversionRate: number | null;
+  rewritePerformanceScore: number | null;
+  rewritePerformanceStatus: string | null;
+
+  comparisonStatus: RewritePerformanceComparisonStatus;
+  winner: RewritePerformanceWinner | null;
+  performanceScoreDelta: number | null;
+  performanceScoreDeltaRate: number | null;
+  viewsDelta: number | null;
+  viewsDeltaRate: number | null;
+  impressionsDelta: number | null;
+  impressionsDeltaRate: number | null;
+  engagementRateDelta: number | null;
+  clickThroughRateDelta: number | null;
+  clicksDelta: number | null;
+  clicksDeltaRate: number | null;
+  commentsDelta: number | null;
+  commentsDeltaRate: number | null;
+  sharesDelta: number | null;
+  sharesDeltaRate: number | null;
+  savesDelta: number | null;
+  savesDeltaRate: number | null;
+  improvementSummary: Record<string, unknown>;
+  platformSpecificSummary: Record<string, unknown>;
+  warnings: Record<string, unknown>[];
+  failures: Record<string, unknown>[];
+  comparedBy: string | null;
+  comparedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Phase 3-6: publishing guard 체크리스트 항목 하나. */

@@ -77,6 +77,7 @@ import {
 } from "@/lib/social/rewrite-reapproval-service";
 import { prepareRewriteReexport, generateRewriteReexportPayload } from "@/lib/social/rewrite-reexport-service";
 import { refreshRewriteRepublishWorkflowStatus } from "@/lib/social/rewrite-republish-workflow-service";
+import { compareRewritePerformance } from "@/lib/social/rewrite-performance-comparison-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1911,6 +1912,35 @@ export async function refreshRewriteRepublishWorkflowStatusAction(formData: Form
 
   try {
     const result = await refreshRewriteRepublishWorkflowStatus(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 원본 social_post와 rewrite version의 수동 입력 metrics를 비교한다
+ * (Phase 3-14). metrics가 부족하면 blocked가 아니라 needs_more_data로
+ * 저장되며, 어떤 경우에도 자동 재게시/자동 원본 수정으로 이어지지 않는다.
+ */
+export async function compareRewritePerformanceAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await compareRewritePerformance(socialPostId, APPROVED_BY);
     message = result.message;
     isError = !result.success;
   } catch (error) {

@@ -606,6 +606,90 @@ export type SocialPostRow = {
   rewrite_reexport_error: string | null;
   rewrite_republish_workflow_status: string;
   rewrite_republish_workflow_summary: Record<string, unknown>;
+  // Phase 3-14: Rewrite Performance Tracking & Original-vs-Rewrite Result Comparison
+  latest_rewrite_performance_comparison_id: string | null;
+  rewrite_performance_comparison_status: string;
+  rewrite_performance_winner: string | null;
+  rewrite_performance_score_delta: number | null;
+  rewrite_performance_improvement_rate: number | null;
+  rewrite_performance_checked_at: string | null;
+  rewrite_performance_summary: Record<string, unknown>;
+};
+
+export type SocialRewritePerformanceComparisonRow = {
+  id: string;
+  article_id: string;
+  root_social_post_id: string;
+  original_social_post_id: string;
+  rewrite_social_post_id: string;
+  rewrite_source_suggestion_id: string | null;
+  version_comparison_id: string | null;
+  platform: SocialPlatform;
+  tone_style: ToneStyle | null;
+  original_version_number: number | null;
+  rewrite_version_number: number | null;
+  original_metrics_id: string | null;
+  original_measured_at: string | null;
+  original_views: number;
+  original_impressions: number;
+  original_reach: number;
+  original_likes: number;
+  original_comments: number;
+  original_shares: number;
+  original_saves: number;
+  original_clicks: number;
+  original_profile_visits: number;
+  original_follows: number;
+  original_conversion_count: number;
+  original_engagement_rate: number | null;
+  original_click_through_rate: number | null;
+  original_conversion_rate: number | null;
+  original_performance_score: number | null;
+  original_performance_status: string | null;
+  rewrite_metrics_id: string | null;
+  rewrite_measured_at: string | null;
+  rewrite_views: number;
+  rewrite_impressions: number;
+  rewrite_reach: number;
+  rewrite_likes: number;
+  rewrite_comments: number;
+  rewrite_shares: number;
+  rewrite_saves: number;
+  rewrite_clicks: number;
+  rewrite_profile_visits: number;
+  rewrite_follows: number;
+  rewrite_conversion_count: number;
+  rewrite_engagement_rate: number | null;
+  rewrite_click_through_rate: number | null;
+  rewrite_conversion_rate: number | null;
+  rewrite_performance_score: number | null;
+  rewrite_performance_status: string | null;
+  comparison_status: string;
+  winner: string | null;
+  performance_score_delta: number | null;
+  performance_score_delta_rate: number | null;
+  views_delta: number | null;
+  views_delta_rate: number | null;
+  impressions_delta: number | null;
+  impressions_delta_rate: number | null;
+  engagement_rate_delta: number | null;
+  click_through_rate_delta: number | null;
+  clicks_delta: number | null;
+  clicks_delta_rate: number | null;
+  comments_delta: number | null;
+  comments_delta_rate: number | null;
+  shares_delta: number | null;
+  shares_delta_rate: number | null;
+  saves_delta: number | null;
+  saves_delta_rate: number | null;
+  improvement_summary: Record<string, unknown>;
+  platform_specific_summary: Record<string, unknown>;
+  warnings: Record<string, unknown>[];
+  failures: Record<string, unknown>[];
+  compared_by: string | null;
+  compared_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SocialPostVersionComparisonRow = {
@@ -877,6 +961,13 @@ export interface Database {
         Insert: Partial<SocialPostVersionComparisonRow> &
           Pick<SocialPostVersionComparisonRow, "article_id" | "root_social_post_id" | "original_social_post_id" | "rewrite_social_post_id" | "platform">;
         Update: Partial<SocialPostVersionComparisonRow>;
+        Relationships: [];
+      };
+      social_rewrite_performance_comparisons: {
+        Row: SocialRewritePerformanceComparisonRow;
+        Insert: Partial<SocialRewritePerformanceComparisonRow> &
+          Pick<SocialRewritePerformanceComparisonRow, "article_id" | "root_social_post_id" | "original_social_post_id" | "rewrite_social_post_id" | "platform">;
+        Update: Partial<SocialRewritePerformanceComparisonRow>;
         Relationships: [];
       };
     };

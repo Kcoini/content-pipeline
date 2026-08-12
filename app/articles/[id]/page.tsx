@@ -76,6 +76,7 @@ import {
   prepareRewriteReexportAction,
   generateRewriteReexportPayloadAction,
   refreshRewriteRepublishWorkflowStatusAction,
+  compareRewritePerformanceAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { listMetricsBySocialPost } from "@/lib/repositories/social-metrics-repository";
@@ -85,6 +86,9 @@ import { buildRewriteApplicationPreview } from "@/lib/social/rewrite-application
 import { listRewriteVersionsByRoot } from "@/lib/repositories/social-posts-repository";
 import { buildRewriteVersionComparisonPreview } from "@/lib/social/rewrite-version-comparison-preview-builder";
 import { getVersionComparisonById } from "@/lib/repositories/social-version-comparisons-repository";
+import { buildRewritePerformanceComparisonPreview } from "@/lib/social/rewrite-performance-comparison-preview-builder";
+import { getRewritePerformanceComparisonById } from "@/lib/repositories/social-rewrite-performance-comparisons-repository";
+import { buildArticleRewritePerformanceSummary } from "@/lib/social/article-rewrite-performance-summary";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
 import { CopyToClipboardButton } from "./copy-to-clipboard-button";
@@ -462,6 +466,21 @@ export default async function ArticleDetailPage({
     postsWithSavedComparison.map(async (post) => [post.id, await getVersionComparisonById(post.latestVersionComparisonId!)] as const)
   );
   const savedComparisonByPostId = new Map(savedComparisonEntries);
+
+  const rewritePerformancePreviewEntries = await Promise.all(
+    rewriteVersionPosts.map(async (post) => [post.id, await buildRewritePerformanceComparisonPreview(post.id)] as const)
+  );
+  const rewritePerformancePreviewByPostId = new Map(rewritePerformancePreviewEntries);
+
+  const postsWithSavedRewritePerformanceComparison = socialPosts.filter((post) => post.latestRewritePerformanceComparisonId);
+  const savedRewritePerformanceComparisonEntries = await Promise.all(
+    postsWithSavedRewritePerformanceComparison.map(
+      async (post) => [post.id, await getRewritePerformanceComparisonById(post.latestRewritePerformanceComparisonId!)] as const
+    )
+  );
+  const savedRewritePerformanceComparisonByPostId = new Map(savedRewritePerformanceComparisonEntries);
+
+  const articleRewritePerformanceSummary = await buildArticleRewritePerformanceSummary(article.id);
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -2279,6 +2298,42 @@ export default async function ArticleDetailPage({
             </div>
           )}
 
+          {/* Phase 3-14: Rewrite 성과 비교 요약 */}
+          {articleRewritePerformanceSummary.totalComparisons > 0 && (
+            <div className="mt-3 rounded border border-indigo-200 bg-indigo-50 p-2 text-xs">
+              <p className="font-medium text-indigo-700">Rewrite 성과 비교 요약</p>
+              <p className="mt-1 text-indigo-700">
+                전체 비교 {articleRewritePerformanceSummary.totalComparisons}건 · Rewrite 승리{" "}
+                {articleRewritePerformanceSummary.rewriteWonCount}개 · 원본 승리 {articleRewritePerformanceSummary.originalWonCount}
+                개 · 비슷함 {articleRewritePerformanceSummary.similarCount}개 · 데이터 부족{" "}
+                {articleRewritePerformanceSummary.needsMoreDataCount}개
+              </p>
+              <p className="mt-1 text-indigo-700">
+                평균 performance_score delta: {articleRewritePerformanceSummary.averagePerformanceScoreDelta?.toFixed(2) ?? "-"} · 평균
+                개선율:{" "}
+                {articleRewritePerformanceSummary.averageImprovementRate !== null
+                  ? `${(articleRewritePerformanceSummary.averageImprovementRate * 100).toFixed(1)}%`
+                  : "-"}
+              </p>
+              {articleRewritePerformanceSummary.bestRewriteSocialPostId && (
+                <p className="mt-1 text-indigo-700">
+                  최고 rewrite version:{" "}
+                  <a
+                    href={`#social-post-${articleRewritePerformanceSummary.bestRewriteSocialPostId}`}
+                    className="underline hover:no-underline"
+                  >
+                    {articleRewritePerformanceSummary.bestRewriteSocialPostId}
+                  </a>{" "}
+                  ({articleRewritePerformanceSummary.bestPlatform} / {articleRewritePerformanceSummary.bestToneStyle} · delta{" "}
+                  {articleRewritePerformanceSummary.bestPerformanceScoreDelta?.toFixed(2) ?? "-"})
+                </p>
+              )}
+              <p className="mt-1 text-indigo-400">
+                이 요약은 수동 입력된 metrics를 기반으로 한 참고 지표이며, 자동 재게시나 자동 수정으로 이어지지 않습니다.
+              </p>
+            </div>
+          )}
+
           {socialPosts.length === 0 ? (
             <p className="mt-3 text-xs text-zinc-500">아직 생성된 social post가 없습니다.</p>
           ) : (
@@ -3661,6 +3716,197 @@ export default async function ArticleDetailPage({
                               버튼을 이어서 사용하세요.
                             </p>
                           )}
+                        </div>
+                      )}
+
+                      {/* Phase 3-14: Rewrite Performance Tracking & Original-vs-Rewrite Result Comparison */}
+                      {post.isRewriteVersion && (post.rewriteAppliedFromSocialPostId || post.parentSocialPostId) && (
+                        <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                          <p className="font-medium text-zinc-600">
+                            Rewrite Performance Comparison
+                            {post.rewritePerformanceWinner && (
+                              <span
+                                className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                  post.rewritePerformanceWinner === "rewrite"
+                                    ? "bg-green-100 text-green-700"
+                                    : post.rewritePerformanceWinner === "original"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-zinc-100 text-zinc-600"
+                                }`}
+                              >
+                                winner: {post.rewritePerformanceWinner}
+                              </span>
+                            )}
+                          </p>
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            이 비교는 수동 입력된 metrics를 기반으로 합니다. 성과 비교 결과는 자동
+                            재게시나 자동 수정으로 이어지지 않습니다. 플랫폼별 알고리즘, 게시 시간,
+                            이미지, 외부 이슈에 따라 결과가 달라질 수 있습니다. 동일 조건의 A/B
+                            테스트가 아니므로 참고 지표로만 사용하세요.
+                          </p>
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            comparison_status: <span className="font-mono">{post.rewritePerformanceComparisonStatus}</span> · score
+                            delta: {post.rewritePerformanceScoreDelta?.toFixed(2) ?? "-"} · 개선율:{" "}
+                            {post.rewritePerformanceImprovementRate !== null
+                              ? `${(post.rewritePerformanceImprovementRate * 100).toFixed(1)}%`
+                              : "-"}{" "}
+                            · 마지막 비교: {post.rewritePerformanceCheckedAt ?? "-"}
+                          </p>
+
+                          <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                            <a
+                              href={`#social-post-${post.rewriteAppliedFromSocialPostId ?? post.parentSocialPostId}`}
+                              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-zinc-600 hover:bg-zinc-100"
+                            >
+                              원본 게시글 열기
+                            </a>
+                            <a
+                              href={`#social-post-${post.id}`}
+                              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-zinc-600 hover:bg-zinc-100"
+                            >
+                              rewrite 게시글 열기
+                            </a>
+                            <a
+                              href={`#social-post-${post.id}`}
+                              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-zinc-600 hover:bg-zinc-100"
+                            >
+                              metrics 입력으로 이동
+                            </a>
+                          </div>
+
+                          {(() => {
+                            const preview = rewritePerformancePreviewByPostId.get(post.id);
+                            if (!preview) return null;
+                            return (
+                              <details className="mt-2 text-[11px]">
+                                <summary className="cursor-pointer text-zinc-500">성과 비교 Preview</summary>
+                                {!preview.original || !preview.rewrite ? (
+                                  <p className="mt-1 text-zinc-500">원본 social post를 찾을 수 없어 preview를 만들 수 없습니다.</p>
+                                ) : (
+                                  <div className="mt-1 overflow-x-auto">
+                                    <table className="w-full text-left">
+                                      <thead>
+                                        <tr className="text-zinc-500">
+                                          <th className="pr-2"> </th>
+                                          <th className="pr-2">원본 (v{preview.original.versionNumber})</th>
+                                          <th className="pr-2">rewrite (v{preview.rewrite.versionNumber})</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="text-zinc-700">
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">performance</td>
+                                          <td className="pr-2">
+                                            {preview.original.performanceStatus} ({preview.original.performanceScore ?? "-"})
+                                          </td>
+                                          <td className="pr-2">
+                                            {preview.rewrite.performanceStatus} ({preview.rewrite.performanceScore ?? "-"})
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">views/impressions</td>
+                                          <td className="pr-2">
+                                            {preview.original.views}/{preview.original.impressions}
+                                          </td>
+                                          <td className="pr-2">
+                                            {preview.rewrite.views}/{preview.rewrite.impressions}
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">likes/comments/shares/saves</td>
+                                          <td className="pr-2">
+                                            {preview.original.likes}/{preview.original.comments}/{preview.original.shares}/
+                                            {preview.original.saves}
+                                          </td>
+                                          <td className="pr-2">
+                                            {preview.rewrite.likes}/{preview.rewrite.comments}/{preview.rewrite.shares}/
+                                            {preview.rewrite.saves}
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">metrics 입력 시각</td>
+                                          <td className="pr-2">{preview.original.latestMetricsRecordedAt ?? "미입력"}</td>
+                                          <td className="pr-2">{preview.rewrite.latestMetricsRecordedAt ?? "미입력"}</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                    <p className="mt-1 text-zinc-500">비교 실행 가능: {preview.canCompare ? "예" : "아니오 (metrics 입력 필요)"}</p>
+                                  </div>
+                                )}
+                                {preview.missingData.length > 0 && (
+                                  <p className="mt-1 text-amber-700">⚠ metrics 입력 필요: {JSON.stringify(preview.missingData)}</p>
+                                )}
+                                {preview.warnings.length > 0 && (
+                                  <p className="mt-1 text-amber-700">⚠ {JSON.stringify(preview.warnings)}</p>
+                                )}
+                              </details>
+                            );
+                          })()}
+
+                          {post.latestRewritePerformanceComparisonId &&
+                            (() => {
+                              const saved = savedRewritePerformanceComparisonByPostId.get(post.id);
+                              if (!saved) return null;
+                              return (
+                                <details className="mt-2 text-[11px]">
+                                  <summary className="cursor-pointer text-zinc-500">비교 결과 보기</summary>
+                                  <div className="mt-1 overflow-x-auto">
+                                    <table className="w-full text-left">
+                                      <tbody className="text-zinc-700">
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">views delta</td>
+                                          <td className="pr-2">
+                                            {saved.viewsDelta ?? "-"} (
+                                            {saved.viewsDeltaRate !== null ? `${(saved.viewsDeltaRate * 100).toFixed(1)}%` : "-"})
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">impressions delta</td>
+                                          <td className="pr-2">
+                                            {saved.impressionsDelta ?? "-"} (
+                                            {saved.impressionsDeltaRate !== null ? `${(saved.impressionsDeltaRate * 100).toFixed(1)}%` : "-"})
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">engagement_rate / CTR delta</td>
+                                          <td className="pr-2">
+                                            {saved.engagementRateDelta?.toFixed(4) ?? "-"} / {saved.clickThroughRateDelta?.toFixed(4) ?? "-"}
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">clicks / comments / shares / saves delta</td>
+                                          <td className="pr-2">
+                                            {saved.clicksDelta ?? "-"} / {saved.commentsDelta ?? "-"} / {saved.sharesDelta ?? "-"} /{" "}
+                                            {saved.savesDelta ?? "-"}
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="pr-2 text-zinc-500">comparison_status / winner</td>
+                                          <td className="pr-2">
+                                            {saved.comparisonStatus} / {saved.winner ?? "-"}
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                    {saved.warnings.length > 0 && (
+                                      <p className="mt-1 text-amber-700">⚠ {JSON.stringify(saved.warnings)}</p>
+                                    )}
+                                  </div>
+                                </details>
+                              );
+                            })()}
+
+                          <div className="mt-2">
+                            <form action={compareRewritePerformanceAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <button
+                                type="submit"
+                                className="rounded border border-purple-300 bg-purple-50 px-2 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-100"
+                              >
+                                원본 vs Rewrite 성과 비교 실행
+                              </button>
+                            </form>
+                          </div>
                         </div>
                       )}
                     </div>
