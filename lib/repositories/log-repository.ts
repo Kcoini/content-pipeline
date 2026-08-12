@@ -317,7 +317,11 @@ export type LogEventType =
   | "social_rewrite_performance_comparison_completed"
   | "social_rewrite_performance_comparison_needs_more_data"
   | "social_rewrite_performance_comparison_blocked"
-  | "social_rewrite_performance_comparison_failed";
+  | "social_rewrite_performance_comparison_failed"
+  // Phase 3-15: Social Performance Dashboard 이벤트
+  | "social_performance_dashboard_build_started"
+  | "social_performance_dashboard_build_completed"
+  | "social_performance_dashboard_build_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 
