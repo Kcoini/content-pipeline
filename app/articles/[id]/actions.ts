@@ -54,6 +54,7 @@ import {
 } from "@/lib/social/social-post-approval-service";
 import { generateManualExport } from "@/lib/social/social-manual-export-service";
 import { recordSocialPostCopied } from "@/lib/social/social-copy-tracking-service";
+import { runPlatformPublishingGuard } from "@/lib/social/platform-publishing-guard-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1279,6 +1280,35 @@ export async function recordSocialPostCopiedAction(formData: FormData): Promise<
 
   try {
     const result = await recordSocialPostCopied(socialPostId, APPROVED_BY, copyTarget);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post의 플랫폼별 게시 가능 조건(publishing guard)을 검사한다
+ * (Phase 3-6). 실제 외부 플랫폼 게시 API는 호출하지 않으며, 통과해도
+ * publish_status는 바뀌지 않는다.
+ */
+export async function runPlatformPublishingGuardAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await runPlatformPublishingGuard(socialPostId);
     message = result.message;
     isError = !result.success;
   } catch (error) {

@@ -524,6 +524,14 @@ export type SocialPostRow = {
   export_copy_count: number;
   last_copied_at: string | null;
   export_notes: string | null;
+  // Phase 3-6: Platform-specific Approval & Publishing Guard
+  platform_publish_guard_status: string;
+  platform_publish_guard_score: number | null;
+  platform_publish_guard_summary: Record<string, unknown>;
+  platform_publish_guard_error: string | null;
+  platform_publish_guard_checked_at: string | null;
+  platform_publish_ready: boolean;
+  platform_publish_blocked_reason: string | null;
 };
 
 export type SocialPostQualityRunRow = {

@@ -54,6 +54,7 @@ import {
   revokeSocialPostApprovalAction,
   generateManualExportAction,
   recordSocialPostCopiedAction,
+  runPlatformPublishingGuardAction,
 } from "./actions";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
@@ -2655,6 +2656,80 @@ export default async function ArticleDetailPage({
                             </div>
                           );
                         })()}
+                      </div>
+
+                      {/* Phase 3-6: Platform Publishing Guard */}
+                      <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                        <p className="font-medium text-zinc-600">Platform Publishing Guard</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          이 검사는 실제 게시가 아니라 게시 가능 조건 검사입니다. 통과해도 실제
+                          게시 API는 호출되지 않습니다. 플랫폼별 정책과 최종 내용은 사람이 다시
+                          확인해야 합니다.
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          guard: <span className="font-mono">{post.platformPublishGuardStatus}</span>
+                          {post.platformPublishGuardScore != null ? ` (${post.platformPublishGuardScore}점)` : ""} ·
+                          게시 가능: {post.platformPublishReady ? "예" : "아니오"}
+                          {post.platformPublishGuardCheckedAt
+                            ? ` · 검사: ${new Date(post.platformPublishGuardCheckedAt).toLocaleString("ko-KR")}`
+                            : ""}
+                        </p>
+                        {post.platformPublishBlockedReason && (
+                          <p className="mt-1 text-red-600">차단 사유: {post.platformPublishBlockedReason}</p>
+                        )}
+                        {post.platformPublishGuardError && (
+                          <p className="mt-1 text-red-600">오류: {post.platformPublishGuardError}</p>
+                        )}
+                        {(post.approvalStatus !== "approved" ||
+                          post.qualityStatus !== "ready" ||
+                          (post.exportStatus !== "ready" && post.exportStatus !== "exported")) && (
+                          <p className="mt-1 text-amber-700">
+                            ⚠ approval/quality/export 상태가 아직 게시 가능 조건을 만족하지 않습니다.
+                          </p>
+                        )}
+                        {Array.isArray((post.platformPublishGuardSummary as { blockedReasons?: unknown }).blockedReasons) &&
+                          (post.platformPublishGuardSummary as { blockedReasons: string[] }).blockedReasons.length > 0 && (
+                            <div className="mt-1 text-red-600">
+                              <p className="font-medium">차단 사유 목록:</p>
+                              <ul className="list-inside list-disc">
+                                {(post.platformPublishGuardSummary as { blockedReasons: string[] }).blockedReasons.map((reason, i) => (
+                                  <li key={i}>{reason}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        {Array.isArray((post.platformPublishGuardSummary as { failures?: unknown }).failures) &&
+                          (post.platformPublishGuardSummary as { failures: string[] }).failures.length > 0 && (
+                            <div className="mt-1 text-orange-600">
+                              <p className="font-medium">수정 필요:</p>
+                              <ul className="list-inside list-disc">
+                                {(post.platformPublishGuardSummary as { failures: string[] }).failures.map((reason, i) => (
+                                  <li key={i}>{reason}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        {Array.isArray((post.platformPublishGuardSummary as { warnings?: unknown }).warnings) &&
+                          (post.platformPublishGuardSummary as { warnings: string[] }).warnings.length > 0 && (
+                            <div className="mt-1 text-amber-700">
+                              <p className="font-medium">경고:</p>
+                              <ul className="list-inside list-disc">
+                                {(post.platformPublishGuardSummary as { warnings: string[] }).warnings.map((warning, i) => (
+                                  <li key={i}>{warning}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        <form action={runPlatformPublishingGuardAction} className="mt-2">
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+                          >
+                            {post.platformPublishGuardStatus === "not_checked" ? "게시 가능성 검사 실행" : "Guard 재실행"}
+                          </button>
+                        </form>
                       </div>
                     </div>
                   </details>

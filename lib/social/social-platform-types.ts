@@ -56,6 +56,9 @@ export type SocialPostApprovalStatus = "not_requested" | "pending_review" | "app
 /** Phase 3-5: manual export 진행 상태. publish_status와 별개의 트랙이다. */
 export type SocialPostExportStatus = "not_exported" | "ready" | "exported" | "blocked" | "failed";
 
+/** Phase 3-6: 플랫폼별 게시 가능 조건 검사 상태. 실제 게시 여부와는 별개의 트랙이다. */
+export type PlatformPublishGuardStatus = "not_checked" | "ready" | "needs_revision" | "blocked" | "failed";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -135,6 +138,34 @@ export interface SocialPost {
   exportCopyCount: number;
   lastCopiedAt: string | null;
   exportNotes: string | null;
+  /** Phase 3-6: Platform-specific Approval & Publishing Guard */
+  platformPublishGuardStatus: PlatformPublishGuardStatus;
+  platformPublishGuardScore: number | null;
+  platformPublishGuardSummary: Record<string, unknown>;
+  platformPublishGuardError: string | null;
+  platformPublishGuardCheckedAt: string | null;
+  platformPublishReady: boolean;
+  platformPublishBlockedReason: string | null;
+}
+
+/** Phase 3-6: publishing guard 체크리스트 항목 하나. */
+export interface PlatformPublishGuardChecklistItem {
+  key: string;
+  label: string;
+  status: "pass" | "warning" | "fail" | "blocked";
+  message: string;
+}
+
+/** Phase 3-6: runPlatformPublishingGuard()의 반환 결과. */
+export interface PlatformPublishGuardResult {
+  status: PlatformPublishGuardStatus;
+  score: number;
+  ready: boolean;
+  blockedReason?: string;
+  checklist: PlatformPublishGuardChecklistItem[];
+  warnings: string[];
+  failures: string[];
+  blockedReasons: string[];
 }
 
 /** social_posts row 하나를 새로 만들 때 필요한 최소 입력. */

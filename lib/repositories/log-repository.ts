@@ -238,7 +238,13 @@ export type LogEventType =
   | "social_manual_export_completed"
   | "social_manual_export_blocked"
   | "social_manual_export_failed"
-  | "social_manual_export_copied";
+  | "social_manual_export_copied"
+  // Phase 3-6: Platform-specific Approval & Publishing Guard 이벤트
+  | "social_platform_publish_guard_started"
+  | "social_platform_publish_guard_completed"
+  | "social_platform_publish_guard_needs_revision"
+  | "social_platform_publish_guard_blocked"
+  | "social_platform_publish_guard_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

@@ -21,6 +21,9 @@ const {
   updateSocialPostExport,
   incrementExportCopyCount,
   listExportReadySocialPostsByArticle,
+  updatePlatformPublishGuardResult,
+  markPlatformPublishGuardFailed,
+  listPublishingReadySocialPostsByArticle,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -72,6 +75,13 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     export_copy_count: 0,
     last_copied_at: null,
     export_notes: null,
+    platform_publish_guard_status: "not_checked",
+    platform_publish_guard_score: null,
+    platform_publish_guard_summary: {},
+    platform_publish_guard_error: null,
+    platform_publish_guard_checked_at: null,
+    platform_publish_ready: false,
+    platform_publish_blocked_reason: null,
     ...overrides,
   };
 }
@@ -330,6 +340,56 @@ describe("manual export (Phase 3-5)", () => {
     const result = await listExportReadySocialPostsByArticle("article-1");
 
     expect(chain.eq).toHaveBeenCalledWith("article_id", "article-1");
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe("platform publishing guard (Phase 3-6)", () => {
+  it("updatePlatformPublishGuardResult는 checklist/warnings/failures/blockedReasons를 summary로 저장한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updatePlatformPublishGuardResult("social-post-1", {
+      status: "ready",
+      score: 95,
+      ready: true,
+      checklist: [{ key: "k", label: "l", status: "pass", message: "m" }],
+      warnings: [],
+      failures: [],
+      blockedReasons: [],
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform_publish_guard_status: "ready",
+        platform_publish_guard_score: 95,
+        platform_publish_ready: true,
+      })
+    );
+  });
+
+  it("markPlatformPublishGuardFailed는 status='failed'와 오류 메시지를 저장한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await markPlatformPublishGuardFailed("social-post-1", "예외 발생");
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ platform_publish_guard_status: "failed", platform_publish_guard_error: "예외 발생", platform_publish_ready: false })
+    );
+  });
+
+  it("listPublishingReadySocialPostsByArticle는 platform_publish_ready=true인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ platform_publish_ready: true })];
+    const chain = makeChain({ data: rows, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await listPublishingReadySocialPostsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("platform_publish_ready", true);
     expect(result).toHaveLength(1);
   });
 });

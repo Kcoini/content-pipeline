@@ -20,6 +20,7 @@ import {
   type SocialPostApprovalStatus,
   type SocialPostPublishStatus,
   type SocialPostExportStatus,
+  type PlatformPublishGuardResult,
   type ThreadItem,
   type CardItem,
 } from "@/lib/social/social-platform-types";
@@ -109,6 +110,13 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     exportCopyCount: row.export_copy_count,
     lastCopiedAt: row.last_copied_at,
     exportNotes: row.export_notes,
+    platformPublishGuardStatus: row.platform_publish_guard_status as SocialPost["platformPublishGuardStatus"],
+    platformPublishGuardScore: row.platform_publish_guard_score,
+    platformPublishGuardSummary: row.platform_publish_guard_summary,
+    platformPublishGuardError: row.platform_publish_guard_error,
+    platformPublishGuardCheckedAt: row.platform_publish_guard_checked_at,
+    platformPublishReady: row.platform_publish_ready,
+    platformPublishBlockedReason: row.platform_publish_blocked_reason,
   };
 }
 
@@ -700,6 +708,94 @@ export async function getSocialPostExportPayload(
   const post = await getSocialPostById(id);
   if (!post) return null;
   return { exportFormat: post.exportFormat, exportPayload: post.exportPayload };
+}
+
+/**
+ * platform publishing guard 실행 결과를 social_posts에 저장한다 (Phase 3-6).
+ * 실제 게시는 하지 않으며, publish_status를 바꾸지 않는다.
+ */
+export async function updatePlatformPublishGuardResult(
+  id: string,
+  result: PlatformPublishGuardResult
+): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      platform_publish_guard_status: result.status,
+      platform_publish_guard_score: result.score,
+      platform_publish_guard_summary: {
+        checklist: result.checklist,
+        warnings: result.warnings,
+        failures: result.failures,
+        blockedReasons: result.blockedReasons,
+      },
+      platform_publish_guard_error: null,
+      platform_publish_guard_checked_at: new Date().toISOString(),
+      platform_publish_ready: result.ready,
+      platform_publish_blocked_reason: result.blockedReason ?? null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`platform publishing guard 결과 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** platform publishing guard가 실행 중 예외로 실패했을 때 상태만 기록한다. */
+export async function markPlatformPublishGuardFailed(id: string, errorMessage: string): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      platform_publish_guard_status: "failed",
+      platform_publish_guard_error: errorMessage,
+      platform_publish_guard_checked_at: new Date().toISOString(),
+      platform_publish_ready: false,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`platform publishing guard 실패 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** publishing guard 실행에 필요한 social post 하나를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getSocialPostForPublishingGuard(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+/** 특정 기사에서 platform_publish_ready=true인 social post만 조회한다. */
+export async function listPublishingReadySocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("platform_publish_ready", true)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`게시 가능한 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
 }
 
 /** social post를 삭제한다 (quality_runs/approvals는 FK cascade로 함께 삭제됨). */
