@@ -5,6 +5,8 @@ import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
 import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
 import { getLogsByArticleId } from "@/lib/harness/logger";
 import { getPublishLogsByArticleId } from "@/lib/repositories/publish-repository";
+import { listSocialPostsByArticle } from "@/lib/repositories/social-posts-repository";
+import { SOCIAL_PLATFORMS, TONE_STYLES } from "@/lib/social/social-platform-types";
 import type { ArticleStatus } from "@/lib/types/domain";
 import {
   approveArticleAction,
@@ -40,6 +42,12 @@ import {
   saveExternalImageUrlSourceAction,
   saveLocalFeaturedImageAction,
   saveExistingWordPressMediaSourceAction,
+  generatePlaceholderSocialPostAction,
+  refreshSocialPostsAction,
+  runSocialPostQualityGateAction,
+  approveSocialPostAction,
+  rejectSocialPostAction,
+  exportSocialPostAction,
 } from "./actions";
 import { ConfirmSubmitButton } from "./confirm-submit-button";
 import type {
@@ -302,6 +310,32 @@ const PUBLIC_PUBLISH_STATUS_STYLE: Record<PublicPublishStatus, string> = {
   skipped_already_published: "bg-amber-100 text-amber-700",
 };
 
+const SOCIAL_QUALITY_STATUS_STYLE: Record<string, string> = {
+  not_checked: "bg-zinc-100 text-zinc-500",
+  ready: "bg-green-100 text-green-700",
+  needs_revision: "bg-amber-100 text-amber-700",
+  blocked: "bg-red-100 text-red-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+const SOCIAL_APPROVAL_STATUS_STYLE: Record<string, string> = {
+  not_requested: "bg-zinc-100 text-zinc-500",
+  pending_review: "bg-amber-100 text-amber-700",
+  approved: "bg-green-100 text-green-700",
+  rejected: "bg-red-100 text-red-700",
+  revoked: "bg-amber-100 text-amber-700",
+};
+
+const SOCIAL_PUBLISH_STATUS_STYLE: Record<string, string> = {
+  not_published: "bg-zinc-100 text-zinc-500",
+  dry_run: "bg-blue-100 text-blue-700",
+  exported: "bg-green-100 text-green-700",
+  scheduled: "bg-blue-100 text-blue-700",
+  published: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+  blocked: "bg-red-100 text-red-700",
+};
+
 const GENERATED_IMAGE_STATUS_LABEL: Record<GeneratedImageStatus, string> = {
   not_generated: "생성 안 됨",
   queued: "대기중",
@@ -347,7 +381,7 @@ export default async function ArticleDetailPage({
     );
   }
 
-  const [theme, sources, latestEval, logs, wordpressLogs] = await Promise.all([
+  const [theme, sources, latestEval, logs, wordpressLogs, socialPosts] = await Promise.all([
     getThemeById(article.themeId),
     getSourcesByArticleId(article.id),
     getLatestEvalByArticleId(article.id),
@@ -356,6 +390,7 @@ export default async function ArticleDetailPage({
     // approval/public publish 등)의 로그에 밀려 오래된 wordpress 성공 기록을
     // 놓칠 수 있으므로, wordpress target은 항상 별도로 조회한다.
     getPublishLogsByArticleId(article.id, 5, WORDPRESS_TARGET),
+    listSocialPostsByArticle(article.id),
   ]);
 
   const isDraft = article.status === "draft";
@@ -2072,6 +2107,168 @@ export default async function ArticleDetailPage({
               </>
             );
           })()}
+        </section>
+
+        {/* Phase 3-1: Multi-platform Writing */}
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">Multi-platform Writing</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            이 기사를 WordPress 외 다른 플랫폼(네이버 블로그/카페, X,
+            Threads, Instagram)용 글로 변환하는 기능의 기초 구조입니다.
+            아직 실제 AI 글 생성이나 실제 플랫폼 게시는 연결되어 있지
+            않으며, 아래 &ldquo;새 플랫폼 글 초안 생성 준비&rdquo;는 구조 테스트용
+            placeholder draft만 생성합니다.
+          </p>
+
+          <form action={generatePlaceholderSocialPostAction} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="articleId" value={article.id} />
+            <label className="flex flex-col text-xs text-zinc-600">
+              platform
+              <select name="platform" className="mt-1 rounded border border-zinc-300 px-2 py-1 text-xs" required>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <option key={platform} value={platform}>
+                    {platform}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col text-xs text-zinc-600">
+              tone_style
+              <select name="toneStyle" className="mt-1 rounded border border-zinc-300 px-2 py-1 text-xs" required>
+                {TONE_STYLES.map((toneStyle) => (
+                  <option key={toneStyle} value={toneStyle}>
+                    {toneStyle}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+            >
+              새 플랫폼 글 초안 생성 준비
+            </button>
+          </form>
+          <form action={refreshSocialPostsAction} className="mt-2">
+            <input type="hidden" name="articleId" value={article.id} />
+            <button
+              type="submit"
+              className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              목록 새로고침
+            </button>
+          </form>
+
+          {socialPosts.length === 0 ? (
+            <p className="mt-3 text-xs text-zinc-500">아직 생성된 social post가 없습니다.</p>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-2">
+              {socialPosts.map((post) => (
+                <li key={post.id} className="rounded border border-zinc-200 p-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.platform}</span>
+                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.toneStyle}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-medium ${SOCIAL_QUALITY_STATUS_STYLE[post.qualityStatus] ?? "bg-zinc-100 text-zinc-500"}`}
+                    >
+                      quality: {post.qualityStatus}
+                      {post.qualityScore != null ? ` (${post.qualityScore})` : ""}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-medium ${SOCIAL_APPROVAL_STATUS_STYLE[post.approvalStatus] ?? "bg-zinc-100 text-zinc-500"}`}
+                    >
+                      approval: {post.approvalStatus}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-medium ${SOCIAL_PUBLISH_STATUS_STYLE[post.publishStatus] ?? "bg-zinc-100 text-zinc-500"}`}
+                    >
+                      publish: {post.publishStatus}
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-zinc-700">
+                    {post.postTitle || post.caption || "(제목/캡션 없음)"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-zinc-400">
+                    생성: {post.generatedAt ? new Date(post.generatedAt).toLocaleString("ko-KR") : "-"} · 수정:{" "}
+                    {new Date(post.updatedAt).toLocaleString("ko-KR")}
+                  </p>
+
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-zinc-500">상세 보기</summary>
+                    <div className="mt-2 flex flex-col gap-1 rounded bg-zinc-50 p-2">
+                      {post.postBody && <p className="whitespace-pre-wrap text-zinc-600">{post.postBody}</p>}
+                      {post.threadItems.length > 0 && (
+                        <ul className="list-inside list-decimal text-zinc-600">
+                          {post.threadItems.map((item) => (
+                            <li key={item.order}>{item.text}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {post.cardItems.length > 0 && (
+                        <ul className="flex flex-col gap-1 text-zinc-600">
+                          {post.cardItems.map((item) => (
+                            <li key={item.order}>
+                              <strong>{item.heading}</strong>: {item.body}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {post.hashtags.length > 0 && (
+                        <p className="text-zinc-500">해시태그: {post.hashtags.map((tag) => `#${tag}`).join(" ")}</p>
+                      )}
+                      {post.errorMessage && <p className="text-red-600">오류: {post.errorMessage}</p>}
+
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <form action={runSocialPostQualityGateAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100"
+                          >
+                            Quality Gate 실행
+                          </button>
+                        </form>
+                        <form action={approveSocialPostAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            disabled={post.qualityStatus !== "ready"}
+                            className="rounded border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            승인
+                          </button>
+                        </form>
+                        <form action={rejectSocialPostAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                          >
+                            거부
+                          </button>
+                        </form>
+                        <form action={exportSocialPostAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <button
+                            type="submit"
+                            disabled={post.approvalStatus !== "approved"}
+                            className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Manual Export
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         {/* 인용 출처 */}

@@ -195,7 +195,23 @@ export type LogEventType =
   | "featured_image_manual_source_failed"
   // Featured Image Workflow: Source Setup (3단계 워크플로우 정리)
   | "featured_image_source_saved"
-  | "featured_image_source_failed";
+  | "featured_image_source_failed"
+  // Phase 3-1: Multi-platform Writing Schema & Foundation 이벤트
+  | "social_post_created"
+  | "social_post_generation_started"
+  | "social_post_generation_completed"
+  | "social_post_generation_failed"
+  | "social_post_placeholder_generation_started"
+  | "social_post_placeholder_generation_completed"
+  | "social_post_placeholder_generation_failed"
+  | "social_quality_gate_started"
+  | "social_quality_gate_completed"
+  | "social_quality_gate_blocked"
+  | "social_quality_gate_failed"
+  | "social_approval_started"
+  | "social_approval_completed"
+  | "social_approval_rejected"
+  | "social_export_completed";
 
 export type LogStatus = "success" | "failed" | "info";
 

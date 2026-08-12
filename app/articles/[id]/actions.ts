@@ -39,6 +39,13 @@ import {
   saveExistingWordPressMedia,
   saveLocalImageUpload,
 } from "@/lib/images/featured-image-source-service";
+import {
+  generatePlaceholderDraft,
+  runSocialPostQualityGateAndSave,
+  decideSocialPostApproval,
+  exportSocialPostDraft,
+} from "@/lib/social/social-post-service";
+import { isSocialPlatform, isToneStyle } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
@@ -897,4 +904,152 @@ export async function approveArticleAction(formData: FormData): Promise<void> {
   revalidatePath(`/articles/${articleId}`);
   revalidatePath("/articles");
   redirect(`/articles/${articleId}`);
+}
+
+/**
+ * Multi-platform Writing (Phase 3-1): 실제 AI 생성 전 구조 테스트를 위한
+ * placeholder social post draft를 생성한다. 실제 AI 글쓰기나 실제 플랫폼
+ * 게시는 이 단계에서 수행하지 않는다.
+ */
+export async function generatePlaceholderSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const platformRaw = String(formData.get("platform") ?? "");
+  const toneStyleRaw = String(formData.get("toneStyle") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    if (!isSocialPlatform(platformRaw)) {
+      throw new Error(`지원하지 않는 platform입니다: ${platformRaw}`);
+    }
+    if (!isToneStyle(toneStyleRaw)) {
+      throw new Error(`지원하지 않는 tone_style입니다: ${toneStyleRaw}`);
+    }
+
+    const result = await generatePlaceholderDraft(articleId, platformRaw, toneStyleRaw);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** Multi-platform Writing 목록을 새로고침한다 (별도 API 호출 없이 페이지만 다시 렌더링). */
+export async function refreshSocialPostsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  revalidatePath(`/articles/${articleId}`);
+  redirect(`/articles/${articleId}`);
+}
+
+/** social post 하나에 대해 rule-based quality gate를 실행한다. */
+export async function runSocialPostQualityGateAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await runSocialPostQualityGateAndSave(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** social post를 승인한다. quality_status가 'ready'가 아니면 차단된다. */
+export async function approveSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await decideSocialPostApproval(socialPostId, "approved", APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/** social post를 거부한다. */
+export async function rejectSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await decideSocialPostApproval(socialPostId, "rejected", APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 승인된 social post를 플랫폼별 manual export payload로 변환한다.
+ * 실제 외부 플랫폼 게시 API는 호출하지 않는다.
+ */
+export async function exportSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await exportSocialPostDraft(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
 }

@@ -438,6 +438,103 @@ export type PublishLogRow = {
   updated_at: string;
 };
 
+/** Phase 3-1: 멀티 플랫폼 자동 글쓰기 대상 플랫폼 */
+export type SocialPlatform =
+  | "wordpress_blog"
+  | "naver_blog"
+  | "naver_cafe"
+  | "x"
+  | "threads"
+  | "instagram";
+
+/** Phase 3-1: 플랫폼별 글의 문체 */
+export type ToneStyle =
+  | "explanatory"
+  | "informational"
+  | "persuasive"
+  | "warning"
+  | "loss_aversion"
+  | "curiosity"
+  | "comparison"
+  | "story";
+
+/** Phase 3-1: social_posts quality gate 상태 */
+export type SocialPostQualityStatus = "not_checked" | "ready" | "needs_revision" | "blocked" | "failed";
+
+/** Phase 3-1: social_posts 승인 상태 */
+export type SocialPostApprovalStatus = "not_requested" | "pending_review" | "approved" | "rejected" | "revoked";
+
+/** Phase 3-1: social_posts 게시 상태 (실제 자동 게시는 이번 단계에서 구현하지 않는다) */
+export type SocialPostPublishStatus =
+  | "not_published"
+  | "dry_run"
+  | "exported"
+  | "scheduled"
+  | "published"
+  | "failed"
+  | "blocked";
+
+export type SocialPostRow = {
+  id: string;
+  article_id: string;
+  platform: SocialPlatform;
+  tone_style: ToneStyle;
+  post_title: string | null;
+  post_body: string | null;
+  caption: string | null;
+  excerpt: string | null;
+  hashtags: string[];
+  thread_items: Record<string, unknown>[];
+  card_items: Record<string, unknown>[];
+  media_requirements: Record<string, unknown>;
+  platform_metadata: Record<string, unknown>;
+  generation_context: Record<string, unknown>;
+  quality_status: SocialPostQualityStatus;
+  quality_score: number | null;
+  quality_summary: Record<string, unknown>;
+  approval_status: SocialPostApprovalStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  publish_status: SocialPostPublishStatus;
+  external_post_id: string | null;
+  post_url: string | null;
+  export_format: string | null;
+  export_payload: Record<string, unknown>;
+  error_message: string | null;
+  generated_at: string | null;
+  reviewed_at: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SocialPostQualityRunRow = {
+  id: string;
+  social_post_id: string;
+  article_id: string;
+  platform: SocialPlatform;
+  tone_style: ToneStyle;
+  status: SocialPostQualityStatus;
+  score: number | null;
+  checklist: Record<string, unknown>[];
+  warnings: Record<string, unknown>[];
+  failures: Record<string, unknown>[];
+  blocked_reasons: Record<string, unknown>[];
+  details_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type SocialPostApprovalRow = {
+  id: string;
+  social_post_id: string;
+  article_id: string;
+  platform: SocialPlatform;
+  approval_status: SocialPostApprovalStatus;
+  approved_by: string | null;
+  approval_notes: string | null;
+  created_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -518,6 +615,26 @@ export interface Database {
         Row: ArticleUrlCandidateRow;
         Insert: Partial<ArticleUrlCandidateRow> & Pick<ArticleUrlCandidateRow, "platform" | "url">;
         Update: Partial<ArticleUrlCandidateRow>;
+        Relationships: [];
+      };
+      social_posts: {
+        Row: SocialPostRow;
+        Insert: Partial<SocialPostRow> & Pick<SocialPostRow, "article_id" | "platform" | "tone_style">;
+        Update: Partial<SocialPostRow>;
+        Relationships: [];
+      };
+      social_post_quality_runs: {
+        Row: SocialPostQualityRunRow;
+        Insert: Partial<SocialPostQualityRunRow> &
+          Pick<SocialPostQualityRunRow, "social_post_id" | "article_id" | "platform" | "tone_style" | "status">;
+        Update: Partial<SocialPostQualityRunRow>;
+        Relationships: [];
+      };
+      social_post_approvals: {
+        Row: SocialPostApprovalRow;
+        Insert: Partial<SocialPostApprovalRow> &
+          Pick<SocialPostApprovalRow, "social_post_id" | "article_id" | "platform" | "approval_status">;
+        Update: Partial<SocialPostApprovalRow>;
         Relationships: [];
       };
     };
