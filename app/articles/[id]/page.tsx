@@ -66,11 +66,14 @@ import {
   generatePerformanceRewriteSuggestionAction,
   approveRewriteSuggestionAction,
   rejectRewriteSuggestionAction,
+  applyRewriteSuggestionAction,
 } from "./actions";
 import { formatPlatformPublishDryRunPreview } from "@/lib/social/platform-publish-dry-run-preview-formatters";
 import { listMetricsBySocialPost } from "@/lib/repositories/social-metrics-repository";
 import { buildArticleSocialPerformanceSummary } from "@/lib/social/article-social-performance-summary";
 import { listRewriteSuggestionsBySocialPost } from "@/lib/repositories/social-rewrite-suggestions-repository";
+import { buildRewriteApplicationPreview } from "@/lib/social/rewrite-application-preview-builder";
+import { listRewriteVersionsByRoot } from "@/lib/repositories/social-posts-repository";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
 import { buildManualExportPayload } from "@/lib/social/social-export-builder";
 import { CopyToClipboardButton } from "./copy-to-clipboard-button";
@@ -424,6 +427,18 @@ export default async function ArticleDetailPage({
 
   const socialPostRewriteSuggestionLists = await Promise.all(socialPosts.map((post) => listRewriteSuggestionsBySocialPost(post.id)));
   const socialPostRewriteSuggestionsById = new Map(socialPosts.map((post, i) => [post.id, socialPostRewriteSuggestionLists[i]]));
+
+  const allSuggestions = socialPostRewriteSuggestionLists.flat();
+  const previewableSuggestions = allSuggestions.filter(
+    (s) => s.applicationStatus !== "applied" && (s.suggestionStatus === "approved" || s.suggestionStatus === "needs_review" || s.suggestionStatus === "ready")
+  );
+  const previewEntries = await Promise.all(
+    previewableSuggestions.map(async (s) => [s.id, await buildRewriteApplicationPreview(s.id)] as const)
+  );
+  const rewriteApplicationPreviewById = new Map(previewEntries);
+
+  const versionChains = await Promise.all(socialPosts.map((post) => listRewriteVersionsByRoot(post.rootSocialPostId ?? post.id)));
+  const versionChainByPostId = new Map(socialPosts.map((post, i) => [post.id, versionChains[i]]));
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -2277,6 +2292,31 @@ export default async function ArticleDetailPage({
                     {post.revisionCount} · 승인:{" "}
                     {post.approvedAt ? new Date(post.approvedAt).toLocaleString("ko-KR") : "-"}
                   </p>
+                  <p className="mt-1 text-[11px] text-zinc-400">
+                    버전: v{post.versionNumber} ({post.versionStatus}){post.isRewriteVersion ? " · rewrite 버전" : " · 원본"}
+                    {post.rewriteAppliedAt
+                      ? ` · rewrite 적용: ${new Date(post.rewriteAppliedAt).toLocaleString("ko-KR")} by ${post.rewriteAppliedBy ?? "-"}`
+                      : ""}
+                  </p>
+
+                  {/* Phase 3-11: Version History */}
+                  {(() => {
+                    const chain = versionChainByPostId.get(post.id) ?? [];
+                    if (chain.length <= 1) return null;
+                    return (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-[11px] text-zinc-400">버전 이력 보기 ({chain.length}개)</summary>
+                        <ul className="mt-1 flex flex-col gap-1 text-[11px] text-zinc-500">
+                          {chain.map((v) => (
+                            <li key={v.id} className={v.id === post.id ? "font-medium text-zinc-700" : ""}>
+                              v{v.versionNumber} ({v.versionStatus}) — {v.postTitle || v.caption || "(제목 없음)"}
+                              {v.id === post.id ? " ← 현재 카드" : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    );
+                  })()}
 
                   <details className="mt-2">
                     <summary className="cursor-pointer text-zinc-500">상세 보기 / 수정</summary>
@@ -3219,6 +3259,45 @@ export default async function ArticleDetailPage({
                                       <p className="mt-1 text-zinc-500">참고 개선 영역: {s.qualityNotes.join(", ")}</p>
                                     )}
                                     {s.rejectedReason && <p className="mt-1 text-red-600">반려 사유: {s.rejectedReason}</p>}
+                                    {s.applicationStatus === "applied" && (
+                                      <p className="mt-1 text-green-700">
+                                        ✔ 적용 완료 — 새 social post: {s.appliedSocialPostId} (이 목록에서 새 버전으로
+                                        표시됩니다). 이 버전은 다시 Quality Gate와 Approval을 거쳐야 합니다.
+                                      </p>
+                                    )}
+
+                                    {(() => {
+                                      const preview = rewriteApplicationPreviewById.get(s.id);
+                                      if (!preview || !preview.ok || !preview.original || !preview.proposed) return null;
+                                      return (
+                                        <details className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                                          <summary className="cursor-pointer text-zinc-500">적용 Preview 보기</summary>
+                                          <div className="mt-1 text-zinc-600">
+                                            <p>
+                                              원본: v{preview.original.versionNumber} · 제목:{" "}
+                                              {preview.original.postTitlePreview ?? "(없음)"} · 본문 {preview.original.postBodyLength}자 ·
+                                              해시태그 {preview.original.hashtagCount}개
+                                            </p>
+                                            <p className="mt-1">
+                                              제안: 제목 {preview.proposed.suggestedTitle ?? "(변경 없음)"} · hook{" "}
+                                              {preview.proposed.suggestedHook ?? "(없음)"} · CTA {preview.proposed.suggestedCta ?? "(없음)"}
+                                            </p>
+                                            {preview.changes.length > 0 && (
+                                              <ul className="mt-1 list-inside list-disc text-zinc-500">
+                                                {preview.changes.map((c, i) => (
+                                                  <li key={i}>{c}</li>
+                                                ))}
+                                              </ul>
+                                            )}
+                                            {preview.warnings.map((w, i) => (
+                                              <p key={i} className="mt-1 text-amber-700">
+                                                ⚠ {w}
+                                              </p>
+                                            ))}
+                                          </div>
+                                        </details>
+                                      );
+                                    })()}
 
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       <form action={approveRewriteSuggestionAction}>
@@ -3247,14 +3326,22 @@ export default async function ArticleDetailPage({
                                           제안 반려
                                         </button>
                                       </form>
-                                      <button
-                                        type="button"
-                                        disabled
-                                        title="다음 단계에서 구현 예정"
-                                        className="rounded border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-400"
-                                      >
-                                        제안 적용 (다음 단계에서 구현)
-                                      </button>
+                                      <form action={applyRewriteSuggestionAction} className="flex items-center gap-1">
+                                        <input type="hidden" name="articleId" value={article.id} />
+                                        <input type="hidden" name="suggestionId" value={s.id} />
+                                        <input
+                                          name="notes"
+                                          placeholder="적용 메모 (선택)"
+                                          className="rounded border border-zinc-300 px-1.5 py-1 text-[11px]"
+                                        />
+                                        <button
+                                          type="submit"
+                                          disabled={s.suggestionStatus !== "approved" || s.applicationStatus === "applied"}
+                                          className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          개선안 적용
+                                        </button>
+                                      </form>
                                     </div>
                                   </li>
                                 ))}

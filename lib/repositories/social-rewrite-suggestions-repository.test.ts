@@ -15,6 +15,9 @@ const {
   updateRewriteSuggestionStatus,
   updateSocialPostRewriteSuggestionSummary,
   mapSocialPostRewriteSuggestionRow,
+  updateRewriteSuggestionApplicationStatus,
+  markRewriteSuggestionApplied,
+  listApplicableRewriteSuggestionsBySocialPost,
 } = await import("./social-rewrite-suggestions-repository");
 
 function makeSuggestionRow(overrides: Partial<SocialPostRewriteSuggestionRow> = {}): SocialPostRewriteSuggestionRow {
@@ -48,6 +51,10 @@ function makeSuggestionRow(overrides: Partial<SocialPostRewriteSuggestionRow> = 
     rejected_reason: null,
     created_at: "2026-01-11T00:00:00.000Z",
     updated_at: "2026-01-11T00:00:00.000Z",
+    applied_social_post_id: null,
+    application_status: "not_applied",
+    application_error: null,
+    application_notes: null,
     ...overrides,
   };
 }
@@ -267,5 +274,47 @@ describe("mapSocialPostRewriteSuggestionRow", () => {
   it("row를 도메인 타입으로 매핑한다", () => {
     const mapped = mapSocialPostRewriteSuggestionRow(makeSuggestionRow());
     expect(mapped).toMatchObject({ id: "suggestion-1", socialPostId: "social-post-1", suggestionStatus: "ready" });
+  });
+});
+
+describe("rewrite application (Phase 3-11)", () => {
+  it("updateRewriteSuggestionApplicationStatus는 application_status를 저장한다", async () => {
+    const chain = makeChain({ data: makeSuggestionRow({ application_status: "blocked" }), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await updateRewriteSuggestionApplicationStatus("suggestion-1", {
+      applicationStatus: "blocked",
+      applicationError: "사유",
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({ application_status: "blocked", application_error: "사유" }));
+    expect(result.applicationStatus).toBe("blocked");
+  });
+
+  it("markRewriteSuggestionApplied는 suggestion_status/application_status를 applied로 바꾸고 applied_social_post_id를 저장한다", async () => {
+    const chain = makeChain({
+      data: makeSuggestionRow({ suggestion_status: "applied", application_status: "applied", applied_social_post_id: "social-post-2" }),
+      error: null,
+    });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await markRewriteSuggestionApplied("suggestion-1", "social-post-2", "적용 메모");
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ suggestion_status: "applied", application_status: "applied", applied_social_post_id: "social-post-2" })
+    );
+    expect(result.applicationStatus).toBe("applied");
+  });
+
+  it("listApplicableRewriteSuggestionsBySocialPost는 approved && not_applied인 것만 조회한다", async () => {
+    const rows = [makeSuggestionRow({ suggestion_status: "approved", application_status: "not_applied" })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listApplicableRewriteSuggestionsBySocialPost("social-post-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("suggestion_status", "approved");
+    expect(chain.eq).toHaveBeenCalledWith("application_status", "not_applied");
+    expect(result).toHaveLength(1);
   });
 });

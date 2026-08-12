@@ -574,6 +574,36 @@ export type SocialPostRow = {
   rewrite_suggestion_status: string;
   rewrite_suggestion_count: number;
   latest_rewrite_suggested_at: string | null;
+  // Phase 3-11: Rewrite Application & Versioning Workflow
+  parent_social_post_id: string | null;
+  root_social_post_id: string | null;
+  version_number: number;
+  version_label: string | null;
+  version_status: string;
+  rewrite_source_suggestion_id: string | null;
+  rewrite_applied_from_social_post_id: string | null;
+  rewrite_applied_at: string | null;
+  rewrite_applied_by: string | null;
+  rewrite_application_notes: string | null;
+  is_rewrite_version: boolean;
+};
+
+export type SocialPostVersionRow = {
+  id: string;
+  social_post_id: string;
+  article_id: string;
+  root_social_post_id: string;
+  parent_social_post_id: string | null;
+  version_number: number;
+  version_label: string | null;
+  version_status: string;
+  platform: SocialPlatform;
+  tone_style: ToneStyle;
+  rewrite_source_suggestion_id: string | null;
+  change_summary: Record<string, unknown>;
+  applied_by: string | null;
+  applied_at: string | null;
+  created_at: string;
 };
 
 export type SocialPostRewriteSuggestionRow = {
@@ -606,6 +636,11 @@ export type SocialPostRewriteSuggestionRow = {
   rejected_reason: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 3-11: Rewrite Application & Versioning Workflow
+  applied_social_post_id: string | null;
+  application_status: string;
+  application_error: string | null;
+  application_notes: string | null;
 };
 
 export type SocialPostMetricsRow = {
@@ -776,6 +811,13 @@ export interface Database {
         Insert: Partial<SocialPostRewriteSuggestionRow> &
           Pick<SocialPostRewriteSuggestionRow, "social_post_id" | "article_id" | "platform" | "tone_style">;
         Update: Partial<SocialPostRewriteSuggestionRow>;
+        Relationships: [];
+      };
+      social_post_versions: {
+        Row: SocialPostVersionRow;
+        Insert: Partial<SocialPostVersionRow> &
+          Pick<SocialPostVersionRow, "social_post_id" | "article_id" | "root_social_post_id" | "version_number" | "platform" | "tone_style">;
+        Update: Partial<SocialPostVersionRow>;
         Relationships: [];
       };
     };

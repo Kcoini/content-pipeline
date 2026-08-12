@@ -42,6 +42,48 @@ export interface SocialPostRewriteSuggestion {
   rejectedReason: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Phase 3-11: Rewrite Application & Versioning Workflow */
+  appliedSocialPostId: string | null;
+  applicationStatus: RewriteApplicationStatus;
+  applicationError: string | null;
+  applicationNotes: string | null;
+}
+
+export type RewriteApplicationStatus = "not_applied" | "applied" | "blocked" | "failed";
+
+/** social_post_versions row 하나. */
+export interface SocialPostVersion {
+  id: string;
+  socialPostId: string;
+  articleId: string;
+  rootSocialPostId: string;
+  parentSocialPostId: string | null;
+  versionNumber: number;
+  versionLabel: string | null;
+  versionStatus: string;
+  platform: SocialPlatform;
+  toneStyle: ToneStyle;
+  rewriteSourceSuggestionId: string | null;
+  changeSummary: Record<string, unknown>;
+  appliedBy: string | null;
+  appliedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateSocialPostVersionInput {
+  socialPostId: string;
+  articleId: string;
+  rootSocialPostId: string;
+  parentSocialPostId?: string | null;
+  versionNumber: number;
+  versionLabel?: string | null;
+  versionStatus?: string;
+  platform: SocialPlatform;
+  toneStyle: ToneStyle;
+  rewriteSourceSuggestionId?: string | null;
+  changeSummary?: Record<string, unknown>;
+  appliedBy?: string | null;
+  appliedAt?: string | null;
 }
 
 /** rewrite suggestion을 새로 만들 때 필요한 입력. */

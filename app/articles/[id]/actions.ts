@@ -66,6 +66,7 @@ import {
 import { recordSocialPostMetrics } from "@/lib/social/social-metrics-service";
 import { generatePerformanceRewriteSuggestion } from "@/lib/social/performance-rewrite-suggestion-generator";
 import { approveRewriteSuggestion, rejectRewriteSuggestion } from "@/lib/social/rewrite-suggestion-review-service";
+import { applyRewriteSuggestion } from "@/lib/social/rewrite-application-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1637,6 +1638,37 @@ export async function rejectRewriteSuggestionAction(formData: FormData): Promise
 
   try {
     const result = await rejectRewriteSuggestion(suggestionId, APPROVED_BY, reason.length > 0 ? reason : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 승인된 rewrite suggestion을 적용해 새 social_posts 버전을 생성한다
+ * (Phase 3-11). 기존 social_post는 절대 수정/삭제하지 않으며, 새
+ * 버전은 quality/approval/export/guard/handoff/manual posting을 모두
+ * 처음부터 다시 거쳐야 한다. 실제 외부 게시는 수행하지 않는다.
+ */
+export async function applyRewriteSuggestionAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const suggestionId = String(formData.get("suggestionId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await applyRewriteSuggestion(suggestionId, APPROVED_BY, notes.length > 0 ? notes : undefined);
     message = result.message;
     isError = !result.success;
   } catch (error) {

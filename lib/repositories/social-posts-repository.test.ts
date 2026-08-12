@@ -32,6 +32,10 @@ const {
   updateManualPostingResult,
   listManualPostingReadySocialPostsByArticle,
   listManualPostedSocialPostsByArticle,
+  createRewriteVersion,
+  updateSocialPostVersionStatus,
+  listRewriteVersionsByArticle,
+  listRewriteVersionsByRoot,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -110,6 +114,17 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     manual_post_recorded_at: null,
     manual_post_recorded_by: null,
     manual_post_checklist: [],
+    parent_social_post_id: null,
+    root_social_post_id: "social-post-1",
+    version_number: 1,
+    version_label: null,
+    version_status: "current",
+    rewrite_source_suggestion_id: null,
+    rewrite_applied_from_social_post_id: null,
+    rewrite_applied_at: null,
+    rewrite_applied_by: null,
+    rewrite_application_notes: null,
+    is_rewrite_version: false,
     ...overrides,
   };
 }
@@ -552,5 +567,65 @@ describe("manual posting result recording (Phase 3-8)", () => {
 
     expect(chain.eq).toHaveBeenCalledWith("manual_post_status", "posted");
     expect(result).toHaveLength(1);
+  });
+});
+
+describe("rewrite versioning (Phase 3-11)", () => {
+  it("createRewriteVersion은 parent/root/version_number를 포함해 새 row를 insert한다", async () => {
+    const row = makeSocialPostRow({ id: "social-post-2", version_number: 2, is_rewrite_version: true });
+    const chain = makeChain({ data: row, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await createRewriteVersion({
+      articleId: "article-1",
+      platform: "naver_blog",
+      toneStyle: "informational",
+      postTitle: "새 제목",
+      parentSocialPostId: "social-post-1",
+      rootSocialPostId: "social-post-1",
+      versionNumber: 2,
+    });
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parent_social_post_id: "social-post-1",
+        root_social_post_id: "social-post-1",
+        version_number: 2,
+        is_rewrite_version: true,
+      })
+    );
+    expect(result.id).toBe("social-post-2");
+  });
+
+  it("updateSocialPostVersionStatus는 version_status만 갱신한다", async () => {
+    const chain = makeChain({ data: makeSocialPostRow({ version_status: "superseded" }), error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateSocialPostVersionStatus("social-post-1", "superseded");
+
+    expect(chain.update).toHaveBeenCalledWith({ version_status: "superseded" });
+  });
+
+  it("listRewriteVersionsByArticle는 is_rewrite_version=true인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ is_rewrite_version: true })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRewriteVersionsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("is_rewrite_version", true);
+    expect(result).toHaveLength(1);
+  });
+
+  it("listRewriteVersionsByRoot는 root_social_post_id 기준으로 버전 순 조회한다", async () => {
+    const rows = [makeSocialPostRow({ version_number: 1 }), makeSocialPostRow({ id: "social-post-2", version_number: 2 })];
+    const chain = makeChain({ data: rows, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listRewriteVersionsByRoot("social-post-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("root_social_post_id", "social-post-1");
+    expect(result).toHaveLength(2);
   });
 });

@@ -8,6 +8,7 @@ import { mapSocialPostRow } from "./social-posts-repository";
 import type { SocialPost } from "@/lib/social/social-platform-types";
 import type {
   CreateRewriteSuggestionInput,
+  RewriteApplicationStatus,
   RewriteSuggestionStatus,
   SocialPostRewriteSuggestion,
 } from "@/lib/social/social-rewrite-types";
@@ -43,6 +44,10 @@ export function mapSocialPostRewriteSuggestionRow(row: SocialPostRewriteSuggesti
     rejectedReason: row.rejected_reason,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    appliedSocialPostId: row.applied_social_post_id,
+    applicationStatus: row.application_status as RewriteApplicationStatus,
+    applicationError: row.application_error,
+    applicationNotes: row.application_notes,
   };
 }
 
@@ -208,4 +213,91 @@ export async function updateSocialPostRewriteSuggestionSummary(
   }
 
   return mapSocialPostRow(data);
+}
+
+export interface UpdateRewriteSuggestionApplicationStatusPatch {
+  applicationStatus: RewriteApplicationStatus;
+  appliedSocialPostId?: string | null;
+  applicationError?: string | null;
+  applicationNotes?: string | null;
+}
+
+/** rewrite suggestion의 적용(application) 상태만 갱신한다 (Phase 3-11). */
+export async function updateRewriteSuggestionApplicationStatus(
+  id: string,
+  patch: UpdateRewriteSuggestionApplicationStatusPatch
+): Promise<SocialPostRewriteSuggestion> {
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRewriteSuggestionRow> = {
+    application_status: patch.applicationStatus,
+  };
+  if (patch.appliedSocialPostId !== undefined) update.applied_social_post_id = patch.appliedSocialPostId;
+  if (patch.applicationError !== undefined) update.application_error = patch.applicationError;
+  if (patch.applicationNotes !== undefined) update.application_notes = patch.applicationNotes;
+
+  const { data, error } = await supabase
+    .from("social_post_rewrite_suggestions")
+    .update(update)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`rewrite suggestion 적용 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRewriteSuggestionRow(data);
+}
+
+/**
+ * rewrite suggestion을 "적용 완료"로 표시한다: suggestion_status와
+ * application_status를 함께 'applied'로 바꾸고, 새로 생성된
+ * social_post의 id를 연결한다.
+ */
+export async function markRewriteSuggestionApplied(
+  id: string,
+  appliedSocialPostId: string,
+  notes?: string | null
+): Promise<SocialPostRewriteSuggestion> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_post_rewrite_suggestions")
+    .update({
+      suggestion_status: "applied",
+      application_status: "applied",
+      applied_social_post_id: appliedSocialPostId,
+      applied_at: new Date().toISOString(),
+      application_notes: notes ?? null,
+      application_error: null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`rewrite suggestion 적용 완료 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRewriteSuggestionRow(data);
+}
+
+/** 특정 social post에 대해 적용 가능한(approved && not_applied) rewrite suggestion만 조회한다. */
+export async function listApplicableRewriteSuggestionsBySocialPost(socialPostId: string): Promise<SocialPostRewriteSuggestion[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_post_rewrite_suggestions")
+    .select()
+    .eq("social_post_id", socialPostId)
+    .eq("suggestion_status", "approved")
+    .eq("application_status", "not_applied")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`적용 가능한 rewrite suggestion 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRewriteSuggestionRow);
 }

@@ -159,6 +159,17 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     rewriteSuggestionStatus: row.rewrite_suggestion_status as SocialPost["rewriteSuggestionStatus"],
     rewriteSuggestionCount: row.rewrite_suggestion_count,
     latestRewriteSuggestedAt: row.latest_rewrite_suggested_at,
+    parentSocialPostId: row.parent_social_post_id,
+    rootSocialPostId: row.root_social_post_id,
+    versionNumber: row.version_number,
+    versionLabel: row.version_label,
+    versionStatus: row.version_status as SocialPost["versionStatus"],
+    rewriteSourceSuggestionId: row.rewrite_source_suggestion_id,
+    rewriteAppliedFromSocialPostId: row.rewrite_applied_from_social_post_id,
+    rewriteAppliedAt: row.rewrite_applied_at,
+    rewriteAppliedBy: row.rewrite_applied_by,
+    rewriteApplicationNotes: row.rewrite_application_notes,
+    isRewriteVersion: row.is_rewrite_version,
   };
 }
 
@@ -1060,6 +1071,137 @@ export async function listManualPostedSocialPostsByArticle(articleId: string): P
 
   if (error) {
     throw new Error(`수동 게시 완료된 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+export interface CreateRewriteVersionInput {
+  articleId: string;
+  platform: SocialPlatform;
+  toneStyle: ToneStyle;
+  postTitle?: string | null;
+  postBody?: string | null;
+  caption?: string | null;
+  excerpt?: string | null;
+  hashtags?: string[];
+  threadItems?: ThreadItem[];
+  cardItems?: CardItem[];
+  mediaRequirements?: Record<string, unknown>;
+  platformMetadata?: Record<string, unknown>;
+  parentSocialPostId: string;
+  rootSocialPostId: string;
+  versionNumber: number;
+  versionLabel?: string | null;
+  rewriteSourceSuggestionId?: string | null;
+  rewriteAppliedFromSocialPostId?: string | null;
+  rewriteAppliedBy?: string | null;
+  rewriteApplicationNotes?: string | null;
+}
+
+/**
+ * rewrite suggestion 적용 결과로 새 social_posts row(버전)를 생성한다
+ * (Phase 3-11). 기존 row는 절대 수정/삭제하지 않는다. quality/approval/
+ * export/guard/dry-run/handoff/manual_post/performance 관련 상태는 모두
+ * 초기값으로 시작한다(호출하는 쪽에서 별도로 초기화할 필요 없음).
+ */
+export async function createRewriteVersion(input: CreateRewriteVersionInput): Promise<SocialPost> {
+  assertValidPlatform(input.platform);
+  assertValidToneStyle(input.toneStyle);
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .insert({
+      article_id: input.articleId,
+      platform: input.platform,
+      tone_style: input.toneStyle,
+      post_title: input.postTitle ?? null,
+      post_body: input.postBody ?? null,
+      caption: input.caption ?? null,
+      excerpt: input.excerpt ?? null,
+      hashtags: input.hashtags ?? [],
+      thread_items: (input.threadItems ?? []) as unknown as Record<string, unknown>[],
+      card_items: (input.cardItems ?? []) as unknown as Record<string, unknown>[],
+      media_requirements: input.mediaRequirements ?? {},
+      platform_metadata: input.platformMetadata ?? {},
+      generated_at: new Date().toISOString(),
+      parent_social_post_id: input.parentSocialPostId,
+      root_social_post_id: input.rootSocialPostId,
+      version_number: input.versionNumber,
+      version_label: input.versionLabel ?? `Rewrite v${input.versionNumber}`,
+      version_status: "current",
+      is_rewrite_version: true,
+      rewrite_source_suggestion_id: input.rewriteSourceSuggestionId ?? null,
+      rewrite_applied_from_social_post_id: input.rewriteAppliedFromSocialPostId ?? null,
+      rewrite_applied_at: new Date().toISOString(),
+      rewrite_applied_by: input.rewriteAppliedBy ?? null,
+      rewrite_application_notes: input.rewriteApplicationNotes ?? null,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`rewrite version 생성에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** social post 하나의 버전 정보를 조회한다 (getSocialPostById와 동일하나 의도를 명확히 한다). */
+export async function getSocialPostVersionInfo(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+/** social post의 version_status만 갱신한다 (예: 새 버전이 생기면 이전 버전을 'superseded'로). */
+export async function updateSocialPostVersionStatus(id: string, status: SocialPost["versionStatus"]): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({ version_status: status })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post version_status 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** 특정 기사에서 rewrite로 생성된 버전(is_rewrite_version=true)만 조회한다. */
+export async function listRewriteVersionsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("is_rewrite_version", true)
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`기사별 rewrite version 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** 특정 root social post의 전체 버전 계보(원본 포함)를 버전 순으로 조회한다. */
+export async function listRewriteVersionsByRoot(rootSocialPostId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("root_social_post_id", rootSocialPostId)
+    .order("version_number", { ascending: true });
+
+  if (error) {
+    throw new Error(`root social post 기준 버전 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);

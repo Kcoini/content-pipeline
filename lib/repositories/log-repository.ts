@@ -277,7 +277,15 @@ export type LogEventType =
   | "social_rewrite_suggestion_blocked"
   | "social_rewrite_suggestion_failed"
   | "social_rewrite_suggestion_approved"
-  | "social_rewrite_suggestion_rejected";
+  | "social_rewrite_suggestion_rejected"
+  // Phase 3-11: Rewrite Application & Versioning Workflow 이벤트
+  | "social_rewrite_application_preview_started"
+  | "social_rewrite_application_preview_completed"
+  | "social_rewrite_application_started"
+  | "social_rewrite_application_completed"
+  | "social_rewrite_application_blocked"
+  | "social_rewrite_application_failed"
+  | "social_rewrite_version_created";
 
 export type LogStatus = "success" | "failed" | "info";
 
