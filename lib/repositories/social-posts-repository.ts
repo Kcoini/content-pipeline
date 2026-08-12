@@ -19,6 +19,7 @@ import {
   type SocialPostQualityResult,
   type SocialPostApprovalStatus,
   type SocialPostPublishStatus,
+  type SocialPostExportStatus,
   type ThreadItem,
   type CardItem,
 } from "@/lib/social/social-platform-types";
@@ -101,6 +102,13 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     rejectionReason: row.rejection_reason,
     revokedAt: row.revoked_at,
     revokedReason: row.revoked_reason,
+    exportStatus: row.export_status as SocialPost["exportStatus"],
+    exportedAt: row.exported_at,
+    exportedBy: row.exported_by,
+    exportError: row.export_error,
+    exportCopyCount: row.export_copy_count,
+    lastCopiedAt: row.last_copied_at,
+    exportNotes: row.export_notes,
   };
 }
 
@@ -591,6 +599,107 @@ export async function updateSocialPostPublishStatus(
   }
 
   return mapSocialPostRow(data);
+}
+
+export interface UpdateSocialPostExportPatch {
+  exportStatus: SocialPostExportStatus;
+  exportFormat?: string | null;
+  exportPayload?: Record<string, unknown>;
+  exportedBy?: string | null;
+  exportError?: string | null;
+  exportNotes?: string | null;
+  /** 'exported'일 때만 publish_status를 함께 'exported'로 바꾼다 (published로는 절대 바꾸지 않음). */
+  markPublishStatusExported?: boolean;
+}
+
+/**
+ * social post의 manual export 상태를 갱신한다 (Phase 3-5). 실제 외부
+ * 플랫폼 게시는 하지 않으며, publish_status를 'published'로 바꾸는 경로는
+ * 이 함수에 없다.
+ */
+export async function updateSocialPostExport(id: string, patch: UpdateSocialPostExportPatch): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const update: Partial<SocialPostRow> = {
+    export_status: patch.exportStatus,
+  };
+  if (patch.exportFormat !== undefined) update.export_format = patch.exportFormat;
+  if (patch.exportPayload !== undefined) update.export_payload = patch.exportPayload;
+  if (patch.exportError !== undefined) update.export_error = patch.exportError;
+  if (patch.exportNotes !== undefined) update.export_notes = patch.exportNotes;
+  if (patch.exportStatus === "exported") {
+    update.exported_at = new Date().toISOString();
+    update.exported_by = patch.exportedBy ?? null;
+    if (patch.markPublishStatusExported) {
+      update.publish_status = "exported";
+    }
+  }
+
+  const { data, error } = await supabase.from("social_posts").update(update).eq("id", id).select().single();
+
+  if (error || !data) {
+    throw new Error(`social post export 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** social post가 복사되었음을 기록한다 (export_copy_count 증가, last_copied_at 갱신). */
+export async function incrementExportCopyCount(id: string): Promise<SocialPost> {
+  const existing = await getSocialPostById(id);
+  if (!existing) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      export_copy_count: existing.exportCopyCount + 1,
+      last_copied_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post 복사 기록 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** 특정 기사에서 export 가능한(export_status가 ready 또는 exported인) social post만 조회한다. */
+export async function listExportReadySocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .in("export_status", ["ready", "exported"])
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`export 가능한 social post 목록 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** social post의 export_payload/export_format만 조회한다 (본문 전체를 다루지 않는 소비처용). */
+export async function getSocialPostExportPayload(
+  id: string
+): Promise<{ exportFormat: string | null; exportPayload: Record<string, unknown> } | null> {
+  const post = await getSocialPostById(id);
+  if (!post) return null;
+  return { exportFormat: post.exportFormat, exportPayload: post.exportPayload };
 }
 
 /** social post를 삭제한다 (quality_runs/approvals는 FK cascade로 함께 삭제됨). */

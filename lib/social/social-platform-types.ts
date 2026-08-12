@@ -53,6 +53,9 @@ export type SocialPostQualityStatus = "not_checked" | "ready" | "needs_revision"
 
 export type SocialPostApprovalStatus = "not_requested" | "pending_review" | "approved" | "rejected" | "revoked";
 
+/** Phase 3-5: manual export 진행 상태. publish_status와 별개의 트랙이다. */
+export type SocialPostExportStatus = "not_exported" | "ready" | "exported" | "blocked" | "failed";
+
 /** 실제 자동 게시(외부 플랫폼 API 호출)는 이번 단계에서 구현하지 않는다 — 상태값만 준비한다. */
 export type SocialPostPublishStatus =
   | "not_published"
@@ -124,6 +127,14 @@ export interface SocialPost {
   rejectionReason: string | null;
   revokedAt: string | null;
   revokedReason: string | null;
+  /** Phase 3-5: Manual Export & Copy Workflow */
+  exportStatus: SocialPostExportStatus;
+  exportedAt: string | null;
+  exportedBy: string | null;
+  exportError: string | null;
+  exportCopyCount: number;
+  lastCopiedAt: string | null;
+  exportNotes: string | null;
 }
 
 /** social_posts row 하나를 새로 만들 때 필요한 최소 입력. */

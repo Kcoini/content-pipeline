@@ -516,6 +516,14 @@ export type SocialPostRow = {
   rejection_reason: string | null;
   revoked_at: string | null;
   revoked_reason: string | null;
+  // Phase 3-5: Manual Export & Copy Workflow
+  export_status: string;
+  exported_at: string | null;
+  exported_by: string | null;
+  export_error: string | null;
+  export_copy_count: number;
+  last_copied_at: string | null;
+  export_notes: string | null;
 };
 
 export type SocialPostQualityRunRow = {

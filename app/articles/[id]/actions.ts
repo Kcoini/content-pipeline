@@ -52,6 +52,8 @@ import {
   rejectSocialPost as rejectSocialPostService,
   revokeApproval as revokeSocialPostApprovalService,
 } from "@/lib/social/social-post-approval-service";
+import { generateManualExport } from "@/lib/social/social-manual-export-service";
+import { recordSocialPostCopied } from "@/lib/social/social-copy-tracking-service";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
@@ -1219,6 +1221,64 @@ export async function exportSocialPostAction(formData: FormData): Promise<void> 
 
   try {
     const result = await exportSocialPostDraft(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post의 manual export(Phase 3-5)를 생성한다. quality_status='ready'
+ * 이고 approval_status='approved'인 경우에만 성공하며, 실제 외부 플랫폼
+ * 게시 API는 호출하지 않는다.
+ */
+export async function generateManualExportAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generateManualExport(socialPostId, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * social post의 export 결과가 복사되었음을 기록한다 (export_copy_count
+ * 증가). 복사한 텍스트 전문은 저장하지 않는다.
+ */
+export async function recordSocialPostCopiedAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const copyTarget = String(formData.get("copyTarget") ?? "all");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await recordSocialPostCopied(socialPostId, APPROVED_BY, copyTarget);
     message = result.message;
     isError = !result.success;
   } catch (error) {

@@ -18,6 +18,9 @@ const {
   approveSocialPost,
   rejectSocialPost,
   revokeSocialPostApproval,
+  updateSocialPostExport,
+  incrementExportCopyCount,
+  listExportReadySocialPostsByArticle,
 } = await import("./social-posts-repository");
 
 function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRow {
@@ -62,6 +65,13 @@ function makeSocialPostRow(overrides: Partial<SocialPostRow> = {}): SocialPostRo
     rejection_reason: null,
     revoked_at: null,
     revoked_reason: null,
+    export_status: "not_exported",
+    exported_at: null,
+    exported_by: null,
+    export_error: null,
+    export_copy_count: 0,
+    last_copied_at: null,
+    export_notes: null,
     ...overrides,
   };
 }
@@ -75,6 +85,7 @@ function makeChain(result: { data: unknown; error: unknown }) {
   chain.update = vi.fn(self);
   chain.delete = vi.fn(self);
   chain.eq = vi.fn(self);
+  chain.in = vi.fn(self);
   chain.order = vi.fn(self);
   chain.limit = vi.fn(self);
   chain.single = vi.fn(() => Promise.resolve(result));
@@ -262,5 +273,63 @@ describe("승인/반려/승인취소 (Phase 3-4)", () => {
     expect(chain.insert).toHaveBeenCalledWith(
       expect.objectContaining({ approval_status: "revoked", approval_notes: "재검토 필요" })
     );
+  });
+});
+
+describe("manual export (Phase 3-5)", () => {
+  it("updateSocialPostExport은 exported 상태일 때 exported_at/exported_by를 함께 저장한다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateSocialPostExport("social-post-1", {
+      exportStatus: "exported",
+      exportFormat: "naver_blog_markdown_copy",
+      exportedBy: "editor",
+      markPublishStatusExported: true,
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        export_status: "exported",
+        export_format: "naver_blog_markdown_copy",
+        exported_by: "editor",
+        publish_status: "exported",
+      })
+    );
+  });
+
+  it("updateSocialPostExport은 blocked 상태일 때 exported_at을 건드리지 않는다", async () => {
+    const row = makeSocialPostRow();
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await updateSocialPostExport("social-post-1", { exportStatus: "blocked", exportError: "사유" });
+
+    const call = (chain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.export_status).toBe("blocked");
+    expect(call.exported_at).toBeUndefined();
+  });
+
+  it("incrementExportCopyCount는 export_copy_count를 증가시킨다", async () => {
+    const row = makeSocialPostRow({ export_copy_count: 2 });
+    const chain = makeChain({ data: row, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await incrementExportCopyCount("social-post-1");
+
+    expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({ export_copy_count: 3 }));
+  });
+
+  it("listExportReadySocialPostsByArticle는 export_status가 ready/exported인 것만 조회한다", async () => {
+    const rows = [makeSocialPostRow({ export_status: "ready" })];
+    const chain = makeChain({ data: rows, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await listExportReadySocialPostsByArticle("article-1");
+
+    expect(chain.eq).toHaveBeenCalledWith("article_id", "article-1");
+    expect(result).toHaveLength(1);
   });
 });

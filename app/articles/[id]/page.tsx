@@ -49,12 +49,15 @@ import {
   runSocialPostQualityGateAction,
   approveSocialPostAction,
   rejectSocialPostAction,
-  exportSocialPostAction,
   editSocialPostAction,
   requestSocialPostApprovalAction,
   revokeSocialPostApprovalAction,
+  generateManualExportAction,
+  recordSocialPostCopiedAction,
 } from "./actions";
 import { formatSocialPostPreview } from "@/lib/social/social-post-preview-formatters";
+import { buildManualExportPayload } from "@/lib/social/social-export-builder";
+import { CopyToClipboardButton } from "./copy-to-clipboard-button";
 import { ConfirmSubmitButton } from "./confirm-submit-button";
 import type {
   WordPressMetadataStatus,
@@ -2477,17 +2480,181 @@ export default async function ArticleDetailPage({
                             승인 취소
                           </button>
                         </form>
-                        <form action={exportSocialPostAction}>
+                        <form action={generateManualExportAction}>
                           <input type="hidden" name="articleId" value={article.id} />
                           <input type="hidden" name="socialPostId" value={post.id} />
                           <button
                             type="submit"
-                            disabled={post.approvalStatus !== "approved"}
+                            disabled={post.qualityStatus !== "ready" || post.approvalStatus !== "approved"}
                             className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            Manual Export
+                            Manual Export 생성
                           </button>
                         </form>
+                      </div>
+
+                      {/* Phase 3-5: Manual Export & Copy */}
+                      <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                        <p className="font-medium text-zinc-600">Manual Export &amp; Copy</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          이 단계는 실제 게시가 아니라 수동 게시용 복사 기능입니다. 각 플랫폼에
+                          게시하기 전 최종 내용, 이미지, 링크, 정책 위반 가능성을 확인하세요.
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          export_status: <span className="font-mono">{post.exportStatus}</span>
+                          {post.exportFormat ? ` · format: ${post.exportFormat}` : ""} · 복사 횟수:{" "}
+                          {post.exportCopyCount}
+                          {post.exportedAt ? ` · export: ${new Date(post.exportedAt).toLocaleString("ko-KR")}` : ""}
+                          {post.lastCopiedAt
+                            ? ` · 마지막 복사: ${new Date(post.lastCopiedAt).toLocaleString("ko-KR")}`
+                            : ""}
+                        </p>
+                        {post.exportError && <p className="mt-1 text-red-600">export 오류: {post.exportError}</p>}
+
+                        {(() => {
+                          const exportPreview = buildManualExportPayload(post);
+                          const canCopy = post.exportStatus === "exported" && exportPreview.ok;
+                          const platformNotices: Partial<Record<typeof post.platform, string>> = {
+                            naver_cafe: "카페 규칙과 홍보성 게시 제한을 반드시 확인하세요.",
+                            instagram: "이미지 또는 카드뉴스 디자인이 필요합니다.",
+                            x: "각 스레드의 글자 수를 확인하세요.",
+                          };
+                          const notice = platformNotices[post.platform];
+
+                          return (
+                            <div className="mt-2 flex flex-col gap-1">
+                              {notice && <p className="text-amber-700">⚠ {notice}</p>}
+                              {exportPreview.instructions?.map((line, i) => (
+                                <p key={i} className="text-zinc-500">
+                                  안내: {line}
+                                </p>
+                              ))}
+                              {exportPreview.warnings?.map((line, i) => (
+                                <p key={i} className="text-amber-700">
+                                  경고: {line}
+                                </p>
+                              ))}
+                              {!exportPreview.ok && <p className="text-red-600">{exportPreview.error}</p>}
+
+                              <div className="mt-1 flex flex-wrap gap-2">
+                                {exportPreview.exportText && (
+                                  <form action={recordSocialPostCopiedAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="copyTarget" value="all" />
+                                    <CopyToClipboardButton
+                                      text={exportPreview.exportText}
+                                      disabled={!canCopy}
+                                      className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      전체 복사
+                                    </CopyToClipboardButton>
+                                  </form>
+                                )}
+                                {exportPreview.exportTitle && (
+                                  <form action={recordSocialPostCopiedAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="copyTarget" value="title" />
+                                    <CopyToClipboardButton
+                                      text={exportPreview.exportTitle}
+                                      disabled={!canCopy}
+                                      className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      제목 복사
+                                    </CopyToClipboardButton>
+                                  </form>
+                                )}
+                                {exportPreview.exportBody && (
+                                  <form action={recordSocialPostCopiedAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="copyTarget" value="body" />
+                                    <CopyToClipboardButton
+                                      text={exportPreview.exportBody}
+                                      disabled={!canCopy}
+                                      className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      본문 복사
+                                    </CopyToClipboardButton>
+                                  </form>
+                                )}
+                                {exportPreview.exportCaption && (
+                                  <form action={recordSocialPostCopiedAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="copyTarget" value="caption" />
+                                    <CopyToClipboardButton
+                                      text={exportPreview.exportCaption}
+                                      disabled={!canCopy}
+                                      className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      캡션 복사
+                                    </CopyToClipboardButton>
+                                  </form>
+                                )}
+                                {exportPreview.exportHashtags && exportPreview.exportHashtags.length > 0 && (
+                                  <form action={recordSocialPostCopiedAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="copyTarget" value="hashtags" />
+                                    <CopyToClipboardButton
+                                      text={exportPreview.exportHashtags.map((tag) => `#${tag}`).join(" ")}
+                                      disabled={!canCopy}
+                                      className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      해시태그 복사
+                                    </CopyToClipboardButton>
+                                  </form>
+                                )}
+                              </div>
+
+                              {exportPreview.exportThreadItems && exportPreview.exportThreadItems.length > 0 && (
+                                <div className="mt-1 flex flex-col gap-1">
+                                  <p className="text-zinc-500">스레드별 복사:</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {exportPreview.exportThreadItems.map((text, i) => (
+                                      <form key={i} action={recordSocialPostCopiedAction}>
+                                        <input type="hidden" name="articleId" value={article.id} />
+                                        <input type="hidden" name="socialPostId" value={post.id} />
+                                        <input type="hidden" name="copyTarget" value={`thread_${i + 1}`} />
+                                        <CopyToClipboardButton
+                                          text={text}
+                                          disabled={!canCopy}
+                                          className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          #{i + 1} 복사 ({text.length}자)
+                                        </CopyToClipboardButton>
+                                      </form>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {exportPreview.exportCardItems && exportPreview.exportCardItems.length > 0 && (
+                                <div className="mt-1 flex flex-col gap-1">
+                                  <p className="text-zinc-500">카드뉴스 문구 복사:</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {exportPreview.exportCardItems.map((item, i) => (
+                                      <form key={i} action={recordSocialPostCopiedAction}>
+                                        <input type="hidden" name="articleId" value={article.id} />
+                                        <input type="hidden" name="socialPostId" value={post.id} />
+                                        <input type="hidden" name="copyTarget" value={`card_${i + 1}`} />
+                                        <CopyToClipboardButton
+                                          text={`${item.heading}\n${item.body}`}
+                                          disabled={!canCopy}
+                                          className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          slide {item.order} 복사
+                                        </CopyToClipboardButton>
+                                      </form>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </details>

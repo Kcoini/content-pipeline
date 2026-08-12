@@ -232,7 +232,13 @@ export type LogEventType =
   | "social_post_edit_failed"
   | "social_approval_requested"
   | "social_approval_revoked"
-  | "social_approval_failed";
+  | "social_approval_failed"
+  // Phase 3-5: Manual Export & Copy Workflow 이벤트
+  | "social_manual_export_started"
+  | "social_manual_export_completed"
+  | "social_manual_export_blocked"
+  | "social_manual_export_failed"
+  | "social_manual_export_copied";
 
 export type LogStatus = "success" | "failed" | "info";
 
