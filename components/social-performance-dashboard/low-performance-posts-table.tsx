@@ -42,7 +42,7 @@ export function LowPerformancePostsTable({ posts }: { posts: LowPerformanceSocia
                   </td>
                   <td className="pr-3 py-1">{p.rewriteSuggestionStatus}</td>
                   <td className="pr-3 py-1">
-                    <a href={socialPostHref(p.articleId, p.id)} className="text-blue-600 hover:underline">
+                    <a href={socialPostHref(p.articleId, p.id, { platform: p.platform })} className="text-blue-600 hover:underline">
                       열기
                     </a>
                   </td>

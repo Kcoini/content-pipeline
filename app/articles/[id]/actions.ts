@@ -78,10 +78,66 @@ import {
 import { prepareRewriteReexport, generateRewriteReexportPayload } from "@/lib/social/rewrite-reexport-service";
 import { refreshRewriteRepublishWorkflowStatus } from "@/lib/social/rewrite-republish-workflow-service";
 import { compareRewritePerformance } from "@/lib/social/rewrite-performance-comparison-service";
-import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem } from "@/lib/social/social-platform-types";
+import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem, type SocialPost } from "@/lib/social/social-platform-types";
+import { getPlatformGroup } from "@/lib/social/content-type-classifier";
+import { getSafeReturnTo } from "@/lib/navigation/return-to";
+import {
+  buildArticleOverviewUrl,
+  buildArticleBlogUrl,
+  buildArticleSocialUrl,
+  buildSocialPostDeepLink,
+  buildRewriteSuggestionDeepLink,
+  buildRewriteVersionDeepLink,
+  buildMetricsDeepLink,
+  buildComparisonDeepLink,
+} from "@/lib/navigation/article-deep-links";
 
 /** Phase 1-5: 사용자 계정/권한 시스템이 없으므로 임시 식별자를 사용한다. */
 const APPROVED_BY = "local-user";
+
+/**
+ * Phase 3-17: social/rewrite 관련 action 전용 redirect helper.
+ *
+ * - social_post 결과가 있으면 platform에 맞는 deep link(하이라이트 포함)로,
+ *   없으면(post를 찾지 못했거나 아직 생성되지 않은 경우) formData의
+ *   platform(있다면)이나 기사 개요 페이지로 돌아간다.
+ * - 여기서 계산한 값은 어디까지나 "fallback"이다 — formData에 안전한
+ *   returnTo가 있으면 항상 그 값이 우선한다(redirectToSafeTarget 참고).
+ */
+function socialPostFallbackUrl(articleId: string, socialPost: SocialPost | undefined, fallbackPlatformRaw?: string): string {
+  if (socialPost) return buildSocialPostDeepLink(articleId, socialPost.platform, socialPost.id);
+  if (isSocialPlatform(fallbackPlatformRaw)) {
+    return getPlatformGroup(fallbackPlatformRaw) === "blog" ? buildArticleBlogUrl(articleId) : buildArticleSocialUrl(articleId);
+  }
+  return buildArticleOverviewUrl(articleId);
+}
+
+/** 성공/실패 메시지를 error 또는 publishMessage query로 url에 덧붙인다. */
+function appendMessageQuery(url: string, message: string, isError: boolean): string {
+  const key = isError ? "error" : "publishMessage";
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${key}=${encodeURIComponent(message)}`;
+}
+
+/** article 하위 5개 페이지를 모두 새로고침한다 (Phase 3-16 route 분리 이후 어느 페이지에서 action이 실행되어도 최신 상태를 보여주기 위함). */
+function revalidateArticleWorkflowPaths(articleId: string): void {
+  revalidatePath(`/articles/${articleId}`);
+  revalidatePath(`/articles/${articleId}/blog`);
+  revalidatePath(`/articles/${articleId}/social`);
+  revalidatePath(`/articles/${articleId}/rewrite`);
+  revalidatePath(`/articles/${articleId}/performance`);
+}
+
+/**
+ * Phase 3-17: formData의 returnTo(hidden input)를 읽어 안전하면 그 경로로,
+ * 아니면 fallbackUrl(deep link)로 redirect한다. 외부 URL로는 절대
+ * redirect하지 않는다(getSafeReturnTo가 내부 경로만 허용).
+ */
+function redirectToSafeTarget(formData: FormData, fallbackUrl: string, message: string, isError: boolean): never {
+  const returnToRaw = formData.get("returnTo");
+  const safeUrl = getSafeReturnTo(typeof returnToRaw === "string" ? returnToRaw : null, fallbackUrl);
+  redirect(appendMessageQuery(safeUrl, message, isError));
+}
 
 function toUserMessage(error: unknown): string {
   if (
@@ -951,6 +1007,7 @@ export async function generatePlaceholderSocialPostAction(formData: FormData): P
 
   let message: string;
   let isError: boolean;
+  let createdSocialPost: SocialPost | undefined;
 
   try {
     if (!isSocialPlatform(platformRaw)) {
@@ -963,17 +1020,16 @@ export async function generatePlaceholderSocialPostAction(formData: FormData): P
     const result = await generatePlaceholderDraft(articleId, platformRaw, toneStyleRaw);
     message = result.message;
     isError = !result.success;
+    createdSocialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 생성된 social post의 platform에 맞는 deep link(하이라이트 포함)로 돌아간다.
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, createdSocialPost, platformRaw), message, isError);
 }
 
 /**
@@ -988,6 +1044,7 @@ export async function generateSocialDraftAction(formData: FormData): Promise<voi
 
   let message: string;
   let isError: boolean;
+  let createdSocialPost: SocialPost | undefined;
 
   try {
     if (!isSocialPlatform(platformRaw)) {
@@ -1000,17 +1057,16 @@ export async function generateSocialDraftAction(formData: FormData): Promise<voi
     const result = await generateSocialDraft(articleId, platformRaw, toneStyleRaw);
     message = result.message;
     isError = !result.success;
+    createdSocialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 생성된 social post의 platform에 맞는 deep link(하이라이트 포함)로 돌아간다.
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, createdSocialPost, platformRaw), message, isError);
 }
 
 /** Multi-platform Writing 목록을 새로고침한다 (별도 API 호출 없이 페이지만 다시 렌더링). */
@@ -1028,22 +1084,21 @@ export async function runSocialPostQualityGateAction(formData: FormData): Promis
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const result = await rerunSocialPostQualityGate(socialPostId);
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /** social post의 콘텐츠(제목/본문/캡션/해시태그/thread/card 등)를 수정한다 (Phase 3-4). */
@@ -1127,22 +1182,21 @@ export async function requestSocialPostApprovalAction(formData: FormData): Promi
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const result = await requestSocialPostApprovalService(socialPostId, notes.length > 0 ? notes : undefined);
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /**
@@ -1156,22 +1210,21 @@ export async function approveSocialPostAction(formData: FormData): Promise<void>
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const result = await approveSocialPostService(socialPostId, APPROVED_BY, notes.length > 0 ? notes : undefined);
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /** social post를 반려한다 (반려 사유 필수). */
@@ -1271,22 +1324,21 @@ export async function generateManualExportAction(formData: FormData): Promise<vo
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const result = await generateManualExport(socialPostId, APPROVED_BY);
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /**
@@ -1339,12 +1391,10 @@ export async function runPlatformPublishingGuardAction(formData: FormData): Prom
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 이 action은 /social 페이지에서만 사용되므로 social 페이지의 해당 카드로 돌아간다.
+  redirectToSafeTarget(formData, buildArticleSocialUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
 }
 
 /**
@@ -1368,12 +1418,10 @@ export async function createPlatformPublishDryRunAction(formData: FormData): Pro
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 이 action은 /social 페이지에서만 사용되므로 social 페이지의 해당 카드로 돌아간다.
+  redirectToSafeTarget(formData, buildArticleSocialUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
 }
 
 /**
@@ -1398,12 +1446,10 @@ export async function completePlatformExportHandoffAction(formData: FormData): P
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 이 action은 /social 페이지에서만 사용되므로 social 페이지의 해당 카드로 돌아간다.
+  redirectToSafeTarget(formData, buildArticleSocialUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
 }
 
 /** social post의 수동 게시 체크리스트를 준비한다 (Phase 3-8). handoff_status='completed'가 아니면 차단된다. */
@@ -1413,22 +1459,21 @@ export async function prepareManualPostingRecordAction(formData: FormData): Prom
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const result = await prepareManualPostingRecord(socialPostId);
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /**
@@ -1446,6 +1491,7 @@ export async function recordManualPostingResultAction(formData: FormData): Promi
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const manualPostedAt = manualPostedAtRaw.length > 0 ? new Date(manualPostedAtRaw).toISOString() : undefined;
@@ -1457,17 +1503,15 @@ export async function recordManualPostingResultAction(formData: FormData): Promi
     });
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /** 사람이 게시를 시도했지만 실패한 경우를 기록한다 (Phase 3-8). publish_status는 바뀌지 않는다. */
@@ -1568,12 +1612,11 @@ export async function recordSocialPostMetricsAction(formData: FormData): Promise
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: metrics를 입력한 뒤에는 결과를 바로 확인할 수 있도록 성과 페이지로 이동한다
+  // (returnTo가 있으면 그 값이 우선한다).
+  redirectToSafeTarget(formData, buildMetricsDeepLink(articleId, socialPostId), message, isError);
 }
 
 /** 최신 Metrics/성과 요약을 새로고침한다 (별도 API 호출 없이 페이지만 다시 렌더링). */
@@ -1595,22 +1638,23 @@ export async function generatePerformanceRewriteSuggestionAction(formData: FormD
 
   let message: string;
   let isError: boolean;
+  let suggestionId: string | undefined;
 
   try {
     const result = await generatePerformanceRewriteSuggestion(socialPostId);
     message = result.message;
     isError = !result.success;
+    suggestionId = result.suggestion?.id;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 생성된 제안이 있으면 그 제안을 강조한 rewrite 페이지로, 없으면 rewrite 페이지 기본으로 이동한다.
+  const fallback = suggestionId ? buildRewriteSuggestionDeepLink(articleId, suggestionId) : `/articles/${articleId}/rewrite`;
+  redirectToSafeTarget(formData, fallback, message, isError);
 }
 
 /** rewrite suggestion을 승인한다 (Phase 3-10). blocked 상태는 승인할 수 없다. */
@@ -1630,12 +1674,9 @@ export async function approveRewriteSuggestionAction(formData: FormData): Promis
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteSuggestionDeepLink(articleId, suggestionId), message, isError);
 }
 
 /** rewrite suggestion을 반려한다 (Phase 3-10). */
@@ -1656,12 +1697,9 @@ export async function rejectRewriteSuggestionAction(formData: FormData): Promise
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteSuggestionDeepLink(articleId, suggestionId), message, isError);
 }
 
 /**
@@ -1677,22 +1715,23 @@ export async function applyRewriteSuggestionAction(formData: FormData): Promise<
 
   let message: string;
   let isError: boolean;
+  let newVersionId: string | undefined;
 
   try {
     const result = await applyRewriteSuggestion(suggestionId, APPROVED_BY, notes.length > 0 ? notes : undefined);
     message = result.message;
     isError = !result.success;
+    newVersionId = result.newSocialPost?.id;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 새로 만들어진 rewrite version이 있으면 그 버전을 강조한 rewrite 페이지로 이동한다.
+  const fallback = newVersionId ? buildRewriteVersionDeepLink(articleId, newVersionId) : buildRewriteSuggestionDeepLink(articleId, suggestionId);
+  redirectToSafeTarget(formData, fallback, message, isError);
 }
 
 /** rewrite version의 quality gate를 다시 실행한다 (Phase 3-12). 실제 게시는 수행하지 않는다. */
@@ -1712,12 +1751,9 @@ export async function recheckRewriteVersionQualityAction(formData: FormData): Pr
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteVersionDeepLink(articleId, socialPostId), message, isError);
 }
 
 /**
@@ -1730,22 +1766,25 @@ export async function compareRewriteVersionAction(formData: FormData): Promise<v
 
   let message: string;
   let isError: boolean;
+  let comparisonId: string | undefined;
 
   try {
     const result = await compareRewriteVersion(socialPostId, APPROVED_BY);
     message = result.message;
     isError = !result.success;
+    comparisonId = result.comparison?.id;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 비교 결과가 있으면 rewrite 페이지에서 comparisonId로 강조, 없으면 해당 version으로 이동한다.
+  const fallback = comparisonId
+    ? `/articles/${articleId}/rewrite?comparisonId=${encodeURIComponent(comparisonId)}&highlight=${encodeURIComponent(comparisonId)}`
+    : buildRewriteVersionDeepLink(articleId, socialPostId);
+  redirectToSafeTarget(formData, fallback, message, isError);
 }
 
 /** rewrite version의 재승인을 요청한다 (Phase 3-13). recommended_for_repost=true여도 자동 승인되지 않는다. */
@@ -1766,12 +1805,9 @@ export async function requestRewriteReapprovalAction(formData: FormData): Promis
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteVersionDeepLink(articleId, socialPostId), message, isError);
 }
 
 /** rewrite version의 재승인을 승인한다 (Phase 3-13). */
@@ -1792,12 +1828,9 @@ export async function approveRewriteReapprovalAction(formData: FormData): Promis
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteVersionDeepLink(articleId, socialPostId), message, isError);
 }
 
 /** rewrite version의 재승인을 반려한다 (Phase 3-13). */
@@ -1869,12 +1902,9 @@ export async function prepareRewriteReexportAction(formData: FormData): Promise<
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteVersionDeepLink(articleId, socialPostId), message, isError);
 }
 
 /** rewrite version의 재export payload를 생성한다 (Phase 3-13). 원본의 export_payload는 수정하지 않는다. */
@@ -1894,12 +1924,9 @@ export async function generateRewriteReexportPayloadAction(formData: FormData): 
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, buildRewriteVersionDeepLink(articleId, socialPostId), message, isError);
 }
 
 /** rewrite version의 재게시 workflow 상태를 다시 계산해 새로고침한다 (Phase 3-13). */
@@ -1938,20 +1965,21 @@ export async function compareRewritePerformanceAction(formData: FormData): Promi
 
   let message: string;
   let isError: boolean;
+  let comparisonId: string | undefined;
 
   try {
     const result = await compareRewritePerformance(socialPostId, APPROVED_BY);
     message = result.message;
     isError = !result.success;
+    comparisonId = result.comparison?.id;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  // Phase 3-17: 비교 결과가 있으면 성과 페이지에서 comparisonId로 강조, 없으면 성과 페이지 기본으로 이동한다.
+  const fallback = comparisonId ? buildComparisonDeepLink(articleId, comparisonId) : `/articles/${articleId}/performance`;
+  redirectToSafeTarget(formData, fallback, message, isError);
 }

@@ -1,5 +1,8 @@
 // Phase 3-15: Social Performance Dashboard 공용 상태 배지.
 
+import type { SocialPlatform } from "@/lib/social/social-platform-types";
+import { buildSocialPostDeepLink, buildRewriteVersionDeepLink } from "@/lib/navigation/article-deep-links";
+
 export function PerformanceStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     excellent: "bg-green-100 text-green-700",
@@ -62,7 +65,19 @@ export function RecommendationBadge({ label }: { label: "Best Platform" | "Best 
   return <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${styles[label]}`}>{label}</span>;
 }
 
-/** social_post 상세로 이동하는 링크. 전용 상세 라우트가 없으므로 article 상세 + socialPostId 쿼리로 이동한다. */
-export function socialPostHref(articleId: string, socialPostId: string): string {
-  return `/articles/${articleId}?socialPostId=${socialPostId}#social-post-${socialPostId}`;
+/**
+ * social_post(또는 rewrite version) 상세로 이동하는 deep link (Phase 3-17).
+ * 전용 상세 라우트(`/social-posts/[id]`)가 아직 없으므로 platform/
+ * isRewriteVersion에 맞는 하위 페이지(blog/social/rewrite)로 이동하며
+ * 해당 카드를 강조(highlight)한다. platform/isRewriteVersion을 모두
+ * 알 수 없는 경우에만 기사 개요 페이지로 보낸다.
+ */
+export function socialPostHref(
+  articleId: string,
+  socialPostId: string,
+  options?: { platform?: SocialPlatform; isRewriteVersion?: boolean }
+): string {
+  if (options?.isRewriteVersion) return buildRewriteVersionDeepLink(articleId, socialPostId);
+  if (options?.platform) return buildSocialPostDeepLink(articleId, options.platform, socialPostId);
+  return `/articles/${articleId}?socialPostId=${socialPostId}&highlight=${socialPostId}`;
 }

@@ -34,7 +34,7 @@ export function MetricsMissingPostsTable({ posts }: { posts: MetricsMissingSocia
                   </td>
                   <td className="pr-3 py-1">{p.manualPostedAt ?? "-"}</td>
                   <td className="pr-3 py-1">
-                    <a href={socialPostHref(p.articleId, p.id)} className="text-blue-600 hover:underline">
+                    <a href={socialPostHref(p.articleId, p.id, { platform: p.platform })} className="text-blue-600 hover:underline">
                       metrics 입력으로 이동
                     </a>
                   </td>

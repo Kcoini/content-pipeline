@@ -184,7 +184,7 @@ export default async function RewriteDashboardPage({
                       <td className="pr-3 py-1">{p.latestPerformanceScore ?? "-"}</td>
                       <td className="pr-3 py-1">{p.recommendedForRepost && <InfoBadge label="재게시 추천" />}</td>
                       <td className="pr-3 py-1">
-                        <a href={socialPostHref(p.articleId, p.id)} className="text-blue-600 hover:underline">
+                        <a href={socialPostHref(p.articleId, p.id, { isRewriteVersion: true })} className="text-blue-600 hover:underline">
                           열기
                         </a>
                       </td>

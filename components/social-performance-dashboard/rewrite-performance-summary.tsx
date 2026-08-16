@@ -41,7 +41,10 @@ export function RewritePerformanceSummary({
         <p className="mt-1 text-xs text-zinc-600">
           최고 rewrite version:{" "}
           {bestArticleId ? (
-            <a href={socialPostHref(bestArticleId, summary.bestRewriteSocialPostId)} className="text-blue-600 hover:underline">
+            <a
+              href={socialPostHref(bestArticleId, summary.bestRewriteSocialPostId, { isRewriteVersion: true })}
+              className="text-blue-600 hover:underline"
+            >
               {summary.bestRewriteSocialPostId}
             </a>
           ) : (

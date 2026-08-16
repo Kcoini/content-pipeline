@@ -36,7 +36,10 @@ export function RecentRewriteComparisonsTable({ comparisons }: { comparisons: Re
                   </td>
                   <td className="pr-3 py-1">{c.comparedAt ?? "-"}</td>
                   <td className="pr-3 py-1">
-                    <a href={socialPostHref(c.articleId, c.rewriteSocialPostId)} className="text-blue-600 hover:underline">
+                    <a
+                      href={socialPostHref(c.articleId, c.rewriteSocialPostId, { platform: c.platform, isRewriteVersion: true })}
+                      className="text-blue-600 hover:underline"
+                    >
                       열기
                     </a>
                   </td>

@@ -191,7 +191,10 @@ export default async function BlogDashboardPage({
                           {p.recommendedForRepost && <InfoBadge label="재게시 추천" />}
                         </td>
                         <td className="pr-3 py-1">
-                          <a href={socialPostHref(p.articleId, p.id)} className="text-blue-600 hover:underline">
+                          <a
+                            href={socialPostHref(p.articleId, p.id, { platform: p.platform, isRewriteVersion: p.isRewriteVersion })}
+                            className="text-blue-600 hover:underline"
+                          >
                             열기
                           </a>
                         </td>
