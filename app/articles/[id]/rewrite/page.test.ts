@@ -30,3 +30,25 @@ describe("article rewrite page (정적 소스 검사, Phase 3-17)", () => {
     expect(pageSource).toMatch(/ArticleWorkflowNavigation[^>]*returnTo=\{returnTo\}/);
   });
 });
+
+describe("article rewrite page pagination (정적 소스 검사, Phase 3-18)", () => {
+  it("page/perPage searchParam을 읽고 parsePagination을 사용한다", () => {
+    expect(pageSource).toContain("page?: string");
+    expect(pageSource).toContain("perPage?: string");
+    expect(pageSource).toContain("parsePagination(");
+  });
+
+  it("rewriteVersions에 PaginationControls를 렌더링한다 (versionPagination)", () => {
+    expect(pageSource).toContain("PaginationControls");
+    expect(pageSource).toContain("versionPagination");
+  });
+
+  it("targetVersionId가 현재 page에 없으면 이동 링크를 보여준다", () => {
+    expect(pageSource).toContain("versionTargetOnDifferentPage");
+    expect(pageSource).toContain("versionTargetPage");
+  });
+
+  it("상세 페이지(buildSocialPostDetailUrl)로 가는 링크를 포함한다", () => {
+    expect(pageSource).toContain("buildSocialPostDetailUrl");
+  });
+});

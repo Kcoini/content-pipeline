@@ -1,5 +1,6 @@
 import type { MetricsMissingSocialPost } from "@/lib/social/social-performance-dashboard-types";
 import { ManualPostStatusBadge, RecommendationBadge, socialPostHref } from "./badges";
+import { buildSocialPostDetailUrl } from "@/lib/navigation/article-deep-links";
 
 export function MetricsMissingPostsTable({ posts }: { posts: MetricsMissingSocialPost[] }) {
   return (
@@ -36,6 +37,10 @@ export function MetricsMissingPostsTable({ posts }: { posts: MetricsMissingSocia
                   <td className="pr-3 py-1">
                     <a href={socialPostHref(p.articleId, p.id, { platform: p.platform })} className="text-blue-600 hover:underline">
                       metrics 입력으로 이동
+                    </a>{" "}
+                    ·{" "}
+                    <a href={buildSocialPostDetailUrl(p.id)} className="text-zinc-600 hover:underline">
+                      상세
                     </a>
                   </td>
                 </tr>

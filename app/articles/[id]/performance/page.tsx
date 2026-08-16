@@ -4,6 +4,8 @@ import { buildArticlePerformancePageData } from "@/lib/social/article-performanc
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
 import { DeepLinkNotice } from "@/components/navigation/deep-link-highlight";
 import { buildArticlePerformanceUrl, buildRewriteVersionDeepLink } from "@/lib/navigation/article-deep-links";
+import { PaginationControls } from "@/components/navigation/pagination-controls";
+import { parsePagination } from "@/lib/navigation/pagination";
 import { SocialPerformanceSummaryCards } from "@/components/social-performance-dashboard/social-performance-summary-cards";
 import { PlatformPerformanceTable } from "@/components/social-performance-dashboard/platform-performance-table";
 import { TonePerformanceTable } from "@/components/social-performance-dashboard/tone-performance-table";
@@ -27,11 +29,28 @@ export default async function ArticlePerformancePage({
     comparisonId?: string;
     section?: string;
     returnTo?: string;
+    page?: string;
+    perPage?: string;
   }>;
 }) {
   const { id } = await params;
-  const { metricsTargetId, socialPostId: targetSocialPostId, comparisonId: targetComparisonId, returnTo } = await searchParams;
-  const { article, dashboard } = await buildArticlePerformancePageData(id);
+  const {
+    metricsTargetId,
+    socialPostId: targetSocialPostId,
+    comparisonId: targetComparisonId,
+    returnTo,
+    page: pageParam,
+    perPage: perPageParam,
+  } = await searchParams;
+  const { page, perPage } = parsePagination({ page: pageParam, perPage: perPageParam });
+  // metricsTargetId와 socialPostId는 이 페이지에서 같은 의미(강조할 social_post id)로 취급한다.
+  const targetPostId = metricsTargetId ?? targetSocialPostId;
+
+  const { article, dashboard, recentMetricsPage, recentMetricsPagination, metricsTargetPage } = await buildArticlePerformancePageData(id, {
+    page,
+    perPage,
+    targetSocialPostId: targetPostId,
+  });
 
   if (!article) {
     notFound();
@@ -42,20 +61,27 @@ export default async function ArticlePerformancePage({
     articleIdBySocialPostId.set(dashboard.rewritePerformanceSummary.bestRewriteSocialPostId, article.id);
   }
 
-  // metricsTargetId와 socialPostId는 이 페이지에서 같은 의미(강조할 social_post id)로 취급한다.
-  const targetPostId = metricsTargetId ?? targetSocialPostId;
+  // lowPerformance/metricsMissing은 우선 최근 10개만 보여준다(스펙 안내) — 별도 pagination은 다음 단계로 남겨둔다.
   const knownPostIds = new Set([
     ...dashboard.lowPerformancePosts.map((p) => p.id),
     ...dashboard.metricsMissingPosts.map((p) => p.id),
-    ...dashboard.recentMetrics.map((m) => m.socialPostId),
+    ...recentMetricsPage.map((m) => m.socialPostId),
   ]);
   const postTargetFound = targetPostId ? knownPostIds.has(targetPostId) : true;
+  const postTargetOnDifferentPage = targetPostId && !postTargetFound && metricsTargetPage !== null && metricsTargetPage !== recentMetricsPagination.page;
 
   const knownComparisonIds = new Set(dashboard.recentRewriteComparisons.map((c) => c.id));
   const comparisonTargetFound = targetComparisonId ? knownComparisonIds.has(targetComparisonId) : true;
 
   // Phase 3-17: 이 페이지에서 "돌아가기"를 시도하는 액션(성과 비교 실행)이 사용할 self-returnTo.
   const selfReturnTo = buildArticlePerformanceUrl(id);
+  const basePath = `/articles/${id}/performance`;
+  const currentSearchParams: Record<string, string> = {
+    ...(targetPostId ? { metricsTargetId: targetPostId } : {}),
+    ...(targetComparisonId ? { comparisonId: targetComparisonId } : {}),
+    ...(returnTo ? { returnTo } : {}),
+    perPage: String(perPage),
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -73,6 +99,17 @@ export default async function ArticlePerformancePage({
         </div>
 
         {targetPostId && <DeepLinkNotice targetId={targetPostId} found={postTargetFound} />}
+        {postTargetOnDifferentPage && (
+          <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+            선택한 항목이 Recent Metrics의 현재 page에 없습니다.{" "}
+            <a
+              href={`${basePath}?${new URLSearchParams({ ...currentSearchParams, page: String(metricsTargetPage) }).toString()}`}
+              className="underline"
+            >
+              해당 항목이 있는 {metricsTargetPage} page로 이동 →
+            </a>
+          </div>
+        )}
         {targetComparisonId && <DeepLinkNotice targetId={targetComparisonId} found={comparisonTargetFound} />}
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -132,9 +169,12 @@ export default async function ArticlePerformancePage({
 
         <RewritePerformanceSummary summary={dashboard.rewritePerformanceSummary} articleIdBySocialPostId={articleIdBySocialPostId} />
 
-        <RecentMetricsTable metrics={dashboard.recentMetrics} />
+        <RecentMetricsTable metrics={recentMetricsPage} highlightedSocialPostId={targetPostId} />
+        <div className="-mt-4 rounded-b-lg border border-t-0 border-zinc-200 bg-white px-4 pb-4 shadow-sm">
+          <PaginationControls basePath={basePath} searchParams={currentSearchParams} pagination={recentMetricsPagination} />
+        </div>
 
-        <RecentRewriteComparisonsTable comparisons={dashboard.recentRewriteComparisons} />
+        <RecentRewriteComparisonsTable comparisons={dashboard.recentRewriteComparisons} highlightedComparisonId={targetComparisonId} />
       </div>
     </div>
   );

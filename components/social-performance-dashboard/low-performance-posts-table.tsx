@@ -1,5 +1,6 @@
 import type { LowPerformanceSocialPost } from "@/lib/social/social-performance-dashboard-types";
 import { PerformanceStatusBadge, RecommendationBadge, socialPostHref } from "./badges";
+import { buildSocialPostDetailUrl } from "@/lib/navigation/article-deep-links";
 
 export function LowPerformancePostsTable({ posts }: { posts: LowPerformanceSocialPost[] }) {
   return (
@@ -44,6 +45,10 @@ export function LowPerformancePostsTable({ posts }: { posts: LowPerformanceSocia
                   <td className="pr-3 py-1">
                     <a href={socialPostHref(p.articleId, p.id, { platform: p.platform })} className="text-blue-600 hover:underline">
                       열기
+                    </a>{" "}
+                    ·{" "}
+                    <a href={buildSocialPostDetailUrl(p.id)} className="text-zinc-600 hover:underline">
+                      상세
                     </a>
                   </td>
                 </tr>

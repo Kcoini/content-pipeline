@@ -4,7 +4,15 @@ import { buildArticleRewritePageData } from "@/lib/social/article-rewrite-page-s
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
 import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-badge";
 import { DeepLinkNotice, getHighlightClassName, buildAnchorId } from "@/components/navigation/deep-link-highlight";
-import { buildArticleRewriteUrl, buildSocialPostDeepLink, buildMetricsDeepLink, buildArticleOverviewUrl } from "@/lib/navigation/article-deep-links";
+import {
+  buildArticleRewriteUrl,
+  buildSocialPostDeepLink,
+  buildMetricsDeepLink,
+  buildArticleOverviewUrl,
+  buildSocialPostDetailUrl,
+} from "@/lib/navigation/article-deep-links";
+import { PaginationControls } from "@/components/navigation/pagination-controls";
+import { parsePagination } from "@/lib/navigation/pagination";
 import {
   generatePerformanceRewriteSuggestionAction,
   approveRewriteSuggestionAction,
@@ -36,6 +44,8 @@ export default async function ArticleRewritePage({
     comparisonId?: string;
     section?: string;
     returnTo?: string;
+    page?: string;
+    perPage?: string;
   }>;
 }) {
   const { id } = await params;
@@ -46,9 +56,16 @@ export default async function ArticleRewritePage({
     rewriteVersionId: targetVersionId,
     comparisonId: targetComparisonId,
     returnTo,
+    page: pageParam,
+    perPage: perPageParam,
   } = await searchParams;
+  const { page, perPage } = parsePagination({ page: pageParam, perPage: perPageParam });
 
-  const { article, originalPosts, rewriteVersions, suggestions } = await buildArticleRewritePageData(id);
+  const { article, originalPosts, rewriteVersions, versionPagination, versionTargetPage, suggestions } = await buildArticleRewritePageData(id, {
+    page,
+    perPage,
+    targetVersionId,
+  });
 
   if (!article) {
     notFound();
@@ -62,6 +79,16 @@ export default async function ArticleRewritePage({
 
   const suggestionTargetFound = targetSuggestionId ? suggestions.some((s) => s.id === targetSuggestionId) : true;
   const versionTargetFound = targetVersionId ? rewriteVersions.some((v) => v.id === targetVersionId) : true;
+  const versionTargetOnDifferentPage =
+    targetVersionId && !versionTargetFound && versionTargetPage !== null && versionTargetPage !== versionPagination.page;
+  const basePath = `/articles/${id}/rewrite`;
+  const currentSearchParams: Record<string, string> = {
+    ...(targetVersionId ? { rewriteVersionId: targetVersionId } : {}),
+    ...(targetSuggestionId ? { rewriteSuggestionId: targetSuggestionId } : {}),
+    ...(targetComparisonId ? { comparisonId: targetComparisonId } : {}),
+    ...(returnTo ? { returnTo } : {}),
+    perPage: String(perPage),
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -79,6 +106,17 @@ export default async function ArticleRewritePage({
 
         {targetSuggestionId && <DeepLinkNotice targetId={targetSuggestionId} found={suggestionTargetFound} />}
         {targetVersionId && <DeepLinkNotice targetId={targetVersionId} found={versionTargetFound} />}
+        {versionTargetOnDifferentPage && (
+          <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+            선택한 rewrite version이 현재 page에 없습니다.{" "}
+            <a
+              href={`${basePath}?${new URLSearchParams({ ...currentSearchParams, page: String(versionTargetPage) }).toString()}`}
+              className="underline"
+            >
+              해당 항목이 있는 {versionTargetPage} page로 이동 →
+            </a>
+          </div>
+        )}
 
         {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         {publishMessage && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}</div>}
@@ -141,6 +179,9 @@ export default async function ArticleRewritePage({
                     {s.suggestedTitle && <p className="mt-1 text-zinc-600">제안 제목: {s.suggestedTitle}</p>}
                     {originalPost && (
                       <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                        <a href={buildSocialPostDetailUrl(originalPost.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
+                          원본 상세 보기 →
+                        </a>
                         <a href={buildSocialPostDeepLink(article.id, originalPost.platform, originalPost.id, selfReturnTo)} className="text-blue-700 hover:underline">
                           원본 글 열기 →
                         </a>
@@ -228,6 +269,9 @@ export default async function ArticleRewritePage({
                     </p>
 
                     <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                      <a href={buildSocialPostDetailUrl(v.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
+                        상세 보기 →
+                      </a>
                       {v.parentSocialPostId && (
                         <a href={buildSocialPostDeepLink(article.id, v.platform, v.parentSocialPostId, selfReturnTo)} className="text-blue-700 hover:underline">
                           원본 글 열기 →
@@ -323,6 +367,7 @@ export default async function ArticleRewritePage({
               })}
             </ul>
           )}
+          <PaginationControls basePath={basePath} searchParams={currentSearchParams} pagination={versionPagination} />
         </section>
       </div>
     </div>

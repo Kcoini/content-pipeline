@@ -101,3 +101,16 @@ export function buildMetricsDeepLink(articleId: string, socialPostId: string, re
 export function buildComparisonDeepLink(articleId: string, comparisonId: string, returnTo?: string): string {
   return buildArticlePerformanceUrl(articleId, { comparisonId, highlight: comparisonId, returnTo });
 }
+
+/**
+ * Phase 3-18: social_post 하나의 전용 상세 페이지(`/social-posts/[id]`)로
+ * 가는 링크를 만든다. articleId를 몰라도 되므로 다른 deep link 함수와
+ * 달리 basePath에 articleId가 들어가지 않는다. returnTo가 안전한 내부
+ * 경로일 때만 query에 포함된다.
+ */
+export function buildSocialPostDetailUrl(socialPostId: string, returnTo?: string): string {
+  const params = new URLSearchParams();
+  if (returnTo && isSafeInternalReturnTo(returnTo)) params.set("returnTo", returnTo);
+  const query = params.toString();
+  return query.length > 0 ? `/social-posts/${socialPostId}?${query}` : `/social-posts/${socialPostId}`;
+}

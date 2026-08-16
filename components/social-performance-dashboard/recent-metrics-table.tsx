@@ -1,7 +1,16 @@
 import type { SocialPostMetrics } from "@/lib/social/social-metrics-types";
 import { socialPostHref } from "./badges";
+import { buildSocialPostDetailUrl } from "@/lib/navigation/article-deep-links";
+import { getHighlightClassName } from "@/lib/navigation/highlight-target";
 
-export function RecentMetricsTable({ metrics }: { metrics: SocialPostMetrics[] }) {
+export function RecentMetricsTable({
+  metrics,
+  highlightedSocialPostId,
+}: {
+  metrics: SocialPostMetrics[];
+  /** Phase 3-18: metricsTargetId/socialPostId deep link로 강조할 social_post id. */
+  highlightedSocialPostId?: string | null;
+}) {
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <h2 className="text-sm font-semibold text-zinc-700">Recent Metrics</h2>
@@ -22,7 +31,7 @@ export function RecentMetricsTable({ metrics }: { metrics: SocialPostMetrics[] }
             </thead>
             <tbody className="text-zinc-700">
               {metrics.map((m) => (
-                <tr key={m.id} className="border-t border-zinc-100">
+                <tr key={m.id} className={`border-t border-zinc-100 ${getHighlightClassName(m.socialPostId, highlightedSocialPostId)}`}>
                   <td className="pr-3 py-1 font-mono text-[11px]">{m.socialPostId}</td>
                   <td className="pr-3 py-1">{m.measuredAt}</td>
                   <td className="pr-3 py-1">
@@ -32,6 +41,10 @@ export function RecentMetricsTable({ metrics }: { metrics: SocialPostMetrics[] }
                   <td className="pr-3 py-1">
                     <a href={socialPostHref(m.articleId, m.socialPostId, { platform: m.platform })} className="text-blue-600 hover:underline">
                       열기
+                    </a>{" "}
+                    ·{" "}
+                    <a href={buildSocialPostDetailUrl(m.socialPostId)} className="text-zinc-600 hover:underline">
+                      상세
                     </a>
                   </td>
                 </tr>

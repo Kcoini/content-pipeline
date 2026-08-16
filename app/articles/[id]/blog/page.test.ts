@@ -32,3 +32,24 @@ describe("article blog page (정적 소스 검사, Phase 3-17)", () => {
     expect(pageSource).toMatch(/ArticleWorkflowNavigation[^>]*returnTo=\{returnTo\}/);
   });
 });
+
+describe("article blog page pagination (정적 소스 검사, Phase 3-18)", () => {
+  it("page/perPage searchParam을 읽고 parsePagination을 사용한다", () => {
+    expect(pageSource).toContain("page?: string");
+    expect(pageSource).toContain("perPage?: string");
+    expect(pageSource).toContain("parsePagination(");
+  });
+
+  it("PaginationControls를 렌더링한다", () => {
+    expect(pageSource).toContain("PaginationControls");
+  });
+
+  it("targetPage가 현재 page와 다르면 이동 링크를 보여준다", () => {
+    expect(pageSource).toContain("targetOnDifferentPage");
+    expect(pageSource).toContain("targetPage");
+  });
+
+  it("상세 페이지(buildSocialPostDetailUrl)로 가는 링크를 포함한다", () => {
+    expect(pageSource).toContain("buildSocialPostDetailUrl");
+  });
+});

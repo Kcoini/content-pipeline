@@ -25,3 +25,21 @@ describe("article performance page (정적 소스 검사, Phase 3-17)", () => {
     expect(pageSource).toMatch(/ArticleWorkflowNavigation[^>]*returnTo=\{returnTo\}/);
   });
 });
+
+describe("article performance page pagination (정적 소스 검사, Phase 3-18)", () => {
+  it("page/perPage searchParam을 읽고 parsePagination을 사용한다", () => {
+    expect(pageSource).toContain("page?: string");
+    expect(pageSource).toContain("perPage?: string");
+    expect(pageSource).toContain("parsePagination(");
+  });
+
+  it("recentMetrics에 PaginationControls를 렌더링한다", () => {
+    expect(pageSource).toContain("PaginationControls");
+    expect(pageSource).toContain("recentMetricsPagination");
+  });
+
+  it("target social post가 현재 page에 없으면 이동 링크를 보여준다", () => {
+    expect(pageSource).toContain("postTargetOnDifferentPage");
+    expect(pageSource).toContain("metricsTargetPage");
+  });
+});

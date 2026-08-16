@@ -1,7 +1,16 @@
 import type { RewritePerformanceComparison } from "@/lib/social/social-platform-types";
 import { RewriteComparisonStatusBadge, socialPostHref } from "./badges";
+import { buildSocialPostDetailUrl } from "@/lib/navigation/article-deep-links";
+import { getHighlightClassName } from "@/lib/navigation/highlight-target";
 
-export function RecentRewriteComparisonsTable({ comparisons }: { comparisons: RewritePerformanceComparison[] }) {
+export function RecentRewriteComparisonsTable({
+  comparisons,
+  highlightedComparisonId,
+}: {
+  comparisons: RewritePerformanceComparison[];
+  /** Phase 3-18: comparisonId deep link로 강조할 비교 결과 id. */
+  highlightedComparisonId?: string | null;
+}) {
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <h2 className="text-sm font-semibold text-zinc-700">Recent Rewrite Comparisons</h2>
@@ -25,7 +34,7 @@ export function RecentRewriteComparisonsTable({ comparisons }: { comparisons: Re
             </thead>
             <tbody className="text-zinc-700">
               {comparisons.map((c) => (
-                <tr key={c.id} className="border-t border-zinc-100">
+                <tr key={c.id} className={`border-t border-zinc-100 ${getHighlightClassName(c.id, highlightedComparisonId)}`}>
                   <td className="pr-3 py-1 font-mono text-[11px]">
                     {c.originalSocialPostId} → {c.rewriteSocialPostId}
                   </td>
@@ -41,6 +50,10 @@ export function RecentRewriteComparisonsTable({ comparisons }: { comparisons: Re
                       className="text-blue-600 hover:underline"
                     >
                       열기
+                    </a>{" "}
+                    ·{" "}
+                    <a href={buildSocialPostDetailUrl(c.rewriteSocialPostId)} className="text-zinc-600 hover:underline">
+                      상세
                     </a>
                   </td>
                 </tr>
