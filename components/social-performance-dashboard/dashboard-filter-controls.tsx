@@ -22,6 +22,17 @@ export function DashboardFilterControls({ filter, sort }: { filter: DashboardFil
       <h2 className="text-sm font-semibold text-zinc-700">필터 / 정렬</h2>
       <form method="get" className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <label className="flex flex-col gap-1">
+          content group
+          <select name="contentGroup" defaultValue={filter.contentGroup ?? "all"} className="rounded border border-zinc-300 px-2 py-1">
+            <option value="all">전체</option>
+            <option value="blog">블로그</option>
+            <option value="community">커뮤니티</option>
+            <option value="social">SNS</option>
+            <option value="rewrite">Rewrite</option>
+            <option value="performance">성과</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
           platform
           <select name="platform" defaultValue={filter.platform ?? ""} className="rounded border border-zinc-300 px-2 py-1">
             <option value="">전체</option>

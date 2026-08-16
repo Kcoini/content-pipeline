@@ -321,7 +321,12 @@ export type LogEventType =
   // Phase 3-15: Social Performance Dashboard 이벤트
   | "social_performance_dashboard_build_started"
   | "social_performance_dashboard_build_completed"
-  | "social_performance_dashboard_build_failed";
+  | "social_performance_dashboard_build_failed"
+  // Phase 3-16: Content Type Separation & Dashboard Information Architecture 이벤트
+  | "content_grouping_started"
+  | "content_grouping_completed"
+  | "content_grouping_failed"
+  | "dashboard_information_architecture_loaded";
 
 export type LogStatus = "success" | "failed" | "info";
 

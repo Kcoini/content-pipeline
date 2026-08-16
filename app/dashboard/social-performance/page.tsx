@@ -9,7 +9,8 @@ import {
   type SocialPerformanceStatus,
   type ManualPostStatus,
 } from "@/lib/social/social-platform-types";
-import { DEFAULT_DASHBOARD_SORT, type DashboardSortOption, type LowPerformanceSocialPost } from "@/lib/social/social-performance-dashboard-types";
+import { DEFAULT_DASHBOARD_FILTER, DEFAULT_DASHBOARD_SORT, type DashboardSortOption, type LowPerformanceSocialPost } from "@/lib/social/social-performance-dashboard-types";
+import type { ContentGroup } from "@/lib/social/content-type-classifier";
 import { SocialPerformanceSummaryCards } from "@/components/social-performance-dashboard/social-performance-summary-cards";
 import { PlatformPerformanceTable } from "@/components/social-performance-dashboard/platform-performance-table";
 import { TonePerformanceTable } from "@/components/social-performance-dashboard/tone-performance-table";
@@ -66,6 +67,7 @@ export default async function SocialPerformanceDashboardPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    contentGroup?: string;
     platform?: string;
     toneStyle?: string;
     performanceStatus?: string;
@@ -80,12 +82,19 @@ export default async function SocialPerformanceDashboardPage({
 }) {
   const params = await searchParams;
 
+  const VALID_CONTENT_GROUPS: (ContentGroup | "all")[] = ["all", "blog", "community", "social", "rewrite", "performance"];
+  const contentGroup = (VALID_CONTENT_GROUPS as string[]).includes(params.contentGroup ?? "")
+    ? (params.contentGroup as ContentGroup | "all")
+    : "all";
+
   const filter = {
+    contentGroup,
     platform: isSocialPlatform(params.platform) ? (params.platform as SocialPlatform) : undefined,
     toneStyle: isToneStyle(params.toneStyle) ? (params.toneStyle as ToneStyle) : undefined,
     performanceStatus: (params.performanceStatus || undefined) as SocialPerformanceStatus | undefined,
     manualPostStatus: (params.manualPostStatus || undefined) as ManualPostStatus | undefined,
-    includeRewriteVersions: params.includeRewriteVersions !== undefined ? params.includeRewriteVersions === "true" : true,
+    includeRewriteVersions:
+      params.includeRewriteVersions !== undefined ? params.includeRewriteVersions === "true" : DEFAULT_DASHBOARD_FILTER.includeRewriteVersions,
     onlyRewriteVersions: params.onlyRewriteVersions === "true",
     onlyRecommendedForRepost: params.onlyRecommendedForRepost === "true",
     onlyLowPerformance: params.onlyLowPerformance === "true",
@@ -118,11 +127,38 @@ export default async function SocialPerformanceDashboardPage({
           </Link>
         </header>
 
+        <nav className="flex flex-wrap gap-2 text-xs">
+          <Link href="/dashboard/content" className="rounded border border-zinc-300 bg-white px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+            Content Dashboard
+          </Link>
+          <Link href="/dashboard/blog" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
+            Blog Dashboard
+          </Link>
+          <Link href="/dashboard/rewrite" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
+            Rewrite Dashboard
+          </Link>
+        </nav>
+
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <p>metrics는 외부 API가 아니라 수동 입력값입니다.</p>
           <p>performance_score는 내부 비교용 점수이며, 절대적인 마케팅 성공 지표가 아닙니다.</p>
           <p>rewrite comparison은 동일 조건의 A/B 테스트가 아니므로 참고 지표로만 사용하세요.</p>
           <p>이 화면을 조회하는 것만으로는 어떤 social_post 상태도 변경되지 않습니다.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-xs">
+          {[
+            { label: "전체 성과", href: "/dashboard/social-performance" },
+            { label: "블로그", href: "/dashboard/social-performance?contentGroup=blog" },
+            { label: "SNS/커뮤니티", href: "/dashboard/social-performance?contentGroup=social" },
+            { label: "Rewrite", href: "/dashboard/social-performance?contentGroup=rewrite" },
+            { label: "Metrics Missing", href: "/dashboard/social-performance?onlyMetricsMissing=true" },
+            { label: "Low Performance", href: "/dashboard/social-performance?onlyLowPerformance=true" },
+          ].map((tab) => (
+            <a key={tab.label} href={tab.href} className="rounded-full border border-zinc-300 bg-white px-2.5 py-1 font-medium text-zinc-600 hover:bg-zinc-100">
+              {tab.label}
+            </a>
+          ))}
         </div>
 
         <DashboardFilterControls filter={filter} sort={sort} />

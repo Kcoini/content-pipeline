@@ -69,6 +69,24 @@ export default async function DashboardPage({
             >
               Social Performance Dashboard
             </Link>
+            <Link
+              href="/dashboard/content"
+              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Content Dashboard
+            </Link>
+            <Link
+              href="/dashboard/blog"
+              className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Blog Dashboard
+            </Link>
+            <Link
+              href="/dashboard/rewrite"
+              className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+            >
+              Rewrite Dashboard
+            </Link>
           </div>
         </header>
 

@@ -7,6 +7,7 @@
 import type { SocialPlatform, ToneStyle, SocialPerformanceStatus, ManualPostStatus } from "./social-platform-types";
 import type { SocialPostMetrics } from "./social-metrics-types";
 import type { RewritePerformanceComparison } from "./social-platform-types";
+import type { ContentGroup } from "./content-type-classifier";
 
 export interface SocialPerformanceDashboardSummary {
   totalSocialPosts: number;
@@ -124,6 +125,8 @@ export interface DashboardFilter {
   toneStyle?: ToneStyle;
   performanceStatus?: SocialPerformanceStatus;
   manualPostStatus?: ManualPostStatus;
+  /** Phase 3-16: content group(blog/community/social/rewrite/performance)으로 좁혀 본다. "all"이면 필터를 적용하지 않는다. */
+  contentGroup?: ContentGroup | "all";
   dateFrom?: string;
   dateTo?: string;
   includeRewriteVersions: boolean;
@@ -131,6 +134,21 @@ export interface DashboardFilter {
   onlyRecommendedForRepost: boolean;
   onlyMetricsMissing: boolean;
   onlyLowPerformance: boolean;
+}
+
+/** Phase 3-16: article 중심으로 blog/community/social/rewrite 글 개수와 게시/성과 현황을 요약한다. */
+export interface ArticleContentBreakdown {
+  articleId: string;
+  articleTitle: string | null;
+  blogCount: number;
+  communityCount: number;
+  socialCount: number;
+  rewriteCount: number;
+  publishedCount: number;
+  metricsMeasuredCount: number;
+  lowPerformanceCount: number;
+  rewriteSuggestionCount: number;
+  rewriteComparisonCount: number;
 }
 
 export type DashboardSortOption =
@@ -161,12 +179,18 @@ export interface SocialPerformanceDashboard {
   bestToneStyle: ToneStyle | null;
 }
 
+/**
+ * Phase 3-16: 기본값을 좁혀서 처음 열었을 때 정보량을 줄인다 — rewrite
+ * version은 기본으로 숨기고(Rewrite Dashboard에서 별도로 본다),
+ * 최근 수정 순으로 정렬한다.
+ */
 export const DEFAULT_DASHBOARD_FILTER: DashboardFilter = {
-  includeRewriteVersions: true,
+  contentGroup: "all",
+  includeRewriteVersions: false,
   onlyRewriteVersions: false,
   onlyRecommendedForRepost: false,
   onlyMetricsMissing: false,
   onlyLowPerformance: false,
 };
 
-export const DEFAULT_DASHBOARD_SORT: DashboardSortOption = "latest_performance_score desc";
+export const DEFAULT_DASHBOARD_SORT: DashboardSortOption = "updated_at desc";

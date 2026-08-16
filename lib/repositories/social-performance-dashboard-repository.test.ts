@@ -328,6 +328,32 @@ describe("listSocialPostsForDashboard", () => {
 
     expect(result.map((p) => p.id).sort()).toEqual(["p1", "p2"]);
   });
+
+  it("contentGroup='blog'이면 blog platform의 non-rewrite post만 반환한다", async () => {
+    const chain = makeChain({
+      data: [
+        makeSocialPostRow({ id: "p1", platform: "wordpress_blog", is_rewrite_version: false }),
+        makeSocialPostRow({ id: "p2", platform: "naver_cafe", is_rewrite_version: false }),
+        makeSocialPostRow({ id: "p3", platform: "x", is_rewrite_version: false }),
+      ],
+      error: null,
+    });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    const result = await listSocialPostsForDashboard(makeFilter({ contentGroup: "blog" }));
+
+    expect(result.map((p) => p.id)).toEqual(["p1"]);
+    expect(chain.eq).toHaveBeenCalledWith("is_rewrite_version", false);
+  });
+
+  it("contentGroup='rewrite'이면 is_rewrite_version=true만 조회한다(includeRewriteVersions 기본값과 무관)", async () => {
+    const chain = makeChain({ data: [makeSocialPostRow({ is_rewrite_version: true })], error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await listSocialPostsForDashboard(makeFilter({ contentGroup: "rewrite", includeRewriteVersions: false }));
+
+    expect(chain.eq).toHaveBeenCalledWith("is_rewrite_version", true);
+  });
 });
 
 describe("getSocialPerformanceDashboardSummary", () => {

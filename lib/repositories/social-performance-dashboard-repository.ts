@@ -9,6 +9,7 @@ import { mapSocialPostRow } from "./social-posts-repository";
 import { mapSocialPostMetricsRow } from "./social-metrics-repository";
 import { mapRewritePerformanceComparisonRow } from "./social-rewrite-performance-comparisons-repository";
 import { getArticles } from "./article-repository";
+import { classifyContentGroup } from "@/lib/social/content-type-classifier";
 import type { SocialPost, SocialPlatform, ToneStyle } from "@/lib/social/social-platform-types";
 import type {
   DashboardFilter,
@@ -16,6 +17,7 @@ import type {
   PlatformPerformanceSummary,
   TonePerformanceSummary,
   ArticlePerformanceSummary,
+  ArticleContentBreakdown,
   RewritePerformanceSummary,
   LowPerformanceSocialPost,
   MetricsMissingSocialPost,
@@ -48,9 +50,16 @@ export async function listSocialPostsForDashboard(filter: DashboardFilter): Prom
   if (filter.manualPostStatus) query = query.eq("manual_post_status", filter.manualPostStatus);
   if (filter.dateFrom) query = query.gte("created_at", filter.dateFrom);
   if (filter.dateTo) query = query.lte("created_at", filter.dateTo);
-  if (filter.onlyRewriteVersions) {
+
+  // Phase 3-16: contentGroup='rewrite'는 rewrite version만, blog/community/social은
+  // rewrite version을 제외해야 하므로 기존 includeRewriteVersions/onlyRewriteVersions와
+  // 함께 고려한다.
+  const forcesRewriteOnly = filter.contentGroup === "rewrite";
+  const forcesRewriteExcluded = filter.contentGroup === "blog" || filter.contentGroup === "community" || filter.contentGroup === "social";
+
+  if (filter.onlyRewriteVersions || forcesRewriteOnly) {
     query = query.eq("is_rewrite_version", true);
-  } else if (!filter.includeRewriteVersions) {
+  } else if (!filter.includeRewriteVersions || forcesRewriteExcluded) {
     query = query.eq("is_rewrite_version", false);
   }
   if (filter.onlyRecommendedForRepost) query = query.eq("recommended_for_repost", true);
@@ -64,10 +73,16 @@ export async function listSocialPostsForDashboard(filter: DashboardFilter): Prom
     throw new Error(`대시보드용 social post 조회에 실패했습니다: ${error.message}`);
   }
 
-  const posts = (data ?? []).map(mapSocialPostRow);
+  let posts = (data ?? []).map(mapSocialPostRow);
+
+  if (filter.contentGroup && filter.contentGroup !== "all" && filter.contentGroup !== "performance") {
+    posts = posts.filter(
+      (post) => classifyContentGroup({ kind: "social_post", platform: post.platform, isRewriteVersion: post.isRewriteVersion }) === filter.contentGroup
+    );
+  }
 
   if (filter.onlyLowPerformance) {
-    return posts.filter(
+    posts = posts.filter(
       (post) =>
         post.performanceStatus === "low" ||
         post.performanceStatus === "needs_review" ||
@@ -336,4 +351,44 @@ export async function listRecentRewriteComparisons(filter: DashboardFilter): Pro
   }
 
   return (data ?? []).map(mapRewritePerformanceComparisonRow);
+}
+
+/**
+ * article 중심으로 blog/community/social/rewrite 글 개수와 게시/성과
+ * 현황을 요약한다 (Phase 3-16 Content Dashboard용). rewrite version
+ * 포함 여부와 무관하게 전체 그림을 보여줘야 하므로 항상
+ * includeRewriteVersions=true로 조회한다.
+ */
+export async function listArticleContentBreakdowns(filter: DashboardFilter): Promise<ArticleContentBreakdown[]> {
+  const posts = await listSocialPostsForDashboard({ ...filter, contentGroup: "all", includeRewriteVersions: true, onlyRewriteVersions: false });
+  const comparisons = await listRewriteComparisonsForDashboardFilter(filter);
+  const articles = await getArticles();
+  const titleByArticleId = new Map(articles.map((a) => [a.id, a.title]));
+
+  const byArticle = new Map<string, SocialPost[]>();
+  for (const post of posts) {
+    const list = byArticle.get(post.articleId) ?? [];
+    list.push(post);
+    byArticle.set(post.articleId, list);
+  }
+
+  const breakdowns: ArticleContentBreakdown[] = [];
+  for (const [articleId, group] of byArticle) {
+    const articleComparisons = comparisons.filter((c) => c.articleId === articleId);
+    breakdowns.push({
+      articleId,
+      articleTitle: titleByArticleId.get(articleId) ?? null,
+      blogCount: group.filter((p) => !p.isRewriteVersion && classifyContentGroup({ kind: "social_post", platform: p.platform, isRewriteVersion: false }) === "blog").length,
+      communityCount: group.filter((p) => !p.isRewriteVersion && classifyContentGroup({ kind: "social_post", platform: p.platform, isRewriteVersion: false }) === "community").length,
+      socialCount: group.filter((p) => !p.isRewriteVersion && classifyContentGroup({ kind: "social_post", platform: p.platform, isRewriteVersion: false }) === "social").length,
+      rewriteCount: group.filter((p) => p.isRewriteVersion).length,
+      publishedCount: group.filter((p) => p.manualPostStatus === "posted").length,
+      metricsMeasuredCount: group.filter((p) => p.latestMetricsRecordedAt !== null).length,
+      lowPerformanceCount: group.filter((p) => p.performanceStatus === "low" || p.performanceStatus === "needs_review").length,
+      rewriteSuggestionCount: group.reduce((sum, p) => sum + p.rewriteSuggestionCount, 0),
+      rewriteComparisonCount: articleComparisons.length,
+    });
+  }
+
+  return breakdowns.sort((a, b) => b.rewriteCount + b.blogCount + b.socialCount + b.communityCount - (a.rewriteCount + a.blogCount + a.socialCount + a.communityCount));
 }

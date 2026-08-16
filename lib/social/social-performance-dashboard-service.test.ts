@@ -106,11 +106,11 @@ describe("buildSocialPerformanceDashboard", () => {
     expect(listRecentRewriteComparisons).toHaveBeenCalled();
   });
 
-  it("filter를 정규화해서 repository에 전달한다(기본값 적용)", async () => {
+  it("filter를 정규화해서 repository에 전달한다(Phase 3-16 기본값 적용: includeRewriteVersions=false)", async () => {
     await buildSocialPerformanceDashboard({ platform: "x" });
 
     expect(getSocialPerformanceDashboardSummary).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: "x", includeRewriteVersions: true, onlyLowPerformance: false })
+      expect.objectContaining({ platform: "x", includeRewriteVersions: false, onlyLowPerformance: false, contentGroup: "all" })
     );
   });
 

@@ -14,6 +14,7 @@ import {
   listRewritePerformanceSummaries,
   listRecentMetrics,
   listRecentRewriteComparisons,
+  listArticleContentBreakdowns,
 } from "@/lib/repositories/social-performance-dashboard-repository";
 import { logEvent } from "@/lib/harness/logger";
 import {
@@ -22,6 +23,7 @@ import {
   type DashboardFilter,
   type DashboardSortOption,
   type SocialPerformanceDashboard,
+  type ArticleContentBreakdown,
 } from "./social-performance-dashboard-types";
 
 function normalizeFilter(filter?: Partial<DashboardFilter>): DashboardFilter {
@@ -33,6 +35,7 @@ function safeFilterDetails(filter: DashboardFilter): Record<string, unknown> {
     filterPlatform: filter.platform ?? null,
     filterToneStyle: filter.toneStyle ?? null,
     filterPerformanceStatus: filter.performanceStatus ?? null,
+    contentGroup: filter.contentGroup ?? null,
     includeRewriteVersions: filter.includeRewriteVersions,
     onlyLowPerformance: filter.onlyLowPerformance,
     onlyMetricsMissing: filter.onlyMetricsMissing,
@@ -128,4 +131,32 @@ export async function buildSocialPerformanceDashboard(
     });
     throw error;
   }
+}
+
+/**
+ * article 중심으로 blog/community/social/rewrite 글 개수와 게시/성과
+ * 현황을 요약한다 (Phase 3-16 Content Dashboard). 읽기 전용이다.
+ */
+export async function buildContentDashboard(filter?: Partial<DashboardFilter>): Promise<ArticleContentBreakdown[]> {
+  const normalized = normalizeFilter(filter);
+  const breakdowns = await listArticleContentBreakdowns(normalized);
+
+  await logEvent({
+    type: "dashboard_information_architecture_loaded",
+    status: "success",
+    message: "Content Dashboard 조회를 완료했습니다.",
+    details: { ...safeFilterDetails(normalized), articleCount: breakdowns.length },
+  });
+
+  return breakdowns;
+}
+
+/** blog/rewrite dashboard가 열릴 때 어떤 필터로 조회했는지만 가볍게 기록한다. */
+export async function logDashboardInformationArchitectureLoaded(filter: DashboardFilter): Promise<void> {
+  await logEvent({
+    type: "dashboard_information_architecture_loaded",
+    status: "success",
+    message: "Dashboard Information Architecture 화면을 조회했습니다.",
+    details: safeFilterDetails(filter),
+  });
 }
