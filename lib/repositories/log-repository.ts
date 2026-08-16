@@ -352,7 +352,15 @@ export type LogEventType =
   | "social_platform_api_publish_prepare_blocked"
   | "social_platform_api_publish_prepare_failed"
   | "social_platform_api_readiness_checked"
-  | "social_platform_api_dry_run_payload_built";
+  | "social_platform_api_dry_run_payload_built"
+  // Phase 3-22: Automation Safety Review 이벤트
+  | "automation_safety_review_started"
+  | "automation_safety_review_completed"
+  | "automation_safety_review_failed"
+  | "automation_safety_feature_flags_audited"
+  | "automation_safety_logging_audited"
+  | "automation_safety_publish_workflow_audited"
+  | "automation_safety_content_rules_audited";
 
 export type LogStatus = "success" | "failed" | "info";
 

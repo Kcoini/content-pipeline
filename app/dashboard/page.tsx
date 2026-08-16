@@ -93,6 +93,12 @@ export default async function DashboardPage({
             >
               Platform API Readiness
             </Link>
+            <Link
+              href="/dashboard/automation-safety"
+              className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
+            >
+              Automation Safety
+            </Link>
           </div>
         </header>
 
