@@ -329,7 +329,11 @@ export type LogEventType =
   | "dashboard_information_architecture_loaded"
   // Phase 3-18: Social Post Detail Route & Pagination 이벤트
   | "social_post_detail_view_loaded"
-  | "article_page_pagination_applied";
+  | "article_page_pagination_applied"
+  // Phase 3-19: Dashboard Charts & Trend Visualization 이벤트
+  | "social_performance_charts_build_started"
+  | "social_performance_charts_build_completed"
+  | "social_performance_charts_build_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

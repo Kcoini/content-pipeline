@@ -16,7 +16,18 @@ const SORT_OPTIONS: { value: DashboardSortOption; label: string }[] = [
   { value: "updated_at desc", label: "수정일 최신 순" },
 ];
 
-export function DashboardFilterControls({ filter, sort }: { filter: DashboardFilter; sort: DashboardSortOption }) {
+export function DashboardFilterControls({
+  filter,
+  sort,
+  onlyPublished = false,
+  onlyMeasured = false,
+}: {
+  filter: DashboardFilter;
+  sort: DashboardSortOption;
+  /** Phase 3-19: 차트 전용 필터(테이블 조회에는 영향을 주지 않는다). */
+  onlyPublished?: boolean;
+  onlyMeasured?: boolean;
+}) {
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <h2 className="text-sm font-semibold text-zinc-700">필터 / 정렬</h2>
@@ -105,6 +116,22 @@ export function DashboardFilterControls({ filter, sort }: { filter: DashboardFil
         <label className="flex items-center gap-1">
           <input type="checkbox" name="onlyMetricsMissing" value="true" defaultChecked={filter.onlyMetricsMissing} />
           metrics 미입력만
+        </label>
+        <label className="flex flex-col gap-1">
+          시작일 (created_at 기준)
+          <input type="date" name="dateFrom" defaultValue={filter.dateFrom ?? ""} className="rounded border border-zinc-300 px-2 py-1" />
+        </label>
+        <label className="flex flex-col gap-1">
+          종료일 (created_at 기준)
+          <input type="date" name="dateTo" defaultValue={filter.dateTo ?? ""} className="rounded border border-zinc-300 px-2 py-1" />
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" name="onlyPublished" value="true" defaultChecked={onlyPublished} />
+          게시 완료만 (차트)
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" name="onlyMeasured" value="true" defaultChecked={onlyMeasured} />
+          metrics 측정된 글만 (차트)
         </label>
         <div className="col-span-2 flex items-end gap-2 sm:col-span-4">
           <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700">

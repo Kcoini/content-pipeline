@@ -14,6 +14,12 @@ import { MetricsMissingPostsTable } from "@/components/social-performance-dashbo
 import { RewritePerformanceSummary } from "@/components/social-performance-dashboard/rewrite-performance-summary";
 import { RecentMetricsTable } from "@/components/social-performance-dashboard/recent-metrics-table";
 import { RecentRewriteComparisonsTable } from "@/components/social-performance-dashboard/recent-rewrite-comparisons-table";
+import { buildSocialPerformanceCharts } from "@/lib/social/social-performance-chart-service";
+import { ChartSection } from "@/components/social-performance-dashboard/charts/chart-section";
+import { PlatformPerformanceChart } from "@/components/social-performance-dashboard/charts/platform-performance-chart";
+import { TonePerformanceChart } from "@/components/social-performance-dashboard/charts/tone-performance-chart";
+import { MetricsTrendChart } from "@/components/social-performance-dashboard/charts/metrics-trend-chart";
+import { RewriteComparisonChart } from "@/components/social-performance-dashboard/charts/rewrite-comparison-chart";
 import { compareRewritePerformanceAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +61,9 @@ export default async function ArticlePerformancePage({
   if (!article) {
     notFound();
   }
+
+  // Phase 3-19: article 단위 차트 — includeRewriteVersions=true로 원본/rewrite를 함께 본다(성과 페이지의 기존 정책과 동일).
+  const charts = await buildSocialPerformanceCharts({ articleId: id, includeRewriteVersions: true });
 
   const articleIdBySocialPostId = new Map<string, string>();
   if (dashboard.rewritePerformanceSummary.bestRewriteSocialPostId) {
@@ -128,6 +137,25 @@ export default async function ArticlePerformancePage({
         </section>
 
         <SocialPerformanceSummaryCards summary={dashboard.summary} bestPlatform={dashboard.bestPlatform} bestToneStyle={dashboard.bestToneStyle} />
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">Chart Overview</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">이 기사의 social post만 대상으로 한 차트입니다 — 수동 입력된 metrics 기반입니다.</p>
+          <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartSection title="Platform Performance" description="플랫폼별 평균 performance_score">
+              <PlatformPerformanceChart data={charts.platformPerformanceChart} />
+            </ChartSection>
+            <ChartSection title="Tone Performance" description="tone_style별 평균 performance_score">
+              <TonePerformanceChart data={charts.tonePerformanceChart} />
+            </ChartSection>
+            <ChartSection title="Metrics Trend" description="월별/일별 views·clicks·performance_score 추세" note="실시간 분석이 아니라 summary용 추세입니다.">
+              <MetricsTrendChart data={charts.metricsTrendChart} />
+            </ChartSection>
+            <ChartSection title="Original vs Rewrite Comparison" description="이 기사의 원본 vs rewrite 성과 비교 분포" note="동일 조건의 A/B 테스트가 아닙니다.">
+              <RewriteComparisonChart data={charts.rewriteComparisonChart} />
+            </ChartSection>
+          </div>
+        </section>
 
         <PlatformPerformanceTable summaries={dashboard.platformSummaries} bestPlatform={dashboard.bestPlatform} />
 
