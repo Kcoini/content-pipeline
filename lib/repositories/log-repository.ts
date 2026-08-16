@@ -345,7 +345,14 @@ export type LogEventType =
   | "social_ab_test_metrics_refreshed"
   | "social_ab_test_comparison_completed"
   | "social_ab_test_comparison_inconclusive"
-  | "social_ab_test_failed";
+  | "social_ab_test_failed"
+  // Phase 3-21: Platform API Publishing Preparation 이벤트
+  | "social_platform_api_publish_prepare_started"
+  | "social_platform_api_publish_prepare_completed"
+  | "social_platform_api_publish_prepare_blocked"
+  | "social_platform_api_publish_prepare_failed"
+  | "social_platform_api_readiness_checked"
+  | "social_platform_api_dry_run_payload_built";
 
 export type LogStatus = "success" | "failed" | "info";
 

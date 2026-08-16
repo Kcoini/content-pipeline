@@ -6,6 +6,13 @@ import { getContentGroupLabel, getContentTypeLabel } from "@/lib/social/content-
 import { getSafeReturnTo } from "@/lib/navigation/return-to";
 import { buildArticleOverviewUrl } from "@/lib/navigation/article-deep-links";
 import { logEvent } from "@/lib/harness/logger";
+import { getPlatformApiCapability } from "@/lib/social/platform-api-capabilities";
+import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
+import { checkPlatformApiPublishEligibility } from "@/lib/social/platform-api-publish-eligibility-guard";
+import { buildPlatformApiPublishDryRunPayload } from "@/lib/social/platform-api-publish-payload-builder";
+import { ApiReadinessSummary } from "@/components/platform-api/api-readiness-summary";
+import { ApiDryRunPayloadPreview } from "@/components/platform-api/api-dry-run-payload-preview";
+import { preparePlatformApiPublishingAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +29,10 @@ export default async function SocialPostDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string; error?: string; publishMessage?: string; showDryRun?: string }>;
 }) {
   const { id } = await params;
-  const { returnTo } = await searchParams;
+  const { returnTo, error, publishMessage, showDryRun } = await searchParams;
 
   const detail = await getSocialPostDetail(id);
 
@@ -67,6 +74,12 @@ export default async function SocialPostDetailPage({
   const threadPreview = p.threadItems.slice(0, 3);
   const cardPreview = p.cardItems.slice(0, 3);
 
+  // Phase 3-21: capability/readiness는 순수 계산(환경변수 존재 여부만 확인)이라 렌더링 중 호출해도 안전하다 — DB를 바꾸지 않는다.
+  const apiCapability = getPlatformApiCapability(p.platform);
+  const apiReadiness = checkPlatformApiReadiness(p.platform);
+  const apiEligibility = await checkPlatformApiPublishEligibility(p.id);
+  const apiDryRunPayload = showDryRun === "true" ? await buildPlatformApiPublishDryRunPayload(p.id) : null;
+
   // Phase 3-18: full post_body/caption/API key 등은 details_json에 남기지 않는다 — 상태값만 기록.
   await logEvent({
     type: "social_post_detail_view_loaded",
@@ -105,6 +118,9 @@ export default async function SocialPostDetailPage({
         <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
           이 페이지는 social_post 하나의 상세 정보를 읽기 전용으로 보여줍니다. 승인/게시/재승인 등 작업은 위 링크의 하위 페이지에서 실행하세요.
         </div>
+
+        {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {publishMessage && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}</div>}
 
         <header className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
@@ -478,6 +494,48 @@ export default async function SocialPostDetailPage({
               A/B test에 추가/새로 만들기 →
             </a>
           </p>
+        </section>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">API Publishing (준비 단계)</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            이번 단계는 실제 API 게시가 아니라 API 게시 준비 상태 확인입니다. 현재 자동 게시 기능은 비활성화되어 있습니다.
+            토큰이나 API key 값은 화면에 표시하지 않습니다. 수동 Export/Handoff 흐름은 계속 사용할 수 있습니다.
+          </p>
+
+          <div className="mt-2">
+            <ApiReadinessSummary capability={apiCapability} readiness={apiReadiness} eligibility={apiEligibility} />
+          </div>
+
+          <p className="mt-2 text-[11px] text-zinc-400">
+            마지막 저장된 준비 상태: {p.apiPublishPreparationStatus}
+            {p.apiPublishPreparedAt ? ` (${new Date(p.apiPublishPreparedAt).toLocaleString("ko-KR")})` : " (아직 확인하지 않음)"}
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <form action={preparePlatformApiPublishingAction}>
+              <input type="hidden" name="socialPostId" value={p.id} />
+              <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
+                API 게시 준비 상태 확인
+              </button>
+            </form>
+            <a
+              href={`/social-posts/${p.id}?showDryRun=${showDryRun === "true" ? "false" : "true"}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ""}`}
+              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              {showDryRun === "true" ? "API Dry-run Payload 숨기기" : "API Dry-run Payload 보기"}
+            </a>
+          </div>
+
+          {showDryRun === "true" && (
+            <div className="mt-3">
+              {apiDryRunPayload ? (
+                <ApiDryRunPayloadPreview payload={apiDryRunPayload} />
+              ) : (
+                <p className="text-xs text-zinc-500">dry-run payload를 생성할 수 없습니다 (readiness가 not_supported이거나 social post를 찾을 수 없음).</p>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

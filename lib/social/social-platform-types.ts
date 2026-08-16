@@ -308,10 +308,22 @@ export interface SocialPost {
   latestAbTestId: string | null;
   abTestVariantRole: string | null;
   abTestVariantLabel: string | null;
+  /** Phase 3-21: Platform API Publishing Preparation */
+  apiPublishPreparationStatus: PlatformApiPreparationStatus;
+  apiPublishReadinessStatus: string | null;
+  apiPublishEligibleForDryRun: boolean;
+  apiPublishEligibleForActualPublish: boolean;
+  apiPublishPreparationSummary: Record<string, unknown>;
+  apiPublishPreparedAt: string | null;
+  apiPublishPreparedBy: string | null;
+  apiPublishBlockedReason: string | null;
 }
 
 /** Phase 3-20: social_posts.ab_test_status 허용값. */
 export type SocialPostAbTestStatus = "not_in_test" | "draft" | "ready" | "running" | "completed" | "winner" | "loser" | "inconclusive" | "blocked";
+
+/** Phase 3-21: social_posts.api_publish_preparation_status 허용값. */
+export type PlatformApiPreparationStatus = "not_checked" | "disabled" | "missing_config" | "dry_run_ready" | "ready_for_future_test" | "blocked" | "failed";
 
 /** Phase 3-14: social_rewrite_performance_comparisons 한 건의 도메인 타입. */
 export interface RewritePerformanceComparison {

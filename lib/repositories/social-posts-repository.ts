@@ -204,6 +204,14 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     latestAbTestId: row.latest_ab_test_id,
     abTestVariantRole: row.ab_test_variant_role,
     abTestVariantLabel: row.ab_test_variant_label,
+    apiPublishPreparationStatus: row.api_publish_preparation_status as SocialPost["apiPublishPreparationStatus"],
+    apiPublishReadinessStatus: row.api_publish_readiness_status,
+    apiPublishEligibleForDryRun: row.api_publish_eligible_for_dry_run,
+    apiPublishEligibleForActualPublish: row.api_publish_eligible_for_actual_publish,
+    apiPublishPreparationSummary: row.api_publish_preparation_summary,
+    apiPublishPreparedAt: row.api_publish_prepared_at,
+    apiPublishPreparedBy: row.api_publish_prepared_by,
+    apiPublishBlockedReason: row.api_publish_blocked_reason,
   };
 }
 
@@ -1571,6 +1579,88 @@ export async function deleteSocialPost(id: string): Promise<void> {
   if (error) {
     throw new Error(`social post 삭제에 실패했습니다: ${error.message}`);
   }
+}
+
+// ---------------------------------------------------------------------
+// Phase 3-21: Platform API Publishing Preparation
+// ---------------------------------------------------------------------
+
+export interface UpdateApiPublishPreparationSummaryPatch {
+  preparationStatus: SocialPost["apiPublishPreparationStatus"];
+  readinessStatus?: string | null;
+  eligibleForDryRun?: boolean;
+  eligibleForActualPublish?: boolean;
+  preparationSummary?: Record<string, unknown>;
+  preparedBy?: string | null;
+  blockedReason?: string | null;
+}
+
+/** social_posts의 API 게시 준비 상태 요약 컬럼을 갱신한다 (Phase 3-21). full payload/토큰은 절대 저장하지 않는다. */
+export async function updateApiPublishPreparationSummary(id: string, patch: UpdateApiPublishPreparationSummaryPatch): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({
+      api_publish_preparation_status: patch.preparationStatus,
+      api_publish_readiness_status: patch.readinessStatus ?? null,
+      api_publish_eligible_for_dry_run: patch.eligibleForDryRun ?? false,
+      api_publish_eligible_for_actual_publish: patch.eligibleForActualPublish ?? false,
+      api_publish_preparation_summary: patch.preparationSummary ?? {},
+      api_publish_prepared_at: new Date().toISOString(),
+      api_publish_prepared_by: patch.preparedBy ?? null,
+      api_publish_blocked_reason: patch.blockedReason ?? null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`social post의 API 게시 준비 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapSocialPostRow(data);
+}
+
+/** API 게시 준비(readiness/eligibility/dry-run) 계산에 필요한 social_post 하나를 조회한다. */
+export async function getSocialPostForApiPublishPreparation(id: string): Promise<SocialPost | null> {
+  return getSocialPostById(id);
+}
+
+/** article 하나에서 API 게시 준비를 확인해볼 만한 social_post 후보(승인된 글)를 조회한다. */
+export async function listApiPublishPreparationCandidates(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("approval_status", "approved")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`API 게시 준비 후보 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
+}
+
+/** article 하나에서 이미 dry-run 준비까지 완료된 social_post 목록을 조회한다. */
+export async function listApiPublishReadyForDryRun(articleId: string): Promise<SocialPost[]> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select()
+    .eq("article_id", articleId)
+    .eq("api_publish_eligible_for_dry_run", true)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`dry-run 준비 완료 social post 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapSocialPostRow);
 }
 
 export function mapSocialPostQualityRunRow(row: SocialPostQualityRunRow) {

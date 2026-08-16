@@ -151,6 +151,14 @@ function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
     latestAbTestId: null,
     abTestVariantRole: null,
     abTestVariantLabel: null,
+    apiPublishPreparationStatus: "not_checked",
+    apiPublishReadinessStatus: null,
+    apiPublishEligibleForDryRun: false,
+    apiPublishEligibleForActualPublish: false,
+    apiPublishPreparationSummary: {},
+    apiPublishPreparedAt: null,
+    apiPublishPreparedBy: null,
+    apiPublishBlockedReason: null,
     ...overrides,
   };
 }

@@ -619,6 +619,15 @@ export type SocialPostRow = {
   latest_ab_test_id: string | null;
   ab_test_variant_role: string | null;
   ab_test_variant_label: string | null;
+  // Phase 3-21: Platform API Publishing Preparation
+  api_publish_preparation_status: string;
+  api_publish_readiness_status: string | null;
+  api_publish_eligible_for_dry_run: boolean;
+  api_publish_eligible_for_actual_publish: boolean;
+  api_publish_preparation_summary: Record<string, unknown>;
+  api_publish_prepared_at: string | null;
+  api_publish_prepared_by: string | null;
+  api_publish_blocked_reason: string | null;
 };
 
 export type SocialAbTestRow = {

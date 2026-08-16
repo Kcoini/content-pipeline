@@ -60,3 +60,23 @@ describe("social post detail page (정적 소스 검사, Phase 3-18)", () => {
     expect(pageSource).not.toContain("Authorization");
   });
 });
+
+describe("social post detail page — API publishing preparation (정적 소스 검사, Phase 3-21)", () => {
+  it("readiness/eligibility를 표시하고 dry-run payload를 보여줄 수 있다", () => {
+    expect(pageSource).toContain("checkPlatformApiReadiness");
+    expect(pageSource).toContain("checkPlatformApiPublishEligibility");
+    expect(pageSource).toContain("ApiReadinessSummary");
+    expect(pageSource).toContain("ApiDryRunPayloadPreview");
+  });
+
+  it("API 게시 준비 상태 확인 action을 사용하고 actual publish 버튼은 없다", () => {
+    expect(pageSource).toContain("preparePlatformApiPublishingAction");
+    expect(pageSource).not.toContain("실제 게시 실행");
+  });
+
+  it("이번 단계가 준비 확인 단계이며 자동 게시가 비활성화되어 있다는 안내를 표시한다", () => {
+    expect(pageSource).toContain("API 게시 준비 상태 확인입니다");
+    expect(pageSource).toContain("비활성화되어 있습니다");
+    expect(pageSource).toContain("토큰이나 API key 값은 화면에 표시하지 않습니다");
+  });
+});

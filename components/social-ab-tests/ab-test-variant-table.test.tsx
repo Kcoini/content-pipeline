@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AbTestVariantTable } from "./ab-test-variant-table";
+import type { SocialAbTestVariant } from "@/lib/social/social-ab-testing-types";
 
-function makeVariant(overrides: Record<string, unknown> = {}) {
+function makeVariant(overrides: Partial<SocialAbTestVariant> = {}): SocialAbTestVariant {
   return {
     id: "variant-1",
     abTestId: "test-1",
     articleId: "article-1",
     socialPostId: "post-1",
     variantLabel: "원본 (control)",
-    variantRole: "control",
+    variantRole: "control" as const,
     variantDescription: null,
     variantHypothesis: null,
     platform: "wordpress_blog",

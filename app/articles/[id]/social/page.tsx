@@ -14,6 +14,8 @@ import {
 } from "@/lib/navigation/article-deep-links";
 import { PaginationControls } from "@/components/navigation/pagination-controls";
 import { parsePagination } from "@/lib/navigation/pagination";
+import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
+import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
 import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-types";
 import {
   generatePlaceholderSocialPostAction,
@@ -193,6 +195,12 @@ export default async function ArticleSocialPage({
                       quality: {post.qualityStatus} · approval: {post.approvalStatus} · export: {post.exportStatus} · guard:{" "}
                       {post.platformPublishGuardStatus} · dry-run: {post.platformPublishDryRunStatus} · handoff: {post.handoffStatus} · manual_post:{" "}
                       {post.manualPostStatus}
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-400">
+                      API 게시 준비: <ApiReadinessBadge status={checkPlatformApiReadiness(post.platform).status} />{" "}
+                      <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
+                        상세에서 확인 →
+                      </a>
                     </p>
                     <p className="mt-1 text-[11px] text-zinc-400">
                       performance: {post.performanceStatus} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
