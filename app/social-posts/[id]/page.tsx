@@ -44,7 +44,20 @@ export default async function SocialPostDetailPage({
     );
   }
 
-  const { socialPost: p, article, contentGroup, contentType, latestMetrics, recentMetrics, versionChain, rewriteSuggestions, latestVersionComparison, latestRewritePerformanceComparison, relatedLinks } = detail;
+  const {
+    socialPost: p,
+    article,
+    contentGroup,
+    contentType,
+    latestMetrics,
+    recentMetrics,
+    versionChain,
+    rewriteSuggestions,
+    latestVersionComparison,
+    latestRewritePerformanceComparison,
+    relatedLinks,
+    relatedAbTests,
+  } = detail;
 
   const fallbackReturnTo = buildArticleOverviewUrl(p.articleId);
   const safeReturnTo = getSafeReturnTo(returnTo, fallbackReturnTo);
@@ -437,6 +450,34 @@ export default async function SocialPostDetailPage({
               </ul>
             </div>
           )}
+        </section>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">A/B Test</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            ab_test_status: {p.abTestStatus}
+            {p.abTestVariantRole ? ` · role: ${p.abTestVariantRole}` : ""}
+            {p.abTestVariantLabel ? ` (${p.abTestVariantLabel})` : ""}
+          </p>
+          {relatedAbTests.length > 0 ? (
+            <ul className="mt-2 flex flex-col gap-1 text-xs text-zinc-600">
+              {relatedAbTests.map((t) => (
+                <li key={t.id}>
+                  <Link href={relatedLinks.articleAbTests} className="text-purple-700 hover:underline">
+                    {t.testName}
+                  </Link>{" "}
+                  ({t.testStatus})
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-xs text-zinc-500">아직 이 글이 속한 A/B test가 없습니다.</p>
+          )}
+          <p className="mt-2 text-xs">
+            <a href={relatedLinks.createAbTestDeepLink} className="text-purple-700 hover:underline">
+              A/B test에 추가/새로 만들기 →
+            </a>
+          </p>
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

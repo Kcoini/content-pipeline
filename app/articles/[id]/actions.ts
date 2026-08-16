@@ -78,6 +78,20 @@ import {
 import { prepareRewriteReexport, generateRewriteReexportPayload } from "@/lib/social/rewrite-reexport-service";
 import { refreshRewriteRepublishWorkflowStatus } from "@/lib/social/rewrite-republish-workflow-service";
 import { compareRewritePerformance } from "@/lib/social/rewrite-performance-comparison-service";
+import {
+  createAbTestDraft,
+  addVariantToAbTest,
+  createOriginalVsRewriteAbTest,
+  markAbTestReady,
+  startAbTest,
+  pauseAbTest,
+  completeAbTest,
+  cancelAbTest,
+  refreshAbTestVariantMetrics,
+} from "@/lib/social/social-ab-test-service";
+import { decideAbTestWinner } from "@/lib/social/social-ab-test-comparison-service";
+import { isAbTestPrimaryMetric } from "@/lib/social/social-ab-test-service";
+import { buildArticleAbTestsUrl } from "@/lib/navigation/article-deep-links";
 import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem, type SocialPost } from "@/lib/social/social-platform-types";
 import { getPlatformGroup } from "@/lib/social/content-type-classifier";
 import { getSafeReturnTo } from "@/lib/navigation/return-to";
@@ -126,6 +140,7 @@ function revalidateArticleWorkflowPaths(articleId: string): void {
   revalidatePath(`/articles/${articleId}/social`);
   revalidatePath(`/articles/${articleId}/rewrite`);
   revalidatePath(`/articles/${articleId}/performance`);
+  revalidatePath(`/articles/${articleId}/ab-tests`);
 }
 
 /**
@@ -1982,4 +1997,260 @@ export async function compareRewritePerformanceAction(formData: FormData): Promi
   // Phase 3-17: 비교 결과가 있으면 성과 페이지에서 comparisonId로 강조, 없으면 성과 페이지 기본으로 이동한다.
   const fallback = comparisonId ? buildComparisonDeepLink(articleId, comparisonId) : `/articles/${articleId}/performance`;
   redirectToSafeTarget(formData, fallback, message, isError);
+}
+
+// ---------------------------------------------------------------------
+// Phase 3-20: A/B Testing Draft Structure
+// 이 섹션의 어떤 action도 실제 플랫폼에 자동 게시하지 않는다 — variant로
+// 추가된 social_post는 여전히 이 파일의 기존 승인/export/handoff/manual
+// posting action을 통해서만 게시할 수 있다. winner를 결정해도 자동
+// 재게시는 수행하지 않는다.
+// ---------------------------------------------------------------------
+
+/** A/B test draft를 생성한다 (article 존재/platform/test_name/primary_metric 검증만 수행, 실제 게시 없음). */
+export async function createAbTestDraftAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const platformRaw = String(formData.get("platform") ?? "");
+  const testName = String(formData.get("testName") ?? "");
+  const testDescription = String(formData.get("testDescription") ?? "").trim();
+  const hypothesis = String(formData.get("hypothesis") ?? "").trim();
+  const testGoal = String(formData.get("testGoal") ?? "").trim();
+  const primaryMetricRaw = String(formData.get("primaryMetric") ?? "");
+
+  let message: string;
+  let isError: boolean;
+  let abTestId: string | undefined;
+
+  try {
+    if (!isSocialPlatform(platformRaw)) {
+      throw new Error(`지원하지 않는 platform입니다: ${platformRaw}`);
+    }
+    if (primaryMetricRaw && !isAbTestPrimaryMetric(primaryMetricRaw)) {
+      throw new Error(`지원하지 않는 primary_metric입니다: ${primaryMetricRaw}`);
+    }
+
+    const result = await createAbTestDraft({
+      articleId,
+      platform: platformRaw,
+      testName,
+      testDescription: testDescription.length > 0 ? testDescription : undefined,
+      hypothesis: hypothesis.length > 0 ? hypothesis : undefined,
+      testGoal: testGoal.length > 0 ? testGoal : undefined,
+      primaryMetric: primaryMetricRaw ? (primaryMetricRaw as Parameters<typeof createAbTestDraft>[0]["primaryMetric"]) : undefined,
+    });
+    message = result.message;
+    isError = !result.success;
+    abTestId = result.abTest?.id;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+
+  const fallback = abTestId ? buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }) : buildArticleAbTestsUrl(articleId);
+  redirectToSafeTarget(formData, fallback, message, isError);
+}
+
+/** 원본 social_post와 rewrite social_post를 곧바로 control/variant_a로 묶는 A/B test draft를 생성한다. */
+export async function createOriginalVsRewriteAbTestAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const originalSocialPostId = String(formData.get("originalSocialPostId") ?? "");
+  const rewriteSocialPostId = String(formData.get("rewriteSocialPostId") ?? "");
+  const testName = String(formData.get("testName") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+  let abTestId: string | undefined;
+
+  try {
+    const result = await createOriginalVsRewriteAbTest(originalSocialPostId, rewriteSocialPostId, testName.length > 0 ? { testName } : undefined);
+    message = result.warnings && result.warnings.length > 0 ? `${result.message} (경고: ${result.warnings.join(" / ")})` : result.message;
+    isError = !result.success;
+    abTestId = result.abTest?.id;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+
+  const fallback = abTestId ? buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }) : buildArticleAbTestsUrl(articleId);
+  redirectToSafeTarget(formData, fallback, message, isError);
+}
+
+/** 기존 social_post 하나를 A/B test에 variant로 추가한다. */
+export async function addAbTestVariantAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const variantLabel = String(formData.get("variantLabel") ?? "");
+  const variantRoleRaw = String(formData.get("variantRole") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await addVariantToAbTest(abTestId, socialPostId, {
+      variantLabel,
+      variantRole: variantRoleRaw ? (variantRoleRaw as Parameters<typeof addVariantToAbTest>[2]["variantRole"]) : undefined,
+    });
+    message = result.warnings && result.warnings.length > 0 ? `${result.message} (경고: ${result.warnings.join(" / ")})` : result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** A/B test를 draft → ready로 전환한다 (variant 최소 2개 필요). */
+export async function markAbTestReadyAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await markAbTestReady(abTestId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** A/B test를 ready/paused → running으로 전환한다. 실제 자동 게시는 수행하지 않는다. */
+export async function startAbTestAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await startAbTest(abTestId, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** A/B test를 running → paused로 전환한다. */
+export async function pauseAbTestAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await pauseAbTest(abTestId, reason.length > 0 ? reason : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** A/B test를 완료 처리한다. 결과는 참고 지표이며 자동 재게시는 수행하지 않는다. */
+export async function completeAbTestAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await completeAbTest(abTestId, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** A/B test를 취소한다 (완료/이미 취소된 테스트는 취소할 수 없음). */
+export async function cancelAbTestAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await cancelAbTest(abTestId, reason.length > 0 ? reason : undefined);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** variant들의 social_post 최신 metrics를 다시 읽어 A/B test variant row에 반영한다 (외부 API 호출 없음). */
+export async function refreshAbTestMetricsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await refreshAbTestVariantMetrics(abTestId);
+    message = result.warnings && result.warnings.length > 0 ? `${result.message} (경고: ${result.warnings.join(" / ")})` : result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
+}
+
+/** primary_metric 기준으로 variant를 비교해 winner를 결정한다 (결정되어도 자동 게시/재게시는 수행하지 않음). */
+export async function compareAbTestVariantsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const abTestId = String(formData.get("abTestId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await decideAbTestWinner(abTestId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleAbTestsUrl(articleId, { abTestId, highlight: abTestId }), message, isError);
 }

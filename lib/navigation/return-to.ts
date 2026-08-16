@@ -8,8 +8,8 @@
 // URL, javascript:/data: 스킴 등)은 안전하지 않다고 간주하고 fallback을
 // 반환한다 — 이 프로젝트가 임의의 open redirect를 허용하지 않기 위함이다.
 
-/** returnTo로 허용하는 내부 경로 패턴: /articles/[id](/blog|/social|/rewrite|/performance)?(?query)(#hash) */
-const SAFE_RETURN_TO_PATTERN = /^\/articles\/[^\/?#]+(\/(blog|social|rewrite|performance))?(\?[^\s]*)?(#[^\s]*)?$/;
+/** returnTo로 허용하는 내부 경로 패턴: /articles/[id](/blog|/social|/rewrite|/performance|/ab-tests)?(?query)(#hash) */
+const SAFE_RETURN_TO_PATTERN = /^\/articles\/[^\/?#]+(\/(blog|social|rewrite|performance|ab-tests))?(\?[^\s]*)?(#[^\s]*)?$/;
 
 /** 위험한 스킴/패턴이 값 어디에도 섞여 있지 않은지 확인한다 (인코딩 우회 방지를 위해 소문자로 비교). */
 function containsUnsafeScheme(value: string): boolean {

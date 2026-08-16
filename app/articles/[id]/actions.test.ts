@@ -82,6 +82,6 @@ describe("app/articles/[id]/actions.ts (정적 소스 검사, Phase 3-17)", () =
   });
 
   it("returnTo가 안전하지 않으면 fallback(deep link)으로만 이동한다 — 로그에 전체 returnTo 원문을 남기지 않는다", () => {
-    expect(actionsSource).not.toMatch(/logEvent\([^)]*returnTo/s);
+    expect(actionsSource).not.toMatch(/logEvent\([^)]*returnTo/);
   });
 });

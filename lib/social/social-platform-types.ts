@@ -303,7 +303,15 @@ export interface SocialPost {
   rewritePerformanceImprovementRate: number | null;
   rewritePerformanceCheckedAt: string | null;
   rewritePerformanceSummary: Record<string, unknown>;
+  /** Phase 3-20: A/B Testing Draft Structure */
+  abTestStatus: SocialPostAbTestStatus;
+  latestAbTestId: string | null;
+  abTestVariantRole: string | null;
+  abTestVariantLabel: string | null;
 }
+
+/** Phase 3-20: social_posts.ab_test_status 허용값. */
+export type SocialPostAbTestStatus = "not_in_test" | "draft" | "ready" | "running" | "completed" | "winner" | "loser" | "inconclusive" | "blocked";
 
 /** Phase 3-14: social_rewrite_performance_comparisons 한 건의 도메인 타입. */
 export interface RewritePerformanceComparison {

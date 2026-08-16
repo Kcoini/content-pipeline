@@ -10,6 +10,7 @@ import { listRewriteSuggestionsBySocialPost } from "@/lib/repositories/social-re
 import { getVersionChain } from "@/lib/repositories/social-post-versions-repository";
 import { getVersionComparisonById } from "@/lib/repositories/social-version-comparisons-repository";
 import { getRewritePerformanceComparisonById } from "@/lib/repositories/social-rewrite-performance-comparisons-repository";
+import { listAbTestsBySocialPost } from "@/lib/repositories/social-ab-tests-repository";
 import { classifyContentGroup, classifyContentType, type ContentGroup, type ContentType } from "./content-type-classifier";
 import {
   buildArticleOverviewUrl,
@@ -17,6 +18,7 @@ import {
   buildArticleSocialUrl,
   buildArticleRewriteUrl,
   buildArticlePerformanceUrl,
+  buildArticleAbTestsUrl,
   buildSocialPostDetailUrl,
   buildMetricsDeepLink,
   buildRewriteVersionDeepLink,
@@ -24,6 +26,7 @@ import {
 import type { SocialPost, RewritePerformanceComparison } from "./social-platform-types";
 import type { SocialPostMetrics } from "./social-metrics-types";
 import type { SocialPostRewriteSuggestion, SocialPostVersion, SocialPostVersionComparison } from "./social-rewrite-types";
+import type { SocialAbTest } from "./social-ab-testing-types";
 import type { Article } from "@/lib/types/domain";
 
 const RECENT_METRICS_LIMIT = 10;
@@ -34,6 +37,8 @@ export interface SocialPostDetailRelatedLinks {
   articleSocial: string;
   articleRewrite: string;
   articlePerformance: string;
+  /** Phase 3-20: 이 기사의 A/B test 관리 페이지(필터 없음). */
+  articleAbTests: string;
   /** rewrite version이 실제로 적용된 원본 social_post 상세 (없으면 null). */
   originalSocialPostDetail: string | null;
   /** 바로 위 parent version 상세 (없으면 null). */
@@ -42,6 +47,8 @@ export interface SocialPostDetailRelatedLinks {
   rootSocialPostDetail: string | null;
   performanceDeepLink: string;
   rewriteDeepLink: string;
+  /** Phase 3-20: 이 social_post를 미리 채운 A/B test draft 생성 폼으로 이동하는 링크. */
+  createAbTestDeepLink: string;
 }
 
 export interface SocialPostDetailData {
@@ -57,6 +64,8 @@ export interface SocialPostDetailData {
   latestVersionComparison: SocialPostVersionComparison | null;
   latestRewritePerformanceComparison: RewritePerformanceComparison | null;
   relatedLinks: SocialPostDetailRelatedLinks;
+  /** Phase 3-20: 이 social_post가 이미 variant로 속한 A/B test 목록. */
+  relatedAbTests: SocialAbTest[];
 }
 
 /** social_post 하나의 상세 조회 데이터를 만든다. 존재하지 않으면 null을 반환한다. */
@@ -64,7 +73,7 @@ export async function getSocialPostDetail(socialPostId: string): Promise<SocialP
   const socialPost = await getSocialPostById(socialPostId);
   if (!socialPost) return null;
 
-  const [article, allMetrics, versionChain, rewriteSuggestions, latestVersionComparison, latestRewritePerformanceComparison] = await Promise.all([
+  const [article, allMetrics, versionChain, rewriteSuggestions, latestVersionComparison, latestRewritePerformanceComparison, relatedAbTests] = await Promise.all([
     getArticleById(socialPost.articleId),
     listMetricsBySocialPost(socialPostId),
     getVersionChain(socialPostId),
@@ -73,6 +82,7 @@ export async function getSocialPostDetail(socialPostId: string): Promise<SocialP
     socialPost.latestRewritePerformanceComparisonId
       ? getRewritePerformanceComparisonById(socialPost.latestRewritePerformanceComparisonId)
       : Promise.resolve(null),
+    listAbTestsBySocialPost(socialPostId),
   ]);
 
   const recentMetrics = [...allMetrics]
@@ -97,6 +107,7 @@ export async function getSocialPostDetail(socialPostId: string): Promise<SocialP
     articleSocial: buildArticleSocialUrl(socialPost.articleId),
     articleRewrite: buildArticleRewriteUrl(socialPost.articleId),
     articlePerformance: buildArticlePerformanceUrl(socialPost.articleId),
+    articleAbTests: buildArticleAbTestsUrl(socialPost.articleId),
     originalSocialPostDetail: socialPost.rewriteAppliedFromSocialPostId
       ? buildSocialPostDetailUrl(socialPost.rewriteAppliedFromSocialPostId)
       : null,
@@ -107,6 +118,9 @@ export async function getSocialPostDetail(socialPostId: string): Promise<SocialP
         : null,
     performanceDeepLink: buildMetricsDeepLink(socialPost.articleId, socialPost.id),
     rewriteDeepLink: buildRewriteVersionDeepLink(socialPost.articleId, socialPost.id),
+    createAbTestDeepLink: socialPost.isRewriteVersion
+      ? buildArticleAbTestsUrl(socialPost.articleId, { rewriteSocialPostId: socialPost.id })
+      : buildArticleAbTestsUrl(socialPost.articleId, { originalSocialPostId: socialPost.id }),
   };
 
   return {
@@ -121,5 +135,6 @@ export async function getSocialPostDetail(socialPostId: string): Promise<SocialP
     latestVersionComparison,
     latestRewritePerformanceComparison,
     relatedLinks,
+    relatedAbTests,
   };
 }

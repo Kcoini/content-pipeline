@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getSafeReturnTo } from "@/lib/navigation/return-to";
 import { buildArticleOverviewUrl } from "@/lib/navigation/article-deep-links";
 
-export type ArticleWorkflowTab = "overview" | "blog" | "social" | "rewrite" | "performance";
+export type ArticleWorkflowTab = "overview" | "blog" | "social" | "rewrite" | "performance" | "ab-tests";
 
 const TAB_DEFS: { key: ArticleWorkflowTab; label: string; hrefSuffix: string }[] = [
   { key: "overview", label: "기사 개요", hrefSuffix: "" },
@@ -10,6 +10,7 @@ const TAB_DEFS: { key: ArticleWorkflowTab; label: string; hrefSuffix: string }[]
   { key: "social", label: "SNS/커뮤니티 글쓰기", hrefSuffix: "/social" },
   { key: "rewrite", label: "Rewrite 관리", hrefSuffix: "/rewrite" },
   { key: "performance", label: "성과 보기", hrefSuffix: "/performance" },
+  { key: "ab-tests", label: "A/B Tests", hrefSuffix: "/ab-tests" },
 ];
 
 export interface ArticleWorkflowTabLink {

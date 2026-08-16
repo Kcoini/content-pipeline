@@ -147,6 +147,10 @@ function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
     rewritePerformanceImprovementRate: null,
     rewritePerformanceCheckedAt: null,
     rewritePerformanceSummary: {},
+    abTestStatus: "not_in_test",
+    latestAbTestId: null,
+    abTestVariantRole: null,
+    abTestVariantLabel: null,
     ...overrides,
   };
 }

@@ -10,6 +10,7 @@ import {
   buildMetricsDeepLink,
   buildArticleOverviewUrl,
   buildSocialPostDetailUrl,
+  buildArticleAbTestsUrl,
 } from "@/lib/navigation/article-deep-links";
 import { PaginationControls } from "@/components/navigation/pagination-controls";
 import { parsePagination } from "@/lib/navigation/pagination";
@@ -280,6 +281,14 @@ export default async function ArticleRewritePage({
                       <a href={buildMetricsDeepLink(article.id, v.id, selfReturnTo)} className="text-amber-700 hover:underline">
                         성과 보기 →
                       </a>
+                      {v.recommendedForRepost && v.parentSocialPostId && (
+                        <a
+                          href={buildArticleAbTestsUrl(article.id, { originalSocialPostId: v.parentSocialPostId, rewriteSocialPostId: v.id, returnTo: selfReturnTo })}
+                          className="text-purple-700 hover:underline"
+                        >
+                          A/B test draft 만들기 →
+                        </a>
+                      )}
                       <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
                         기사 개요 →
                       </a>

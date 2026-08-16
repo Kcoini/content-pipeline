@@ -614,6 +614,64 @@ export type SocialPostRow = {
   rewrite_performance_improvement_rate: number | null;
   rewrite_performance_checked_at: string | null;
   rewrite_performance_summary: Record<string, unknown>;
+  // Phase 3-20: A/B Testing Draft Structure
+  ab_test_status: string;
+  latest_ab_test_id: string | null;
+  ab_test_variant_role: string | null;
+  ab_test_variant_label: string | null;
+};
+
+export type SocialAbTestRow = {
+  id: string;
+  article_id: string;
+  root_social_post_id: string | null;
+  platform: SocialPlatform;
+  test_name: string;
+  test_description: string | null;
+  hypothesis: string | null;
+  test_goal: string | null;
+  primary_metric: string;
+  secondary_metrics: string[];
+  test_status: string;
+  test_type: string;
+  comparison_method: string;
+  winner_social_post_id: string | null;
+  winner_reason: string | null;
+  result_summary: Record<string, unknown>;
+  warnings: string[];
+  created_by: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SocialAbTestVariantRow = {
+  id: string;
+  ab_test_id: string;
+  article_id: string;
+  social_post_id: string;
+  variant_label: string;
+  variant_role: string;
+  variant_description: string | null;
+  variant_hypothesis: string | null;
+  platform: SocialPlatform;
+  tone_style: ToneStyle | null;
+  version_number: number | null;
+  is_control: boolean;
+  is_rewrite_version: boolean;
+  manual_post_status: string | null;
+  post_url: string | null;
+  latest_metrics_id: string | null;
+  latest_performance_score: number | null;
+  latest_metrics_recorded_at: string | null;
+  variant_status: string;
+  result_rank: number | null;
+  result_notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SocialRewritePerformanceComparisonRow = {
@@ -968,6 +1026,19 @@ export interface Database {
         Insert: Partial<SocialRewritePerformanceComparisonRow> &
           Pick<SocialRewritePerformanceComparisonRow, "article_id" | "root_social_post_id" | "original_social_post_id" | "rewrite_social_post_id" | "platform">;
         Update: Partial<SocialRewritePerformanceComparisonRow>;
+        Relationships: [];
+      };
+      social_ab_tests: {
+        Row: SocialAbTestRow;
+        Insert: Partial<SocialAbTestRow> & Pick<SocialAbTestRow, "article_id" | "platform" | "test_name">;
+        Update: Partial<SocialAbTestRow>;
+        Relationships: [];
+      };
+      social_ab_test_variants: {
+        Row: SocialAbTestVariantRow;
+        Insert: Partial<SocialAbTestVariantRow> &
+          Pick<SocialAbTestVariantRow, "ab_test_id" | "article_id" | "social_post_id" | "variant_label" | "platform">;
+        Update: Partial<SocialAbTestVariantRow>;
         Relationships: [];
       };
     };

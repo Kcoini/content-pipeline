@@ -200,6 +200,10 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     rewritePerformanceImprovementRate: row.rewrite_performance_improvement_rate,
     rewritePerformanceCheckedAt: row.rewrite_performance_checked_at,
     rewritePerformanceSummary: row.rewrite_performance_summary,
+    abTestStatus: row.ab_test_status as SocialPost["abTestStatus"],
+    latestAbTestId: row.latest_ab_test_id,
+    abTestVariantRole: row.ab_test_variant_role,
+    abTestVariantLabel: row.ab_test_variant_label,
   };
 }
 

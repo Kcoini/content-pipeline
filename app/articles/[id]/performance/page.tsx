@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { buildArticlePerformancePageData } from "@/lib/social/article-performance-page-service";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
 import { DeepLinkNotice } from "@/components/navigation/deep-link-highlight";
-import { buildArticlePerformanceUrl, buildRewriteVersionDeepLink } from "@/lib/navigation/article-deep-links";
+import { buildArticlePerformanceUrl, buildRewriteVersionDeepLink, buildArticleAbTestsUrl } from "@/lib/navigation/article-deep-links";
 import { PaginationControls } from "@/components/navigation/pagination-controls";
 import { parsePagination } from "@/lib/navigation/pagination";
 import { SocialPerformanceSummaryCards } from "@/components/social-performance-dashboard/social-performance-summary-cards";
@@ -193,6 +193,21 @@ export default async function ArticlePerformancePage({
               </Link>
             )}
           </p>
+          {dashboard.recentRewriteComparisons.length > 0 && (
+            <p className="mt-1 text-[11px] text-zinc-500">
+              이미 비교 결과가 있다면{" "}
+              <a
+                href={buildArticleAbTestsUrl(id, {
+                  originalSocialPostId: dashboard.recentRewriteComparisons[0].originalSocialPostId,
+                  rewriteSocialPostId: dashboard.recentRewriteComparisons[0].rewriteSocialPostId,
+                  returnTo: selfReturnTo,
+                })}
+                className="text-purple-700 hover:underline"
+              >
+                A/B test로 관리 →
+              </a>
+            </p>
+          )}
         </section>
 
         <RewritePerformanceSummary summary={dashboard.rewritePerformanceSummary} articleIdBySocialPostId={articleIdBySocialPostId} />

@@ -333,7 +333,19 @@ export type LogEventType =
   // Phase 3-19: Dashboard Charts & Trend Visualization 이벤트
   | "social_performance_charts_build_started"
   | "social_performance_charts_build_completed"
-  | "social_performance_charts_build_failed";
+  | "social_performance_charts_build_failed"
+  // Phase 3-20: A/B Testing Draft Structure 이벤트
+  | "social_ab_test_draft_created"
+  | "social_ab_test_variant_added"
+  | "social_ab_test_ready"
+  | "social_ab_test_started"
+  | "social_ab_test_paused"
+  | "social_ab_test_completed"
+  | "social_ab_test_cancelled"
+  | "social_ab_test_metrics_refreshed"
+  | "social_ab_test_comparison_completed"
+  | "social_ab_test_comparison_inconclusive"
+  | "social_ab_test_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

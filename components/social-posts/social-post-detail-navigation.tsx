@@ -19,6 +19,7 @@ export interface SocialPostDetailNavigationProps {
     articleSocial: string;
     articleRewrite: string;
     articlePerformance: string;
+    articleAbTests: string;
     parentSocialPostDetail: string | null;
     rootSocialPostDetail: string | null;
   };
@@ -53,6 +54,9 @@ export function SocialPostDetailNavigation({ platform, isRewriteVersion, links, 
         {/* 성과 링크는 rewrite 여부/platform과 무관하게 항상 표시한다. */}
         <Link href={links.articlePerformance} className={BASE_TAB_CLASS}>
           성과 페이지
+        </Link>
+        <Link href={links.articleAbTests} className={BASE_TAB_CLASS}>
+          A/B Tests
         </Link>
       </nav>
 

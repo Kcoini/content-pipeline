@@ -8,7 +8,11 @@ const listRewriteSuggestionsBySocialPost = vi.fn();
 const getVersionChain = vi.fn();
 const getVersionComparisonById = vi.fn();
 const getRewritePerformanceComparisonById = vi.fn();
+const listAbTestsBySocialPost = vi.fn();
 
+vi.mock("@/lib/repositories/social-ab-tests-repository", () => ({
+  listAbTestsBySocialPost: (...args: unknown[]) => listAbTestsBySocialPost(...args),
+}));
 vi.mock("@/lib/repositories/article-repository", () => ({
   getArticleById: (...args: unknown[]) => getArticleById(...args),
 }));
@@ -64,11 +68,13 @@ beforeEach(() => {
   getVersionChain.mockReset();
   getVersionComparisonById.mockReset();
   getRewritePerformanceComparisonById.mockReset();
+  listAbTestsBySocialPost.mockReset();
 
   getArticleById.mockResolvedValue({ id: "article-1", title: "테스트 기사" });
   listMetricsBySocialPost.mockResolvedValue([]);
   listRewriteSuggestionsBySocialPost.mockResolvedValue([]);
   getVersionChain.mockResolvedValue([]);
+  listAbTestsBySocialPost.mockResolvedValue([]);
 });
 
 describe("getSocialPostDetail", () => {

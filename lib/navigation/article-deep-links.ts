@@ -16,6 +16,10 @@ export interface ArticleDeepLinkOptions {
   rewriteVersionId?: string;
   comparisonId?: string;
   metricsTargetId?: string;
+  /** Phase 3-20: A/B test draft 생성 폼에 미리 채워 넣을 원본/rewrite social_post id. */
+  originalSocialPostId?: string;
+  rewriteSocialPostId?: string;
+  abTestId?: string;
   /** 페이지 내 특정 섹션으로 이동하기 위한 anchor 이름 (예: "suggestions", "versions"). */
   section?: string;
   /** 강조 표시할 카드의 id. 지정하지 않으면 위 id 필드 중 하나를 그대로 사용해도 된다. */
@@ -31,6 +35,9 @@ function buildUrl(basePath: string, options: ArticleDeepLinkOptions = {}): strin
   if (options.rewriteVersionId) params.set("rewriteVersionId", options.rewriteVersionId);
   if (options.comparisonId) params.set("comparisonId", options.comparisonId);
   if (options.metricsTargetId) params.set("metricsTargetId", options.metricsTargetId);
+  if (options.originalSocialPostId) params.set("originalSocialPostId", options.originalSocialPostId);
+  if (options.rewriteSocialPostId) params.set("rewriteSocialPostId", options.rewriteSocialPostId);
+  if (options.abTestId) params.set("abTestId", options.abTestId);
   if (options.section) params.set("section", options.section);
   if (options.highlight) params.set("highlight", options.highlight);
   if (options.returnTo && isSafeInternalReturnTo(options.returnTo)) params.set("returnTo", options.returnTo);
@@ -57,6 +64,11 @@ export function buildArticleRewriteUrl(articleId: string, options: ArticleDeepLi
 
 export function buildArticlePerformanceUrl(articleId: string, options: ArticleDeepLinkOptions = {}): string {
   return buildUrl(`/articles/${articleId}/performance`, options);
+}
+
+/** Phase 3-20: A/B test 관리 페이지 URL. originalSocialPostId/rewriteSocialPostId를 넘기면 생성 폼에 미리 채워진다. */
+export function buildArticleAbTestsUrl(articleId: string, options: ArticleDeepLinkOptions = {}): string {
+  return buildUrl(`/articles/${articleId}/ab-tests`, options);
 }
 
 /**

@@ -4,7 +4,7 @@ import path from "node:path";
 import { getArticleWorkflowTabs } from "./article-workflow-navigation";
 
 describe("getArticleWorkflowTabs", () => {
-  it("articleId 기준으로 5개 하위 페이지 URL을 올바르게 생성한다", () => {
+  it("articleId 기준으로 6개 하위 페이지 URL을 올바르게 생성한다", () => {
     const tabs = getArticleWorkflowTabs("article-1");
 
     expect(tabs).toEqual([
@@ -13,6 +13,7 @@ describe("getArticleWorkflowTabs", () => {
       { key: "social", label: "SNS/커뮤니티 글쓰기", href: "/articles/article-1/social" },
       { key: "rewrite", label: "Rewrite 관리", href: "/articles/article-1/rewrite" },
       { key: "performance", label: "성과 보기", href: "/articles/article-1/performance" },
+      { key: "ab-tests", label: "A/B Tests", href: "/articles/article-1/ab-tests" },
     ]);
   });
 });

@@ -54,8 +54,8 @@ describe("social post detail page (정적 소스 검사, Phase 3-18)", () => {
   });
 
   it("logs에 full body/caption/API key를 남기지 않는다 (상태값 요약만 기록)", () => {
-    expect(pageSource).not.toMatch(/details:\s*\{[^}]*postBody/s);
-    expect(pageSource).not.toMatch(/details:\s*\{[^}]*caption/s);
+    expect(pageSource).not.toMatch(/details:\s*\{[^}]*postBody/);
+    expect(pageSource).not.toMatch(/details:\s*\{[^}]*caption/);
     expect(pageSource).not.toContain("apiKey");
     expect(pageSource).not.toContain("Authorization");
   });
