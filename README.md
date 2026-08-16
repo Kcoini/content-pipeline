@@ -105,6 +105,27 @@ Phase 2(2-1 ~ 2-17)에서 WordPress 기반 수익형 블로그 자동 발행 기
 - Release 체크리스트: [`docs/phase-2-release-checklist.md`](docs/phase-2-release-checklist.md)
 - 확인용 SQL 모음: [`docs/phase-2-verification-sql.md`](docs/phase-2-verification-sql.md)
 
+## Phase 3: Multi-platform Content Operations Pipeline
+
+Phase 3(3-1 ~ 3-23)에서 기사 한 편을 여러 플랫폼(WordPress Blog,
+Naver Blog, Naver Cafe, X, Threads, Instagram)에 맞는 글로 다시 쓰고,
+사람이 검수·승인한 뒤 수동으로 안전하게 게시할 수 있도록 지원하는
+콘텐츠 운영 파이프라인을 추가했다. 성과는 수동 입력으로 확인하고,
+성과 기반 rewrite/A·B 테스트 draft/플랫폼 API 게시 준비/자동화 안전
+점검까지 이어진다. **실제 외부 플랫폼 API 자동 게시는 지원하지
+않는다** — WordPress draft 생성을 제외한 모든 플랫폼은 준비
+(preparation) 단계까지만 구현되어 있다.
+
+- 전체 개요: [`docs/phase-3-final-overview.md`](docs/phase-3-final-overview.md)
+- 운영 매뉴얼: [`docs/phase-3-operation-manual.md`](docs/phase-3-operation-manual.md)
+- 아키텍처: [`docs/phase-3-architecture.md`](docs/phase-3-architecture.md)
+- 라우트 맵: [`docs/phase-3-route-map.md`](docs/phase-3-route-map.md)
+- DB migration 목록: [`docs/phase-3-database-migrations.md`](docs/phase-3-database-migrations.md)
+- 환경변수: [`docs/phase-3-environment-variables.md`](docs/phase-3-environment-variables.md)
+- 안전 체크리스트: [`docs/phase-3-safety-checklist.md`](docs/phase-3-safety-checklist.md)
+- Release 체크리스트: [`docs/phase-3-release-checklist.md`](docs/phase-3-release-checklist.md)
+- Release notes: [`docs/releases/phase-3-release-notes.md`](docs/releases/phase-3-release-notes.md)
+
 ## GitHub 운영 방법
 
 ### 브랜치 전략
@@ -139,4 +160,13 @@ GitHub Actions에서 `lint`, `typecheck`(`tsc --noEmit`), `test`를 실행한다
 - `docs/security-checklist.md` - 보안 체크리스트
 - `docs/phase-2-release-checklist.md` - Phase 2 release 체크리스트
 - `docs/phase-2-verification-sql.md` - 확인용 SQL 모음
+- `docs/phase-3-final-overview.md` - Phase 3 전체 개요
+- `docs/phase-3-operation-manual.md` - Phase 3 운영 매뉴얼
+- `docs/phase-3-architecture.md` - Phase 3 아키텍처
+- `docs/phase-3-route-map.md` - Phase 3 라우트 맵
+- `docs/phase-3-database-migrations.md` - Phase 3 DB migration 목록
+- `docs/phase-3-environment-variables.md` - Phase 3 환경변수 정리
+- `docs/phase-3-safety-checklist.md` - Phase 3 안전 체크리스트
+- `docs/phase-3-release-checklist.md` - Phase 3 release 체크리스트
+- `docs/releases/phase-3-release-notes.md` - Phase 3 release notes
 - `AGENTS.md` / `CLAUDE.md` - 에이전트 작업 가이드
