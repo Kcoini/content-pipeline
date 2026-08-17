@@ -31,6 +31,8 @@ export interface EvalConfig {
     synthesis_fail_threshold?: number;
     /** Phase 2-1: monetized-blog.eval.yaml의 adsense-policy-risk gate */
     policy_risk_fail_threshold?: number;
+    /** source_based_explainer 개선: 특정 출처의 문단 구조를 그대로 따라간 경우를 잡는 gate */
+    source_structure_copy_risk_fail_threshold?: number;
   };
 }
 
@@ -81,6 +83,7 @@ const MOCK_REASON = "Phase 1-3 mock 평가입니다 (실제 AI 평가는 아직 
 const MOCK_SCORES: Record<string, number> = {
   "copy-risk": 1,
   "synthesis": 5,
+  "source-structure-copy-risk": 1,
 };
 const MOCK_DEFAULT_SCORE = 4;
 
@@ -129,6 +132,12 @@ export function applyGateConditions(
     if (policyRiskScore >= policy_risk_fail_threshold) return false;
   }
 
+  const { source_structure_copy_risk_fail_threshold } = evalConfig.scoring;
+  if (source_structure_copy_risk_fail_threshold !== undefined) {
+    const sourceStructureCopyRiskScore = criteriaScores["source-structure-copy-risk"]?.score ?? 0;
+    if (sourceStructureCopyRiskScore >= source_structure_copy_risk_fail_threshold) return false;
+  }
+
   return true;
 }
 
@@ -137,13 +146,13 @@ export function applyGateConditions(
 // ─────────────────────────────────────────────────────────────
 
 const EVAL_SYSTEM_PROMPT = `당신은 콘텐츠 품질 평가자입니다.
-제공된 기사와 출처 요약을 바탕으로 아래 10가지 기준을 1~5점 정수로 채점하고,
+제공된 기사와 출처 요약을 바탕으로 아래 11가지 기준을 1~5점 정수로 채점하고,
 score_article 도구를 반드시 호출해 결과를 저장하세요.
 
 【평가 기준】
 1. factual-grounding: 주요 주장이 출처 요약으로 뒷받침되는가 (출처에 없는 주장=낮은 점수)
 2. fact-opinion-separation: 사실과 의견이 명확히 구분되어 서술되는가
-3. exaggeration-check: 클릭베이트성 과장 표현이나 근거 없는 단정이 없는가
+3. exaggeration-check: 클릭베이트성 과장 표현이나 근거 없는 단정이 없는가 (제목의 "충격", "대박" 등 포함)
 4. unsourced-numbers-check: 출처에 없는 통계·날짜·고유명사가 추가되지 않았는가
 5. structure: 리드문→배경→핵심쟁점→비교→전망 구조를 갖추었는가 (출처 나열=낮은 점수)
 6. readability: 문장이 명확하고 가독성이 좋은가
@@ -151,17 +160,21 @@ score_article 도구를 반드시 호출해 결과를 저장하세요.
 8. synthesis: 여러 출처를 통합해 하나의 논지/흐름으로 재구성했는가 (단순 나열=1점, 유기적 통합=5점)
 9. source-integration: 출처가 기사 흐름에 자연스럽게 녹아 있는가 (단순 나열 금지)
 10. copy-risk: 출처 요약과 15단어 이상 연속 동일 구문이 있는가 (1=없음, 5=심각한 복사)
+11. source-structure-copy-risk: 특정 출처 하나의 문단 순서·논리 전개를 그대로 따라갔는가, 또는
+    "A 출처에 따르면... B 출처에 따르면..." 패턴이 반복되는가 (1=완전히 재구성됨, 5=특정 출처
+    구조를 그대로 복제함). 문장을 복사하지 않아도 "구조"만 그대로 따라간 경우도 높은 점수를 준다.
 
 【채점 규칙】
 - factual-grounding, unsourced-numbers-check: 출처 요약과 직접 대조해 평가
-- originality, synthesis, copy-risk: 기사 본문과 출처 요약을 직접 비교해 평가
+- originality, synthesis, copy-risk, source-structure-copy-risk: 기사 본문과 출처 요약을 직접 비교해 평가
 - copy-risk: 15단어 이상 동일 구문 발견 시 4~5점 부여
-- 출처별 나열 구조("A 출처에 따르면... B 출처에 따르면...")는 synthesis=1~2점, structure=1~2점
+- 출처별 나열 구조("A 출처에 따르면... B 출처에 따르면...")는 synthesis=1~2점, structure=1~2점,
+  source-structure-copy-risk=4~5점
 - 각 기준에 score(정수 1~5)와 reason(한국어 근거 1~2문장)을 반드시 작성`;
 
 const EVAL_TOOL = {
   name: "score_article",
-  description: "기사 품질 평가 결과를 저장한다. 10개 기준 모두에 score(1-5 정수)와 reason을 반드시 포함해야 한다.",
+  description: "기사 품질 평가 결과를 저장한다. 11개 기준 모두에 score(1-5 정수)와 reason을 반드시 포함해야 한다.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -171,7 +184,7 @@ const EVAL_TOOL = {
           "각 기준 ID를 키, {score: 1~5 정수, reason: 한국어 근거}를 값으로 가진 객체. " +
           "필수 키: factual-grounding, fact-opinion-separation, exaggeration-check, " +
           "unsourced-numbers-check, structure, readability, originality, synthesis, " +
-          "source-integration, copy-risk",
+          "source-integration, copy-risk, source-structure-copy-risk",
       },
       notes: {
         type: "string",

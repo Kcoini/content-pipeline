@@ -1,9 +1,16 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { generateAiArticleDraft, generateMockArticleDraft } from "./article-writer";
+import {
+  generateAiArticleDraft,
+  generateMockArticleDraft,
+  checkSourceBasedExplainerReadiness,
+  InsufficientSourceMaterialError,
+  MIN_USABLE_SOURCES_FOR_EXPLAINER,
+} from "./article-writer";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
 import { AD_SLOT_MARKERS, adSlotMarkerComment } from "@/lib/articles/article-modes";
 import type { Source, Theme } from "@/lib/types/domain";
+import type { SourceSummary } from "./source-summarizer";
 
 const theme: Theme = {
   id: "theme-1",
@@ -59,6 +66,17 @@ const sources: Source[] = [
     ...baseSourceFields,
   },
 ];
+
+const usableSourceSummaries: SourceSummary[] = sources.map((source, index) => ({
+  sourceId: source.id,
+  title: source.title ?? "",
+  url: source.url,
+  publisher: source.publisher ?? "",
+  publishedAt: source.publishedAt ?? "",
+  summary: "",
+  keyPoints: [`핵심 포인트 ${index + 1}`],
+  sourceAngle: "",
+}));
 
 describe("generateMockArticleDraft", () => {
   it("본문은 500자 이상이고, 등록된 모든 출처를 인용한다", () => {
@@ -144,13 +162,35 @@ describe("generateMockArticleDraft", () => {
 });
 
 describe("generateAiArticleDraft", () => {
-  it("ANTHROPIC_API_KEY가 없으면 명확한 오류를 던진다", async () => {
+  it("ANTHROPIC_API_KEY가 없으면 명확한 오류를 던진다 (출처 개수와 무관하게 API key 오류가 우선)", async () => {
     const original = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
 
     await expect(generateAiArticleDraft(theme, [])).rejects.toThrow(/ANTHROPIC_API_KEY/);
 
     if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
+  });
+});
+
+describe("checkSourceBasedExplainerReadiness", () => {
+  it("사용 가능한 출처(key_points 또는 summary가 있는 출처)가 3개 이상이면 ready=true를 반환한다", () => {
+    const result = checkSourceBasedExplainerReadiness(usableSourceSummaries);
+    expect(result.ready).toBe(true);
+    expect(result.usableCount).toBe(MIN_USABLE_SOURCES_FOR_EXPLAINER);
+  });
+
+  it("사용 가능한 출처가 3개 미만이면 ready=false와 안내 메시지를 반환한다", () => {
+    const result = checkSourceBasedExplainerReadiness(usableSourceSummaries.slice(0, 2));
+    expect(result.ready).toBe(false);
+    expect(result.usableCount).toBe(2);
+    expect(result.message).toContain("최소 3개");
+  });
+
+  it("key_points와 summary가 모두 비어 있는 출처는 usable로 세지 않는다", () => {
+    const emptySummaries: SourceSummary[] = usableSourceSummaries.map((s) => ({ ...s, keyPoints: [], summary: "" }));
+    const result = checkSourceBasedExplainerReadiness(emptySummaries);
+    expect(result.ready).toBe(false);
+    expect(result.usableCount).toBe(0);
   });
 });
 
@@ -262,14 +302,47 @@ describe("generateAiArticleDraft — article_mode별 prompt 선택", () => {
         title: "설명형 기사 제목",
         content: "설명형 기사 본문입니다.".repeat(50),
         citedSourceIds: sources.map((s) => s.id),
+        sourceUsage: sources.map((s) => ({ sourceId: s.id, usedFor: ["background"] })),
       })
     );
 
-    const result = await generateAiArticleDraft(theme, [], "source_based_explainer");
+    const result = await generateAiArticleDraft(theme, usableSourceSummaries, "source_based_explainer");
 
     expect(result.title).toBe("설명형 기사 제목");
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(requestBody.tools[0].name).toBe("write_article");
+  });
+
+  it("사용 가능한 출처가 3개 미만이면 InsufficientSourceMaterialError를 던지고 API를 호출하지 않는다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+
+    await expect(
+      generateAiArticleDraft(theme, usableSourceSummaries.slice(0, 2), "source_based_explainer")
+    ).rejects.toThrow(InsufficientSourceMaterialError);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sourceUsage의 sourceId가 citedSourceIds에 있으면 그대로 반환하고, 없으면 걸러낸다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_article", {
+        synthesis_notes: "메모",
+        thesis: "논지",
+        title: "설명형 기사 제목",
+        content: "설명형 기사 본문입니다.".repeat(50),
+        citedSourceIds: [sources[0].id, sources[1].id],
+        sourceUsage: [
+          { sourceId: sources[0].id, usedFor: ["background", "data"] },
+          { sourceId: "not-cited-source", usedFor: ["analysis"] }, // citedSourceIds에 없음 → 제외
+          { sourceId: sources[1].id, usedFor: ["invalid-role"] }, // 허용되지 않은 값 → 제외
+        ],
+      })
+    );
+
+    const result = await generateAiArticleDraft(theme, usableSourceSummaries, "source_based_explainer");
+
+    expect(result.sourceUsage).toEqual([{ sourceId: sources[0].id, usedFor: ["background", "data"] }]);
   });
 
   it("monetized_blog 모드는 write_monetized_blog_article 도구를 호출하고 SEO/점수 필드를 반환한다", async () => {

@@ -99,14 +99,30 @@ criteria:
     scale: 1-5
     pass_threshold: 3
 
+  # ── source_based_explainer 개선: 문단 구조 복사 위험 별도 gate ──────────
+
+  - id: source-structure-copy-risk
+    description: >
+      특정 출처 하나의 문단 순서·논리 전개를 그대로 따라갔거나,
+      "A 출처에 따르면... B 출처에 따르면... C 출처에 따르면..." 패턴이
+      반복되는가. 문장을 그대로 복사하지 않아도 "구조"만 복사한 경우를
+      잡아내기 위한 기준이다 (1=완전히 재구성됨, 5=특정 출처 구조를
+      그대로 복제함). 이 기준은 가중 평균에 포함하지 않으며, 점수 4
+      이상이면 passed=false 강제.
+    weight: 0.00
+    scale: 1-5
+    pass_threshold: 3
+
 scoring:
   aggregate: weighted_average
   pass_threshold: 3.0
-  # copy-risk, synthesis는 별도 gate 조건
+  # copy-risk, synthesis, source-structure-copy-risk는 별도 gate 조건
   # copy-risk >= 4 → passed=false (가중 평균과 무관)
   # synthesis < 2 → passed=false (가중 평균과 무관)
+  # source-structure-copy-risk >= 4 → passed=false (가중 평균과 무관)
   copy_risk_fail_threshold: 4
   synthesis_fail_threshold: 2
+  source_structure_copy_risk_fail_threshold: 4
 
 # lib/ai/eval-article.ts가 반환해야 하는 결과 구조
 output:

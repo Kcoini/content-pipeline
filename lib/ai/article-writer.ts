@@ -5,6 +5,11 @@
 // Phase 1-11: tool_use로 JSON 출력을 강제한다.
 // Phase 2-1: article_mode(general_news / source_based_explainer / monetized_blog) 지원.
 // mode 인자를 생략하면 기존과 동일하게 source_based_explainer로 동작해 기존 흐름을 깨지 않는다.
+// source_based_explainer 개선: "출처 기반 해설 기사" 모드임을 프롬프트에 명확히 하고,
+// thesis를 강한 주장이 아닌 중심 해석으로 재정의했다. sourceUsage 필드로 출처별 역할을
+// 확인할 수 있게 했고, 사용 가능한 출처(key_points/summary가 있는 출처)가 3개 미만이면
+// 실행 전에 InsufficientSourceMaterialError를 던져 mock 생성으로 안전하게 전환되게 했다.
+// general_news/monetized_blog 모드와 두 모드의 프롬프트는 이 개선의 대상이 아니다.
 
 import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
 import type { Source, Theme } from "@/lib/types/domain";
@@ -18,10 +23,27 @@ import {
   type InternalLinkSuggestion,
 } from "@/lib/articles/article-modes";
 
+/** source_based_explainer의 sourceUsage에서 각 출처가 맡을 수 있는 역할. */
+export type SourceUsageRole = "background" | "data" | "contrast" | "analysis" | "implication" | "watch_point";
+
+/** citedSourceIds 중 하나의 출처가 본문에서 어떤 역할로 쓰였는지 나타낸다. */
+export interface SourceUsageEntry {
+  sourceId: string;
+  usedFor: SourceUsageRole[];
+}
+
 export interface GeneratedArticle {
   title: string;
   content: string;
   citedSourceIds: string[];
+  /**
+   * source_based_explainer 전용 부가 필드. citedSourceIds에 포함된 출처가
+   * 본문에서 어떤 역할(background/data/contrast/analysis/implication/
+   * watch_point)로 쓰였는지 표시한다. 다른 모드는 undefined다. 품질검사/
+   * eval에서 출처 활용 방식을 확인하는 용도이며, 현재는 DB에 저장하지
+   * 않는다(저장 구조 변경 없이 결과 객체에만 포함).
+   */
+  sourceUsage?: SourceUsageEntry[];
   /** monetized_blog 전용 부가 필드 (해당 없는 모드는 undefined) */
   seoTitle?: string;
   metaDescription?: string;
@@ -216,69 +238,148 @@ function generateMonetizedBlogMock(theme: Theme, sources: Source[]): GeneratedAr
 // AI 기사 생성 (tool_use 방식)
 // ─────────────────────────────────────────────────────────────
 
-const ARTICLE_SYSTEM_PROMPT = `당신은 15년 경력의 전문 저널리스트입니다.
-복잡한 사안을 일반 독자가 납득할 수 있게 풀어 쓰는 것이 특기이며,
-여러 출처를 종합해 하나의 명확한 논지를 가진 기사를 작성합니다.
+const ARTICLE_SYSTEM_PROMPT = `당신은 15년 경력의 전문 저널리스트이며, 여러 출처의 사실 조각을 종합해
+일반 독자가 이해할 수 있는 "출처 기반 해설 기사"를 작성합니다.
+
+이 모드(source_based_explainer)는 단순 뉴스 요약이나 SEO 블로그
+글쓰기가 아닙니다. 광고 클릭을 유도하는 문구나 수익형 블로그 문체를
+사용하지 않으며, 출처들이 공통으로 보여주는 흐름과 차이를 바탕으로
+하나의 중심 해석을 제시하는 해설 기사 작성 모드입니다.
+
+목표는 출처를 이어 붙이는 것이 아니라, 출처들 사이의 공통점·차이점·
+긴장관계를 종합해 독자가 "왜 이 주제가 중요한지"를 이해하도록 돕는
+것입니다.
 
 【작업 순서 — 반드시 이 순서를 지킬 것】
-1. synthesis_notes 먼저 작성:
-   - 모든 출처의 핵심 사실을 훑은 뒤, 공통 논지와 의미 있는 차이점을 3~5문장으로 정리한다.
-   - "이 기사로 독자에게 전달할 가장 중요한 한 가지는 무엇인가?"를 스스로 물어본다.
-2. thesis 작성: 위 분석에서 도출한 기사의 핵심 주장을 1~2문장으로 명확히 쓴다.
-3. title 작성: thesis를 반영한 제목 (과장·클릭베이트 금지, 40자 이내).
-4. content 작성: thesis를 중심으로 7개 섹션 기사를 작성한다.
+1. synthesis_notes 작성 (내부 분석 메모, 독자에게 노출되지 않음):
+   - 모든 출처의 key_points를 훑은 뒤, 공통 논지·의미 있는 차이점·
+     긴장관계·독자에게 중요한 이유를 3~5문장으로 정리한다.
+   - 특정 출처 하나의 구조를 따라가지 말고, 여러 출처를 재배열·통합해
+     해석한다.
+   - 출처에 없는 수치, 날짜, 고유명사, 인과관계는 만들지 않는다.
+2. thesis 작성:
+   - 강한 주장이나 사설식 결론이 아니라, "이 사안을 이해하는 중심
+     해석"이다.
+   - 출처들이 보여주는 흐름과 의미를 1~2문장으로 압축한다.
+   - 찬반을 과도하게 단정하지 않는다.
+   - 이후 title과 content는 이 thesis를 중심으로 구성한다.
+3. title 작성:
+   - thesis의 핵심을 반영한다 (40자 이내).
+   - "충격", "대박", "난리", "무조건", "끝났다" 같은 클릭베이트 표현을
+     금지한다.
+   - 출처에 없는 숫자나 고유명사를 제목에 넣지 않는다.
+   - 결론을 과도하게 단정하지 않는다.
+4. content 작성:
+   - thesis를 중심으로, 아래 "content가 포함해야 할 7가지 기능"을
+     포함한 기사를 작성한다.
+   - 800자 이상을 권장하며(최소 500자), markdown으로 작성한다.
+5. sourceUsage 작성:
+   - citedSourceIds에 포함된 각 출처가 본문에서 어떤 역할로 쓰였는지
+     표시한다 (아래 "sourceUsage" 항목 참고).
 
 【문체 기준】
 - 한국 주요 일간지 수준의 품격 있는 설명형 저널리즘
 - 역피라미드 구조 + 내러티브 흐름
 - 각 문단은 하나의 생각을 담고 다음 문단으로 자연스럽게 이어진다
-- 결론에 "~일 것이다", "~해야 한다" 식의 빈약한 전망 나열 금지
 - 독자가 기사를 다 읽고 나서 "아, 이래서 이 주제가 중요하구나"를 느껴야 한다
 
 【절대 금지】
-- key_points 항목을 그대로 인용하거나 단어 순서만 바꾸는 paraphrase 금지
-- 각 출처를 순서대로 나열하는 구조 금지 ("A 기사에 따르면... B 기사에 따르면..." 패턴)
-- key_points에 없는 수치·날짜·고유명사를 만들어 추가하는 것 금지 (hallucination)
-- 500자 미만 본문 금지 (800자 이상 권장)
+- key_points 항목을 그대로 복사하거나 단어 순서만 바꾸는 paraphrase
+- 출처를 순서대로 나열하는 구조 ("A 기사에 따르면... B 기사에 따르면... C 기사에 따르면..." 패턴)
+- 특정 출처 하나의 문단 순서·논리 전개를 그대로 따라가는 source structure copy
+- key_points에 없는 수치·날짜·고유명사를 만들어 추가하는 것 (hallucination)
+- 출처에 없는 인과관계를 단정하는 것
+- 출처에 없는 전망을 단정하는 것
+- 광고 클릭 유도 표현, 수익형 블로그 문체
+- 선정적 제목, 과장된 위기감
+- 개인 투자·의료·법률 판단을 단정하는 표현
+- 결론에서 근거 없이 "~일 것이다", "~해야 한다"를 나열하는 빈약한 전망
+- 500자 미만 본문
 
-【7개 섹션 구조】
-1. 리드문 — 독자가 계속 읽을 이유를 제시하는 2~3문장 (thesis 반영)
+【불확실성 표현 규칙】
+- 출처에서 직접 확인되지 않는 인과관계, 전망, 평가는 단정하지 않는다.
+- 필요한 경우 "가능성이 있다", "관찰된다", "해석할 수 있다", "과제로
+  남는다"처럼 제한적으로 표현한다.
+- 다만 출처가 직접 확인한 사실은 명확하게 쓴다 (불필요하게 모든
+  문장을 헤지하지 않는다).
+
+【content가 포함해야 할 7가지 기능 — heading을 기계적으로 고정하지 않는다】
+아래는 content가 반드시 포함해야 할 기능이다. 다만 실제 heading은
+주제에 맞게 자연스럽게 작성하고, 모든 기사에서 "## 배경", "## 핵심
+쟁점" 같은 고정 제목을 기계적으로 반복하지 않아도 된다 — 기능이
+드러나면 충분하다.
+1. 리드문 — 독자가 계속 읽을 이유를 제시 (thesis 반영)
 2. 배경 — 이 주제가 왜 지금 중요한지 맥락
 3. 핵심 쟁점 — 여러 출처가 공통으로 짚는 문제의 핵심
 4. 다각도 분석 — 출처들의 공통점·차이점·긴장관계를 통합해 해석
-5. 사실과 데이터 — 출처에 명시된 구체적 사실·수치·사례 (있는 것만)
-6. 독자에게 주는 의미 — 이 정보가 일반 독자에게 왜 중요한지 해석
-7. 향후 전망 또는 과제 — 출처 근거 있는 전망 또는 아직 해결되지 않은 과제`;
+5. 사실과 데이터 — 출처에 명시된 구체적 사실·수치·사례만 사용
+6. 독자에게 주는 의미 — 이 정보가 독자에게 왜 중요한지 해석
+7. 향후 전망 또는 과제 — 출처 기반의 제한적 전망 또는 아직 해결되지
+   않은 과제
+
+【sourceUsage】
+citedSourceIds에 포함된 각 sourceId가 본문에서 어떤 역할로 쓰였는지
+표시한다. 하나의 sourceId가 여러 역할을 겸할 수 있다.
+- background: 배경 설명에 사용
+- data: 구체적 사실·수치·데이터 제공
+- contrast: 다른 출처와의 차이·긴장관계를 보여주는 데 사용
+- analysis: 다각도 분석에 사용
+- implication: 독자에게 주는 의미 해석에 사용
+- watch_point: 향후 전망/과제 제시에 사용
+citedSourceIds에 없는 sourceId는 sourceUsage에 포함하지 않는다.`;
 
 const ARTICLE_TOOL = {
   name: "write_article",
-  description: "기사 작성 결과를 저장한다. synthesis_notes → thesis → title → content 순서로 반드시 작성해야 한다.",
+  description:
+    "기사 작성 결과를 저장한다. synthesis_notes → thesis → title → content → sourceUsage 순서로 반드시 작성해야 한다.",
   input_schema: {
     type: "object" as const,
     properties: {
       synthesis_notes: {
         type: "string",
-        description: "출처 분석 메모 (독자에게 노출되지 않음). 출처들의 공통 논지·차이점·의미를 3~5문장으로 정리.",
+        description: "출처 분석 메모 (독자에게 노출되지 않음). 출처들의 공통 논지·차이점·긴장관계·의미를 3~5문장으로 정리.",
       },
       thesis: {
         type: "string",
-        description: "이 기사의 핵심 주장 (1~2문장). content 전체가 이 논지를 뒷받침해야 한다.",
+        description:
+          "이 기사의 핵심 주장이 아니라 중심 해석 (1~2문장). 강한 단정이나 사설식 결론이 아니어야 하며, content 전체가 이 해석을 뒷받침해야 한다.",
       },
       title: {
         type: "string",
-        description: "기사 제목 (과장 금지, 40자 이내, thesis를 반영)",
+        description: "기사 제목 (40자 이내, thesis 반영, 클릭베이트/출처에 없는 숫자·고유명사 금지)",
       },
       content: {
         type: "string",
-        description: "기사 본문 (markdown, 공백 포함 800자 이상, 7개 섹션 포함)",
+        description:
+          "기사 본문 (markdown, 공백 포함 800자 이상 권장·최소 500자). 7가지 기능을 포함하되 heading은 자연스럽게 작성한다.",
       },
       citedSourceIds: {
         type: "array",
         items: { type: "string" },
         description: "본문에서 실제로 활용한 출처 ID 목록 (최소 3개)",
       },
+      sourceUsage: {
+        type: "array",
+        description:
+          "citedSourceIds에 포함된 sourceId가 본문에서 어떤 역할로 쓰였는지 표시하는 목록. citedSourceIds에 없는 sourceId는 포함하지 않는다.",
+        items: {
+          type: "object",
+          properties: {
+            sourceId: { type: "string", description: "citedSourceIds 중 하나와 정확히 일치하는 값" },
+            usedFor: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["background", "data", "contrast", "analysis", "implication", "watch_point"],
+              },
+              description: "이 출처가 본문에서 수행한 역할 (복수 선택 가능)",
+            },
+          },
+          required: ["sourceId", "usedFor"],
+        },
+      },
     },
-    required: ["synthesis_notes", "thesis", "title", "content", "citedSourceIds"],
+    required: ["synthesis_notes", "thesis", "title", "content", "citedSourceIds", "sourceUsage"],
   },
 };
 
@@ -290,6 +391,9 @@ const ARTICLE_TOOL = {
 function buildSourceBlock(summary: SourceSummary): string {
   const lines = [
     `[출처 ${summary.sourceId}]`,
+    // sourceUsage.sourceId가 이 값과 정확히 일치해야 하므로, 모델이 ID를
+    // 혼동하지 않도록 별도 줄로 한 번 더 명시한다.
+    `sourceId(정확히 그대로 사용): ${summary.sourceId}`,
     `제목: ${summary.title}`,
     `출판사: ${summary.publisher || "(없음)"}`,
     `발행일: ${summary.publishedAt || "(없음)"}`,
@@ -330,10 +434,110 @@ function buildArticleUserPrompt(theme: Theme, sourceSummaries: SourceSummary[]):
     "",
     "─── 작업 지시 ───",
     "위 사실 목록을 바탕으로 write_article 도구를 호출하세요.",
-    "반드시 synthesis_notes → thesis → title → content 순서로 채우세요.",
+    "반드시 synthesis_notes → thesis → title → content → sourceUsage 순서로 채우세요.",
     "각 출처를 순서대로 소개하는 방식으로 작성하지 마세요.",
     "출처의 핵심 사실을 종합·해석하여 하나의 논지가 있는 기사로 작성하세요.",
+    "sourceUsage의 sourceId는 위 [출처 ...] 블록의 sourceId와 정확히 동일한 문자열을 사용하세요.",
   ].join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// source_based_explainer 실행 조건(guard) + sourceUsage 파싱
+// ─────────────────────────────────────────────────────────────
+
+/** source_based_explainer가 실제로 종합할 수 있는 최소 출처 개수. */
+export const MIN_USABLE_SOURCES_FOR_EXPLAINER = 3;
+
+export interface SourceReadinessCheck {
+  ready: boolean;
+  usableCount: number;
+  totalCount: number;
+  message: string;
+}
+
+/**
+ * key_points와 summary가 모두 비어 있는 출처는 종합(synthesis)할 사실이
+ * 없으므로 "사용 가능한 출처"로 세지 않는다.
+ */
+function isUsableSourceSummary(summary: SourceSummary): boolean {
+  return summary.keyPoints.length > 0 || summary.summary.trim().length > 0;
+}
+
+/**
+ * source_based_explainer 실행 가능 여부를 판단한다. AI 호출 전에 서버
+ * 액션/UI에서 미리 확인해 "최소 3개 출처가 필요합니다" 같은 안내를
+ * 보여주는 데 사용할 수 있다.
+ */
+export function checkSourceBasedExplainerReadiness(sourceSummaries: SourceSummary[]): SourceReadinessCheck {
+  const usableCount = sourceSummaries.filter(isUsableSourceSummary).length;
+  const ready = usableCount >= MIN_USABLE_SOURCES_FOR_EXPLAINER;
+
+  return {
+    ready,
+    usableCount,
+    totalCount: sourceSummaries.length,
+    message: ready
+      ? `사용 가능한 출처 ${usableCount}건으로 source_based_explainer 모드를 실행할 수 있습니다.`
+      : `source_based_explainer는 최소 ${MIN_USABLE_SOURCES_FOR_EXPLAINER}개 이상의 사용 가능한 출처(key_points 또는 summary가 있는 출처)가 필요합니다 ` +
+        `(현재 사용 가능: ${usableCount}건, 전체 등록: ${sourceSummaries.length}건). ` +
+        "출처를 보강하거나 general_news 모드를 사용하세요.",
+  };
+}
+
+/**
+ * source_based_explainer 실행에 필요한 최소 출처 재료가 부족할 때 던지는
+ * 오류. 새 fallback 모드를 만드는 대신, 호출자가 이 오류를 잡아 기존
+ * mock 생성 경로로 안전하게 전환할 수 있도록 명확한 상태를 제공한다.
+ */
+export class InsufficientSourceMaterialError extends Error {
+  readonly usableCount: number;
+  readonly totalCount: number;
+
+  constructor(check: SourceReadinessCheck) {
+    super(check.message);
+    this.name = "InsufficientSourceMaterialError";
+    this.usableCount = check.usableCount;
+    this.totalCount = check.totalCount;
+  }
+}
+
+const SOURCE_USAGE_ROLES: readonly SourceUsageRole[] = [
+  "background",
+  "data",
+  "contrast",
+  "analysis",
+  "implication",
+  "watch_point",
+];
+
+function isSourceUsageRole(value: unknown): value is SourceUsageRole {
+  return typeof value === "string" && (SOURCE_USAGE_ROLES as readonly string[]).includes(value);
+}
+
+/**
+ * AI 응답의 sourceUsage를 검증한다. citedSourceIds에 없는 sourceId나
+ * 허용되지 않은 usedFor 값은 조용히 버리고, 그 외 결과는 그대로
+ * 반환한다 (형식이 다소 어긋나도 기사 생성 자체를 막지 않는다).
+ */
+function parseSourceUsage(raw: unknown, citedSourceIds: string[]): SourceUsageEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const citedSet = new Set(citedSourceIds);
+  const result: SourceUsageEntry[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const sourceId = typeof record.sourceId === "string" ? record.sourceId : "";
+    if (!sourceId || !citedSet.has(sourceId)) continue;
+
+    const usedForRaw = Array.isArray(record.usedFor) ? record.usedFor : [];
+    const usedFor = usedForRaw.filter(isSourceUsageRole);
+    if (usedFor.length === 0) continue;
+
+    result.push({ sourceId, usedFor });
+  }
+
+  return result;
 }
 
 /**
@@ -366,6 +570,11 @@ async function generateSourceBasedExplainerAiDraft(
   theme: Theme,
   sourceSummaries: SourceSummary[]
 ): Promise<GeneratedArticle> {
+  const readiness = checkSourceBasedExplainerReadiness(sourceSummaries);
+  if (!readiness.ready) {
+    throw new InsufficientSourceMaterialError(readiness);
+  }
+
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 8192,
@@ -393,7 +602,9 @@ async function generateSourceBasedExplainerAiDraft(
     ? input.citedSourceIds.filter((id): id is string => typeof id === "string")
     : [];
 
-  return { title, content, citedSourceIds };
+  const sourceUsage = parseSourceUsage(input.sourceUsage, citedSourceIds);
+
+  return { title, content, citedSourceIds, sourceUsage };
 }
 
 // ─────────────────────────────────────────────────────────────

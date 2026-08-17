@@ -9,7 +9,11 @@
 
 1. **article 생성 또는 선택** — `/dashboard` 또는 `/articles`에서
    테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성, 또는 기존
-   기사를 선택한다.
+   기사를 선택한다. 기본 생성 모드(`source_based_explainer`)는
+   "출처 기반 해설 기사" 모드이며, 종합할 수 있는 출처(usable
+   source)가 3개 미만이면 자동으로 mock 생성으로 전환된다 — 자세한
+   내용은 [`article-generation-source-based-explainer.md`](./article-generation-source-based-explainer.md)
+   참고.
 2. **`/articles/[id]`에서 기사 개요 확인** — 기사 본문, 상태, 하위
    워크플로우(블로그/소셜/rewrite/성과/AB테스트) 진입점을 확인한다.
 3. **`/articles/[id]/blog`에서 블로그 글 관리** — WordPress/Naver

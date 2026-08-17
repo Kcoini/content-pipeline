@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { runContractForCollection } from "@/lib/harness/contract-runner";
 import { loadContract } from "@/lib/harness/load-contract";
 import { logEvent } from "@/lib/harness/logger";
-import { generateAiArticleDraft, generateMockArticleDraft, type GeneratedArticle } from "@/lib/ai/article-writer";
+import {
+  generateAiArticleDraft,
+  generateMockArticleDraft,
+  InsufficientSourceMaterialError,
+  type GeneratedArticle,
+} from "@/lib/ai/article-writer";
 import { summarizeSourcesMock, summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
 import { evaluateArticleForMode } from "@/lib/ai/eval-article";
 import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
@@ -305,14 +310,26 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
         themeId,
       });
     } catch (error) {
-      const reason = toAiErrorMessage(error);
-      await logEvent({
-        type: "ai_generation_failed",
-        status: "failed",
-        message: `AI 기사 생성에 실패하여 mock 생성으로 전환합니다: ${reason}`,
-        details: { themeId, error: reason },
-        themeId,
-      });
+      if (error instanceof InsufficientSourceMaterialError) {
+        // source_based_explainer가 종합할 수 있는 출처 재료(key_points/summary)가
+        // 부족한 경우다 — AI 실패가 아니므로 ai_generation_failed와 구분해서 기록한다.
+        await logEvent({
+          type: "article_generation_input_warning",
+          status: "info",
+          message: `source_based_explainer 실행에 필요한 출처 재료가 부족하여 mock 생성으로 전환합니다 (사용 가능: ${error.usableCount}건, 필요: 최소 3건).`,
+          details: { themeId, usableSourceCount: error.usableCount, totalSourceCount: error.totalCount, articleMode },
+          themeId,
+        });
+      } else {
+        const reason = toAiErrorMessage(error);
+        await logEvent({
+          type: "ai_generation_failed",
+          status: "failed",
+          message: `AI 기사 생성에 실패하여 mock 생성으로 전환합니다: ${reason}`,
+          details: { themeId, error: reason },
+          themeId,
+        });
+      }
 
       usedAiMode = false;
       sourceSummaries = summarizeSourcesMock(sources);

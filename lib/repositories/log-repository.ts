@@ -19,6 +19,8 @@ export type LogEventType =
   | "article_eval_started"
   | "article_eval_completed"
   | "ai_generation_failed"
+  // source_based_explainer 개선: 사용 가능한 출처 재료 부족 경고 (mock으로 안전하게 전환)
+  | "article_generation_input_warning"
   // Phase 1-5: 기사 검토/수정/승인 이벤트
   | "article_updated"
   | "article_approved"
