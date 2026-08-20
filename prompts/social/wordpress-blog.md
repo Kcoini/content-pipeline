@@ -17,6 +17,28 @@ article을 다른 플랫폼용으로 "변환"할 때 재사용하는 경우를 �
 `post_title`(필수), `post_body`(필수), `excerpt`(선택), `hashtags`는
 지원하지 않음(WordPress는 카테고리/태그를 별도 필드로 관리).
 
+## platform_metadata (WordPress 게시용 정보 — 반드시 함께 생성)
+article은 원본 콘텐츠일 뿐이며, WordPress 게시에 필요한 SEO/AdSense
+안전성 정보가 없을 수 있다(특히 source_based_explainer/general_news
+모드는 애초에 이 정보가 없다). 그러므로 이 프롬프트는 `platform_metadata`
+안에 아래 정보를 **직접 생성해서** 포함해야 한다 — article의 값을
+그대로 베끼지 말고, 이번에 작성한 `post_title`/`post_body`를 기준으로
+새로 만든다(단, article에 이미 관련 값이 있다면 참고해서 일관성 있게
+작성해도 된다):
+
+- `seoTitle`(60자 이내), `metaDescription`(160자 이내), `targetKeyword`,
+  `secondaryKeywords`(배열)
+- `searchIntent`(예: informational/transactional/comparison 등),
+  `readerPersona`
+- `answerSummary`(직접 답변형 2~4문장 요약)
+- `eeatNotes`(전문성/신뢰성 근거를 짧게, 없는 사실을 지어내지 않는다)
+- `geoSummary`(`{ directAnswer, keyFacts: [], caveats: [] }` 형태 —
+  `keyFacts`/`caveats`는 출처에 실제로 있는 내용만 채우고, 없으면
+  빈 배열로 둔다)
+- `structuredDataSuggestions`(FAQ/HowTo 등 구조화 데이터 제안, 배열,
+  근거 없으면 빈 배열)
+- `monetizationScore`(0~100), `policyRiskScore`(0~100, 높을수록 위험)
+
 ## 금지 표현
 공통 금지 표현(`prompts/safety/*.md` 참고) + 광고 클릭 유도 문구 + 허위/
 과장 수익 보장 표현.
@@ -28,7 +50,20 @@ article을 다른 플랫폼용으로 "변환"할 때 재사용하는 경우를 �
   "post_body": "본문 (markdown, h2/h3 구조 포함)",
   "excerpt": "요약 (선택)",
   "hashtags": [],
-  "platform_metadata": { "seoTitle": "", "metaDescription": "" }
+  "platform_metadata": {
+    "seoTitle": "",
+    "metaDescription": "",
+    "targetKeyword": "",
+    "secondaryKeywords": [],
+    "searchIntent": "informational",
+    "readerPersona": "",
+    "answerSummary": "",
+    "eeatNotes": {},
+    "geoSummary": { "directAnswer": "", "keyFacts": [], "caveats": [] },
+    "structuredDataSuggestions": [],
+    "monetizationScore": 0,
+    "policyRiskScore": 0
+  }
 }
 ```
 

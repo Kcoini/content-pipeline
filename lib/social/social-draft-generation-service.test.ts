@@ -40,6 +40,12 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     secondaryKeywords: [],
     seoTitle: null,
     metaDescription: null,
+    searchIntent: null,
+    readerPersona: null,
+    adSlots: [],
+    monetizationScore: null,
+    policyRiskScore: null,
+    citedSourceIds: [],
     excerpt: "장기요양보험 신청 절차를 정리했습니다. ".repeat(3),
     keyPoints: ["신청은 공단에서 접수", "등급판정까지 30일"],
     sourceCount: 3,
@@ -185,6 +191,49 @@ describe("generateSocialDraft", () => {
     expect(createSocialPostDraft).toHaveBeenCalledWith(
       expect.objectContaining({ postTitle: expect.any(String), postBody: expect.any(String) })
     );
+  });
+
+  it("wordpress_blog draft 생성 시 seoTitle/metaDescription/targetKeyword/answerSummary 등 게시용 metadata를 함께 생성해 platformMetadata에 저장한다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog") })
+    );
+
+    await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.platformMetadata.seoTitle).toEqual(expect.any(String));
+    expect(call.platformMetadata.metaDescription).toEqual(expect.any(String));
+    expect(call.platformMetadata.targetKeyword).toEqual(expect.any(String));
+    expect(call.platformMetadata.answerSummary).toEqual(expect.any(String));
+    expect(call.platformMetadata.eeatNotes === null || typeof call.platformMetadata.eeatNotes === "object").toBe(true);
+    expect(call.platformMetadata.geoSummary).toEqual(expect.objectContaining({ keyFacts: [], caveats: [] }));
+    expect(call.platformMetadata.monetizationScore).toEqual(expect.any(Number));
+    expect(call.platformMetadata.policyRiskScore).toEqual(expect.any(Number));
+  });
+
+  it("article에 이미 seoTitle/targetKeyword가 있으면(monetized_blog) wordpress_blog 생성 시 참고용으로 재사용한다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({
+        platform: "wordpress_blog",
+        platformConfig: getPlatformWritingConfig("wordpress_blog"),
+        seoTitle: "article SEO 제목",
+        targetKeyword: "article 키워드",
+      })
+    );
+
+    await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.platformMetadata.seoTitle).toBe("article SEO 제목");
+    expect(call.platformMetadata.targetKeyword).toBe("article 키워드");
+  });
+
+  it("wordpress_blog가 아닌 platform은 게시용 metadata를 만들지 않는다 (naver_blog는 영향 없음)", async () => {
+    await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.platformMetadata.seoTitle).toBeUndefined();
+    expect(call.platformMetadata.answerSummary).toBeUndefined();
   });
 
   it("naver_cafe draft를 생성할 수 있다", async () => {

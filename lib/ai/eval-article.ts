@@ -33,6 +33,10 @@ export interface EvalConfig {
     policy_risk_fail_threshold?: number;
     /** source_based_explainer 개선: 특정 출처의 문단 구조를 그대로 따라간 경우를 잡는 gate */
     source_structure_copy_risk_fail_threshold?: number;
+    /** monetized_blog 개선: eeat-trustworthiness가 이 값 미만이면 passed=false (다른 gate와 방향이 반대 — "낮으면" 실패) */
+    eeat_trustworthiness_min_threshold?: number;
+    /** monetized_blog 개선: ymyl-risk가 이 값 이상이면 passed=false */
+    ymyl_risk_fail_threshold?: number;
   };
 }
 
@@ -136,6 +140,18 @@ export function applyGateConditions(
   if (source_structure_copy_risk_fail_threshold !== undefined) {
     const sourceStructureCopyRiskScore = criteriaScores["source-structure-copy-risk"]?.score ?? 0;
     if (sourceStructureCopyRiskScore >= source_structure_copy_risk_fail_threshold) return false;
+  }
+
+  const { eeat_trustworthiness_min_threshold } = evalConfig.scoring;
+  if (eeat_trustworthiness_min_threshold !== undefined) {
+    const eeatTrustworthinessScore = criteriaScores["eeat-trustworthiness"]?.score ?? 0;
+    if (eeatTrustworthinessScore < eeat_trustworthiness_min_threshold) return false;
+  }
+
+  const { ymyl_risk_fail_threshold } = evalConfig.scoring;
+  if (ymyl_risk_fail_threshold !== undefined) {
+    const ymylRiskScore = criteriaScores["ymyl-risk"]?.score ?? 0;
+    if (ymylRiskScore >= ymyl_risk_fail_threshold) return false;
   }
 
   return true;

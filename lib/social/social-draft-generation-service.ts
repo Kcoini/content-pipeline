@@ -19,6 +19,7 @@ import { validateSocialOutput, type SocialOutputRaw } from "./social-output-cont
 import { runSocialPostQualityGate } from "./social-quality-gate";
 import { applyToneTransform } from "./tone-transformer-rules";
 import { getPlatformWritingTemplate } from "./platform-writing-templates";
+import { generateWordPressBlogMetadata } from "./wordpress-blog-metadata-generator";
 import {
   isSocialAiGenerationEnabled,
   getSocialAiMaxTokens,
@@ -76,15 +77,38 @@ function buildMockSocialOutput(context: SocialWritingContext): SocialOutputRaw {
   const tags = targetKeyword ? [targetKeyword] : [];
 
   switch (platform) {
-    case "wordpress_blog":
+    case "wordpress_blog": {
+      const postTitle = `[mock] ${title}`;
+      // article에 없을 수 있는 WordPress 게시용 metadata(seoTitle/
+      // metaDescription/targetKeyword/answerSummary/eeatNotes/geoSummary 등)를
+      // wordpress_blog 글 자신의 title/body/excerpt로부터 만든다 — article이
+      // 이미 값을 갖고 있으면(주로 monetized_blog 모드) 참고용으로 재사용한다.
+      const generatedMetadata = generateWordPressBlogMetadata({
+        title: postTitle,
+        body: bodyText,
+        excerpt: summaryLine,
+        citedSourceCount: context.citedSourceIds.length,
+        articleSeoTitle: context.seoTitle,
+        articleMetaDescription: context.metaDescription,
+        articleTargetKeyword: context.targetKeyword,
+        articleSecondaryKeywords: context.secondaryKeywords,
+        articleSearchIntent: context.searchIntent,
+        articleReaderPersona: context.readerPersona,
+        articleAdSlots: context.adSlots,
+        articleMonetizationScore: context.monetizationScore,
+        articlePolicyRiskScore: context.policyRiskScore,
+      });
+
       return {
         platform,
         tone_style: toneStyle,
-        post_title: `[mock] ${title}`,
+        post_title: postTitle,
         post_body: bodyText,
         excerpt: summaryLine,
         hashtags: [],
+        platform_metadata: generatedMetadata as unknown as Record<string, unknown>,
       };
+    }
 
     case "naver_blog":
     case "naver_cafe":
@@ -317,7 +341,15 @@ export async function generateSocialDraft(
       threadItems: (sanitized.thread_items as ThreadItem[]) ?? [],
       cardItems: (sanitized.card_items as CardItem[]) ?? [],
       mediaRequirements: (sanitized.media_requirements as Record<string, unknown>) ?? {},
-      platformMetadata: { purpose: context.platformConfig.purpose, mock: !aiEnabled },
+      // sanitized.platform_metadata에는 (특히 wordpress_blog의 경우) AI/mock이
+      // 생성한 게시용 metadata(seoTitle/metaDescription/targetKeyword/
+      // answerSummary/eeatNotes/geoSummary 등)가 들어 있다 — 이전에는 이 값을
+      // 버리고 { purpose, mock }만 저장했다(생성은 되지만 저장되지 않던 버그).
+      platformMetadata: {
+        purpose: context.platformConfig.purpose,
+        mock: !aiEnabled,
+        ...((sanitized.platform_metadata as Record<string, unknown> | undefined) ?? {}),
+      },
       generationContext: {
         contractName: assembled.contractName,
         sourceCount: context.sourceCount,

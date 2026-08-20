@@ -345,25 +345,31 @@ describe("generateAiArticleDraft — article_mode별 prompt 선택", () => {
     expect(result.sourceUsage).toEqual([{ sourceId: sources[0].id, usedFor: ["background", "data"] }]);
   });
 
+  function baseMonetizedBlogInput(overrides: Record<string, unknown> = {}) {
+    return {
+      seoTitle: "SEO 제목",
+      metaDescription: "메타 설명",
+      targetKeyword: "타깃 키워드",
+      secondaryKeywords: ["보조1", "보조2"],
+      searchIntent: "informational",
+      readerPersona: "일반 독자",
+      title: "본문 제목",
+      answerSummary: "이 주제의 핵심 결론은 다음과 같다. 조건에 따라 예외가 있을 수 있다.",
+      content: "## 문제 설명\n\n수익형 블로그 본문입니다.".repeat(80),
+      citedSourceIds: sources.map((s) => s.id),
+      adSlots: [],
+      internalLinkSuggestions: [{ title: "관련 글", reason: "관련성 높음" }],
+      monetizationScore: 72,
+      policyRiskScore: 15,
+      eeatNotes: { trustworthiness: "출처 3건을 직접 대조해 확인함" },
+      geoSummary: { directAnswer: "핵심 결론 요약", keyFacts: ["사실 1", "사실 2"], caveats: ["예외 상황 1"] },
+      ...overrides,
+    };
+  }
+
   it("monetized_blog 모드는 write_monetized_blog_article 도구를 호출하고 SEO/점수 필드를 반환한다", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
-    fetchMock.mockResolvedValueOnce(
-      mockToolUseResponse("write_monetized_blog_article", {
-        seoTitle: "SEO 제목",
-        metaDescription: "메타 설명",
-        targetKeyword: "타깃 키워드",
-        secondaryKeywords: ["보조1", "보조2"],
-        searchIntent: "informational",
-        readerPersona: "일반 독자",
-        title: "본문 제목",
-        content: "수익형 블로그 본문입니다.".repeat(80),
-        citedSourceIds: sources.map((s) => s.id),
-        adSlots: [],
-        internalLinkSuggestions: [{ title: "관련 글", reason: "관련성 높음" }],
-        monetizationScore: 72,
-        policyRiskScore: 15,
-      })
-    );
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput()));
 
     const result = await generateAiArticleDraft(theme, [], "monetized_blog");
 
@@ -382,27 +388,234 @@ describe("generateAiArticleDraft — article_mode별 prompt 선택", () => {
 
   it("AI가 targetKeyword를 누락해도 theme 키워드로 채운다 (빈 문자열로 남기지 않는다)", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
-    fetchMock.mockResolvedValueOnce(
-      mockToolUseResponse("write_monetized_blog_article", {
-        seoTitle: "SEO 제목",
-        metaDescription: "메타 설명",
-        // targetKeyword 필드 자체를 생략한다 (AI가 빠뜨린 경우를 재현).
-        secondaryKeywords: [],
-        searchIntent: "informational",
-        readerPersona: "일반 독자",
-        title: "본문 제목",
-        content: "수익형 블로그 본문입니다.".repeat(80),
-        citedSourceIds: sources.map((s) => s.id),
-        adSlots: [],
-        internalLinkSuggestions: [],
-        monetizationScore: 50,
-        policyRiskScore: 10,
-      })
-    );
+    const input = baseMonetizedBlogInput({ secondaryKeywords: [], internalLinkSuggestions: [], monetizationScore: 50, policyRiskScore: 10 });
+    delete (input as Record<string, unknown>).targetKeyword; // AI가 빠뜨린 경우를 재현한다.
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", input));
 
     const result = await generateAiArticleDraft(theme, [], "monetized_blog");
 
     expect(result.targetKeyword).toBeTruthy();
     expect(result.targetKeyword).toBe(theme.keywords[0]);
+  });
+
+  // ─── E-E-A-T / AEO / GEO 필드 ────────────────────────────────────────
+
+  it("answerSummary가 없으면 명확한 오류로 실패한다 (조용히 빈 값으로 저장하지 않는다)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const input = baseMonetizedBlogInput();
+    delete (input as Record<string, unknown>).answerSummary;
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", input));
+
+    await expect(generateAiArticleDraft(theme, [], "monetized_blog")).rejects.toThrow(/answerSummary/);
+  });
+
+  it("answerSummary 필드는 여전히 존재하고, content는 그 값으로 바로 시작하지 않는다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput()));
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.answerSummary).toBeTruthy();
+    // 독자 친화성을 위해 answerSummary로 본문을 갑작스럽게 시작하지 않는다.
+    expect(result.content.trim().startsWith(result.answerSummary!)).toBe(false);
+  });
+
+  it("도입부 heading이 있으면 content는 도입부로 시작하고, 짧은 핵심 답변 섹션은 그 뒤에 온다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const content =
+      `## 도입부\n\n요즘 이 문제로 고민하는 분들이 많다. 이 글에서 핵심을 정리한다.\n\n` +
+      `## 문제 설명\n\n본문 내용입니다.`.repeat(30);
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput({ content })));
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.content.trim().startsWith("## 도입부")).toBe(true);
+    const introIndex = result.content.indexOf("## 도입부");
+    const coreAnswerIndex = result.content.indexOf("## 핵심만 정리하면");
+    expect(coreAnswerIndex).toBeGreaterThan(introIndex);
+  });
+
+  it("모델이 이미 허용된 heading으로 핵심 답변을 반영했으면 fallback을 중복 삽입하지 않는다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const summary = "이미 본문에 자연스럽게 반영된 핵심 답변입니다.";
+    const content =
+      `## 도입부\n\n요즘 이 문제로 고민하는 분들이 많다.\n\n` +
+      `## 결론부터 말하면\n\n${summary}\n\n` +
+      `## 문제 설명\n\n나머지 본문.`.repeat(30);
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput({ answerSummary: summary, content }))
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    // 허용 heading(## 결론부터 말하면)이 이미 있으므로 fallback 섹션("## 핵심만 정리하면")을 추가하지 않는다.
+    expect(result.content).not.toContain("## 핵심만 정리하면");
+    expect(result.content.split(summary).length - 1).toBe(1);
+  });
+
+  it("eeatNotes를 파싱하고, 값이 없는 항목은 지어내지 않는다(undefined로 남긴다)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse(
+        "write_monetized_blog_article",
+        baseMonetizedBlogInput({ eeatNotes: { trustworthiness: "출처 대조 확인함", experience: "" } })
+      )
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.eeatNotes?.trustworthiness).toBe("출처 대조 확인함");
+    expect(result.eeatNotes?.experience).toBeUndefined();
+  });
+
+  it("geoSummary.keyFacts/caveats를 배열로 반환한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput()));
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(Array.isArray(result.geoSummary?.keyFacts)).toBe(true);
+    expect(result.geoSummary?.keyFacts.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.geoSummary?.caveats)).toBe(true);
+  });
+
+  it("geoSummary가 응답에 없으면 빈 값으로 안전하게 처리한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const input = baseMonetizedBlogInput();
+    delete (input as Record<string, unknown>).geoSummary;
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", input));
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.geoSummary).toEqual({ directAnswer: "", keyFacts: [], caveats: [] });
+  });
+
+  it("readerQuestions는 question/shortAnswer가 모두 있는 항목만 유지한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse(
+        "write_monetized_blog_article",
+        baseMonetizedBlogInput({
+          readerQuestions: [
+            { question: "이건 무엇인가요?", shortAnswer: "이런 것입니다." },
+            { question: "답이 없는 질문" }, // shortAnswer 누락 → 제외
+          ],
+        })
+      )
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.readerQuestions).toEqual([{ question: "이건 무엇인가요?", shortAnswer: "이런 것입니다." }]);
+  });
+
+  it("structuredDataSuggestions는 허용된 type만 유지한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse(
+        "write_monetized_blog_article",
+        baseMonetizedBlogInput({
+          structuredDataSuggestions: [
+            { type: "FAQPage", reason: "본문에 실제 FAQ가 있음" },
+            { type: "NotAllowedType", reason: "허용되지 않은 타입" },
+          ],
+        })
+      )
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.structuredDataSuggestions).toEqual([{ type: "FAQPage", reason: "본문에 실제 FAQ가 있음" }]);
+  });
+
+  // ─── AD_SLOT marker 삽입/정책 위험 ────────────────────────────────────
+
+  it("AD_SLOT marker는 각 위치마다 정확히 1회만 등장한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput()));
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    for (const position of AD_SLOT_MARKERS) {
+      const marker = adSlotMarkerComment(position);
+      const occurrences = result.content.split(marker).length - 1;
+      expect(occurrences).toBe(1);
+    }
+  });
+
+  it("AI가 marker를 이미 heading 근처에 넣었으면 중복 삽입하지 않는다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const marker = adSlotMarkerComment("before_faq");
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse(
+        "write_monetized_blog_article",
+        baseMonetizedBlogInput({ content: `## 문제 설명\n\n본문입니다.\n\n${marker}\n\n## FAQ\n\n질문과 답변.`.repeat(20) })
+      )
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.content.split(marker).length - 1).toBe(1);
+  });
+
+  it("실제 AdSense 스크립트/iframe이 섞여 있으면 코드가 제거한다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const poisoned =
+      "본문입니다. <script>(adsbygoogle = window.adsbygoogle || []).push({});</script> 이어지는 내용.".repeat(20);
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput({ content: poisoned }))
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.content).not.toMatch(/adsbygoogle|<script/i);
+  });
+
+  it("policyRiskScore가 높으면 qualityWarnings에 검토 필요 신호를 남긴다(자동 차단하지 않는다)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput({ policyRiskScore: 85 }))
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.policyRiskScore).toBe(85);
+    expect(result.qualityWarnings?.some((w) => w.code === "policy_risk_high")).toBe(true);
+  });
+
+  it("targetKeyword가 본문에 과도하게 반복되면 keyword_stuffing_suspected 경고를 남긴다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const stuffedContent = "타깃 키워드 ".repeat(50) + "나머지 본문 내용.".repeat(30);
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse(
+        "write_monetized_blog_article",
+        baseMonetizedBlogInput({ targetKeyword: "타깃 키워드", content: stuffedContent })
+      )
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.qualityWarnings?.some((w) => w.code === "keyword_stuffing_suspected")).toBe(true);
+  });
+
+  it("answerSummary가 지나치게 길면 answer_summary_too_long 경고를 남긴다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const longSummary = "이 문장은 매우 길게 반복됩니다. ".repeat(30);
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput({ answerSummary: longSummary }))
+    );
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.qualityWarnings?.some((w) => w.code === "answer_summary_too_long")).toBe(true);
+  });
+
+  it("문제 없는 응답은 qualityWarnings가 비어 있다", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput()));
+
+    const result = await generateAiArticleDraft(theme, [], "monetized_blog");
+
+    expect(result.qualityWarnings).toEqual([]);
   });
 });

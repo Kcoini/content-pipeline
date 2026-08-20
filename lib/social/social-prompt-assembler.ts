@@ -48,6 +48,10 @@ function buildUserPrompt(context: SocialWritingContext): string {
     context.secondaryKeywords.length > 0 ? `secondary_keywords: ${context.secondaryKeywords.join(", ")}` : null,
     context.seoTitle ? `seo_title: ${context.seoTitle}` : null,
     context.metaDescription ? `meta_description: ${context.metaDescription}` : null,
+    context.searchIntent ? `search_intent: ${context.searchIntent}` : null,
+    context.readerPersona ? `reader_persona: ${context.readerPersona}` : null,
+    context.monetizationScore != null ? `monetization_score: ${context.monetizationScore}` : null,
+    context.policyRiskScore != null ? `policy_risk_score: ${context.policyRiskScore}` : null,
     `요약: ${context.excerpt}`,
     context.keyPoints.length > 0 ? `핵심 포인트:\n${context.keyPoints.map((p) => `- ${p}`).join("\n")}` : null,
     context.sourceSummaries.length > 0

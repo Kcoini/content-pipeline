@@ -42,7 +42,13 @@ import {
   saveExternalImageUrlSourceAction,
   saveLocalFeaturedImageAction,
   saveExistingWordPressMediaSourceAction,
+  waiveArticleWordPressFeaturedImageAction,
 } from "./actions";
+import {
+  ARTICLE_FEATURED_IMAGE_WAIVER_REASONS,
+  getArticleWordPressFeaturedImageWaiverState,
+} from "@/lib/publish/article-wordpress-featured-image-waiver-service";
+import { WordPressPublishingPanel } from "@/components/wordpress/wordpress-publishing-panel";
 import { ConfirmSubmitButton } from "./confirm-submit-button";
 import type {
   WordPressMetadataStatus,
@@ -365,6 +371,10 @@ export default async function ArticleDetailPage({
   const isReviewed = article.status === "reviewed";
   const latestWordPressLog = wordpressLogs[0];
   const hasWordPressSuccess = wordpressLogs.some((log) => log.status === "success");
+  // 원본 article WordPress 전송 전용 "대표 이미지 없이 진행" 상태.
+  // wordpress_blog 카드(Blog 탭)의 waive 상태와는 완전히 별개다.
+  const articleFeaturedImageWaiver = getArticleWordPressFeaturedImageWaiverState(article);
+  const hasArticleFeaturedImage = Boolean(article.featuredImageWordpressMediaId);
   const hasFocusKeyword = Boolean(article.targetKeyword && article.targetKeyword.trim());
   const seoPluginPayload = article.seoPluginPayload as unknown as Partial<SeoPluginPayload>;
 
@@ -379,6 +389,10 @@ export default async function ArticleDetailPage({
 
         <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
           이 페이지는 기사 원본과 출처, 생성된 콘텐츠의 전체 현황을 보여줍니다. 블로그/SNS·커뮤니티/Rewrite/성과 작업은 위 메뉴의 하위 페이지에서 관리하세요.
+          <br />
+          현재 페이지의 본문은 원본 article입니다. WordPress 블로그형 글로
+          게시하려면 Blog 탭에서 wordpress_blog 글을 생성한 뒤 WordPress
+          Draft를 생성하세요.
         </div>
 
         {error && (
@@ -536,6 +550,58 @@ export default async function ArticleDetailPage({
           </section>
         )}
 
+        {/*
+          이 article은 원본 콘텐츠다 — WordPress 블로그형 글이 아니다.
+          아래 "고급 기능" 섹션은 article 본문을 그대로 WordPress로 보내는
+          보조 경로일 뿐이며, 메인 WordPress 게시 흐름은 항상
+          /articles/[id]/blog에서 platform=wordpress_blog로 생성한
+          블로그 글이다. 이 섹션 내부의 개별 기능(Metadata/SEO plugin/
+          featured image/connection test/draft/public publish)은 Phase 2
+          때 만들어진 기존 동작을 그대로 유지하며, 여기서는 접이식으로
+          묶고 안내 문구만 추가한다.
+        */}
+        <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-1 shadow-sm">
+          <details>
+            <summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-semibold text-amber-800">
+              고급 기능: 원본 article WordPress 전송
+            </summary>
+            <div className="border-t border-amber-200 px-3 pb-3 pt-3">
+              <WordPressPublishingPanel
+                targetType="article"
+                isPrimaryWorkflow={false}
+                summary={{
+                  qualityStatus: article.publishQualityGateStatus,
+                  approvalStatus: article.publicPublishApprovalStatus,
+                  draftStatus: hasWordPressSuccess ? "생성됨" : "아직 생성되지 않음",
+                  draftId: latestWordPressLog?.externalPostId ?? null,
+                  draftUrl: latestWordPressLog?.postUrl ?? null,
+                  seoMetadataStatus: article.wpMetadataStatus,
+                  seoTitle: article.seoTitle,
+                  metaDescription: article.metaDescription,
+                  targetKeyword: article.targetKeyword,
+                  secondaryKeywords: article.secondaryKeywords,
+                  featuredImageStatus: article.featuredImageStatus,
+                  featuredImageMediaId: article.featuredImageWordpressMediaId,
+                  featuredImageUrl: article.featuredImageWordpressUrl,
+                  featuredImageAttachStatus: article.wordpressFeaturedMediaAttachStatus,
+                  featuredImageErrorMessage: article.wordpressFeaturedMediaAttachError ?? article.featuredImageUploadError,
+                  featuredImageWaived: articleFeaturedImageWaiver.waived,
+                  featuredImageWaiverReason: articleFeaturedImageWaiver.reasonCode,
+                  publishGuardStatus: article.publishQualityGateStatus,
+                  lastActionResult: latestWordPressLog
+                    ? `${latestWordPressLog.status}${latestWordPressLog.errorMessage ? `: ${latestWordPressLog.errorMessage}` : ""}`
+                    : null,
+                  lastUpdatedAt: latestWordPressLog?.createdAt ?? null,
+                }}
+              />
+
+              <p className="mt-3 rounded border border-amber-200 bg-white px-3 py-2 text-[11px] text-amber-700">
+                아래는 위 요약이 참조하는 개별 기능이다(WordPress Metadata/SEO
+                plugin/featured image/connection test/draft/public publish) —
+                Phase 2 때 만들어진 기존 동작을 그대로 유지한다.
+              </p>
+
+              <div className="mt-4 flex flex-col gap-4">
         {/* Phase 2-3: WordPress Metadata (카테고리/태그/SEO) */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
@@ -558,7 +624,7 @@ export default async function ArticleDetailPage({
                 type="submit"
                 className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
               >
-                {article.wpMetadataStatus === "not_ready" ? "WordPress metadata 생성" : "metadata 다시 생성"}
+                {article.wpMetadataStatus === "not_ready" ? "WordPress metadata 생성" : "원본 article SEO Metadata 업데이트"}
               </button>
             </form>
             {(article.wpMetadataStatus === "generated" || article.wpMetadataStatus === "failed") && (
@@ -1252,11 +1318,13 @@ export default async function ArticleDetailPage({
 
         {/* Phase 2-2 / 2-9: WordPress 초안 생성 (안정화) */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">WordPress 게시</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">원본 article을 WordPress Draft로 전송</h2>
           <p className="mt-1 text-xs text-zinc-500">
             승인(reviewed)된 기사만 WordPress에 draft(초안) post로 생성할 수 있습니다.
             자동 공개(publish)는 절대 수행하지 않으며, post status는 항상 draft로
-            강제됩니다.
+            강제됩니다. 이 기능은 article 본문을 그대로 전송하는 보조 기능입니다 —
+            SEO/수익형 WordPress 블로그 글은 Blog 탭의 wordpress_blog 글쓰기를
+            이용하세요.
           </p>
 
           <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
@@ -1314,10 +1382,88 @@ export default async function ArticleDetailPage({
                 type="submit"
                 className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
               >
-                WordPress 초안 생성
+                원본 article Draft 생성
               </button>
             </form>
           )}
+
+          <div className="mt-4 rounded border border-amber-200 bg-amber-50/60 p-3">
+            <p className="text-xs font-semibold text-amber-900">대표 이미지 없이 진행</p>
+            <p className="mt-1 text-[11px] text-amber-700">
+              이 설정은 원본 article을 그대로 WordPress Draft로 전송할 때만 적용됩니다.
+              WordPress 블로그형 글의 대표 이미지 설정은 Blog 탭의 wordpress_blog 글
+              카드에서 처리하세요.
+            </p>
+
+            {hasArticleFeaturedImage ? (
+              <p className="mt-2 text-[11px] text-amber-600">
+                이미 대표 이미지(media id: {article.featuredImageWordpressMediaId})가 준비되어
+                있어 이 설정이 필요하지 않습니다.
+              </p>
+            ) : articleFeaturedImageWaiver.waived ? (
+              <>
+                <p className="mt-2 text-[11px] text-amber-800">
+                  상태: <span className="font-medium">이미지 없음으로 전송 진행</span> — 사용자가
+                  대표 이미지 없이 원본 article을 전송하도록 선택했습니다.
+                  {articleFeaturedImageWaiver.reasonCode &&
+                    ` (사유: ${
+                      ARTICLE_FEATURED_IMAGE_WAIVER_REASONS.find((r) => r.code === articleFeaturedImageWaiver.reasonCode)
+                        ?.label ?? articleFeaturedImageWaiver.reasonCode
+                    })`}
+                </p>
+                <p className="mt-1 text-[11px] text-amber-600">
+                  media ID를 입력하거나 이미지를 업로드하면 이 선택은 자동으로 해제됩니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-[11px] text-amber-700">
+                  대표 이미지 없이 원본 article을 WordPress Draft로 전송합니다. 검색 결과
+                  클릭률이나 공유 미리보기에 영향을 줄 수 있습니다. 계속 진행하시겠습니까?
+                </p>
+                <form action={waiveArticleWordPressFeaturedImageAction} className="mt-2 flex flex-wrap items-end gap-2 text-[11px]">
+                  <input type="hidden" name="articleId" value={article.id} />
+                  <label className="flex flex-col text-amber-800">
+                    사유
+                    <select
+                      name="reasonCode"
+                      required
+                      defaultValue=""
+                      className="mt-1 w-44 rounded border border-zinc-300 px-1.5 py-1"
+                    >
+                      <option value="" disabled>
+                        사유를 선택하세요
+                      </option>
+                      {ARTICLE_FEATURED_IMAGE_WAIVER_REASONS.map((reason) => (
+                        <option key={reason.code} value={reason.code}>
+                          {reason.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col text-amber-800">
+                    메모 (사유가 &quot;기타&quot;일 때)
+                    <input
+                      type="text"
+                      name="memo"
+                      placeholder="상세 사유"
+                      className="mt-1 w-40 rounded border border-zinc-300 px-1.5 py-1"
+                    />
+                  </label>
+                  <ConfirmSubmitButton
+                    confirmMessage={
+                      "대표 이미지 없이 원본 article을 WordPress Draft로 전송합니다.\n" +
+                      "검색 결과 클릭률이나 공유 미리보기에 영향을 줄 수 있습니다.\n" +
+                      "계속 진행하시겠습니까?"
+                    }
+                    className="rounded border border-amber-400 bg-white px-2 py-1 font-medium text-amber-800 hover:bg-amber-100"
+                  >
+                    대표 이미지 없이 원본 article 전송
+                  </ConfirmSubmitButton>
+                </form>
+              </>
+            )}
+          </div>
 
           {latestWordPressLog && (
             <div className="mt-3 text-xs text-zinc-500">
@@ -1428,7 +1574,7 @@ export default async function ArticleDetailPage({
                 disabled={!article.featuredImageWordpressMediaId}
                 className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                대표 이미지 초안 글에 연결
+                원본 article 대표 이미지 연결
               </button>
             </form>
             <form action={checkWordPressFeaturedMediaAttachStatusAction}>
@@ -2082,6 +2228,10 @@ export default async function ArticleDetailPage({
             );
           })()}
         </section>
+              </div>
+            </div>
+          </details>
+        </div>
 
         {/* Phase 3-16: 기사 개요 — 생성된 콘텐츠 요약 + 하위 페이지 이동 */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

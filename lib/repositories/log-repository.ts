@@ -362,7 +362,21 @@ export type LogEventType =
   | "automation_safety_feature_flags_audited"
   | "automation_safety_logging_audited"
   | "automation_safety_publish_workflow_audited"
-  | "automation_safety_content_rules_audited";
+  | "automation_safety_content_rules_audited"
+  // Article/Blog 페이지 역할 분리 리팩터링: wordpress_blog 글 기준 WordPress Draft 생성 이벤트
+  | "blog_post_wordpress_draft_requested"
+  | "blog_post_wordpress_draft_blocked"
+  | "blog_post_featured_image_media_saved"
+  | "blog_post_featured_image_uploaded"
+  | "wordpress_featured_image_waived"
+  // article 원본 WordPress 전송용 대표 이미지 waive (wordpress_blog의 waive와는 독립적)
+  | "article_wordpress_featured_image_waived"
+  | "wordpress_blog_metadata_regenerated"
+  | "wordpress_blog_seo_plugin_write_completed"
+  | "wordpress_blog_featured_image_generation_started"
+  | "wordpress_blog_featured_image_generation_completed"
+  // Step 7 체크리스트 "확인 완료 표시" — 사람이 needs_review 항목을 확인했다는 기록.
+  | "blog_post_manual_checklist_item_confirmed";
 
 export type LogStatus = "success" | "failed" | "info";
 

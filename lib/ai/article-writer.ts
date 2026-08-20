@@ -19,6 +19,7 @@ import {
   DEFAULT_ARTICLE_MODE,
   adSlotMarkerComment,
   type AdSlotEntry,
+  type AdSlotPosition,
   type ArticleMode,
   type InternalLinkSuggestion,
 } from "@/lib/articles/article-modes";
@@ -30,6 +31,50 @@ export type SourceUsageRole = "background" | "data" | "contrast" | "analysis" | 
 export interface SourceUsageEntry {
   sourceId: string;
   usedFor: SourceUsageRole[];
+}
+
+/**
+ * monetized_blog의 E-E-A-T(Experience/Expertise/Authoritativeness/
+ * Trustworthiness) 자가 점검 메모. 존재하지 않는 경험/자격/조사 결과를
+ * 지어내지 않고, 실제로 확인 가능한 근거가 있을 때만 채워야 한다.
+ * 값이 없으면 undefined로 두며(빈 문자열로 지어내지 않음), DB에는
+ * 저장하지 않는다.
+ */
+export interface EeatNotes {
+  experience?: string;
+  expertise?: string;
+  authoritativeness?: string;
+  trustworthiness?: string;
+}
+
+/** monetized_blog AEO(Answer Engine Optimization) 보조 필드: 독자 질문-짧은 답변 쌍. */
+export interface ReaderQuestionEntry {
+  question: string;
+  shortAnswer: string;
+}
+
+/**
+ * monetized_blog GEO(생성형 AI 검색 이해성) 보조 요약. 검색/AI 노출을
+ * 보장하는 표현을 담지 않으며, keyFacts는 출처 기반 사실만 담는다.
+ */
+export interface GeoSummary {
+  directAnswer: string;
+  keyFacts: string[];
+  caveats: string[];
+}
+
+/** monetized_blog용 구조화 데이터(schema.org) 제안 — 실제 JSON-LD는 생성하지 않는다. */
+export type StructuredDataSuggestionType = "Article" | "BlogPosting" | "FAQPage" | "HowTo";
+
+export interface StructuredDataSuggestionEntry {
+  type: StructuredDataSuggestionType;
+  reason: string;
+}
+
+/** monetized_blog 후처리 중 발견된, 차단까지는 아니지만 검토가 필요한 품질 신호. */
+export interface MonetizedBlogQualityWarning {
+  code: string;
+  message: string;
 }
 
 export interface GeneratedArticle {
@@ -55,25 +100,149 @@ export interface GeneratedArticle {
   internalLinkSuggestions?: InternalLinkSuggestion[];
   monetizationScore?: number;
   policyRiskScore?: number;
+  /** monetized_blog AEO 전용: 독자의 핵심 질문에 대한 2~4문장 직접 답변. content 상단에도 반영된다. */
+  answerSummary?: string;
+  /** monetized_blog E-E-A-T 전용: DB에는 저장하지 않는다(결과 객체에만 포함). */
+  eeatNotes?: EeatNotes;
+  /** monetized_blog AEO 전용(선택): DB에는 저장하지 않는다. */
+  readerQuestions?: ReaderQuestionEntry[];
+  /** monetized_blog GEO 전용: DB에는 저장하지 않는다. */
+  geoSummary?: GeoSummary;
+  /** monetized_blog 전용(선택): 실제 schema markup이 아닌 후보 제안일 뿐이다. DB에는 저장하지 않는다. */
+  structuredDataSuggestions?: StructuredDataSuggestionEntry[];
+  /** monetized_blog 전용(선택): 후처리 중 발견된 검토 필요 신호(차단하지 않음). DB에는 저장하지 않는다. */
+  qualityWarnings?: MonetizedBlogQualityWarning[];
 }
 
 /**
- * 본문에 AD_SLOT_MARKERS가 모두 존재하는지 확인하고, 빠진 marker는 본문 끝에
- * 추가한다. 실제 AdSense 코드는 절대 삽입하지 않고 HTML 주석 marker만 사용한다.
+ * AD_SLOT marker 하나를 본문의 "의미 있는" 위치에 배치하기 위한 anchor 설정.
+ * heading을 못 찾으면 fallbackRatio(본문 내 대략적인 위치 비율)로 대체한다.
+ * monetized_blog는 heading을 자연스럽게 쓰도록 유도하므로(고정 제목 강제 X),
+ * 정확한 "## 비교표" 문자열이 아니라 느슨한 키워드 패턴으로 anchor를 찾는다.
+ */
+interface AdSlotAnchor {
+  /** anchor heading을 찾기 위한 느슨한 키워드 패턴 (heading 줄 전체에 대해 테스트). */
+  headingPattern: RegExp;
+  /** true면 anchor heading 바로 앞에, false면 그 섹션이 끝나는 지점(다음 heading 직전)에 삽입. */
+  insertBefore: boolean;
+  /** anchor를 못 찾았을 때 사용할 본문 내 대략적인 위치(0~1, 줄 번호 기준 비율). */
+  fallbackRatio: number;
+}
+
+const AD_SLOT_ANCHORS: Record<AdSlotPosition, AdSlotAnchor> = {
+  // "짧은 핵심 답변" 섹션이 도입부 뒤·요약 박스 앞에 새로 들어오므로, after_summary는
+  // 핵심 답변이 아니라 "핵심 요약/요약 박스" heading에만 anchor해 그 뒤에 배치한다.
+  after_summary: { headingPattern: /^#{2,3}\s*.*(핵심\s*요약|요약\s*박스|summary)/im, insertBefore: false, fallbackRatio: 0.3 },
+  // 도입부 섹션이 끝나는 지점(= 짧은 핵심 답변 섹션 시작 직전)에 배치한다.
+  after_intro: { headingPattern: /^#{2,3}\s*.*(도입부|들어가|서론|intro)/im, insertBefore: false, fallbackRatio: 0.15 },
+  mid_content_1: { headingPattern: /^#{2,3}\s*.*(핵심\s*정보|본문\s*내용|정보)/im, insertBefore: false, fallbackRatio: 0.45 },
+  mid_content_2: { headingPattern: /^#{2,3}\s*.*(비교)/im, insertBefore: false, fallbackRatio: 0.6 },
+  before_faq: { headingPattern: /^#{2,3}\s*.*(faq|자주\s*묻는)/im, insertBefore: true, fallbackRatio: 0.8 },
+  before_conclusion: { headingPattern: /^#{2,3}\s*.*(결론|마무리|정리하며)/im, insertBefore: true, fallbackRatio: 0.9 },
+};
+
+/** heading(## 또는 ### 로 시작하는 줄) 중 pattern에 매칭되는 첫 줄의 인덱스를 찾는다. */
+function findHeadingLineIndex(lines: string[], pattern: RegExp): number {
+  return lines.findIndex((line) => pattern.test(line));
+}
+
+/** headingIndex가 속한 섹션이 끝나는 줄(다음 heading 직전, 없으면 본문 끝)을 찾는다. */
+function findSectionEndIndex(lines: string[], headingIndex: number): number {
+  for (let i = headingIndex + 1; i < lines.length; i++) {
+    if (/^#{2,3}\s+/.test(lines[i])) return i;
+  }
+  return lines.length;
+}
+
+/** anchor heading을 못 찾았을 때, 목표 비율에서 가장 가까운 빈 줄(문단 경계)을 찾는다. */
+function findFallbackLineIndex(lines: string[], ratio: number): number {
+  if (lines.length === 0) return 0;
+  const target = Math.min(lines.length - 1, Math.max(0, Math.floor(lines.length * ratio)));
+  for (let offset = 0; offset <= lines.length; offset++) {
+    const forward = target + offset;
+    const backward = target - offset;
+    if (forward < lines.length && lines[forward].trim() === "") return forward;
+    if (backward >= 0 && lines[backward].trim() === "") return backward;
+  }
+  return lines.length;
+}
+
+/** marker가 여러 번 등장하면 첫 번째만 남기고 나머지는 제거한다(각 marker는 최대 1회). */
+function dedupeMarkerOccurrences(content: string, marker: string): { content: string; count: number } {
+  const parts = content.split(marker);
+  const count = parts.length - 1;
+  if (count <= 1) return { content, count };
+
+  let deduped = parts[0];
+  let attached = false;
+  for (let i = 1; i < parts.length; i++) {
+    if (!attached) {
+      deduped += marker + parts[i];
+      attached = true;
+    } else {
+      deduped += parts[i];
+    }
+  }
+  return { content: deduped, count: 1 };
+}
+
+/** marker 하나를 anchor 위치(또는 fallback 위치)에 삽입한다. 이미 정확히 1회 존재하면 그대로 둔다. */
+function insertAdSlotMarker(content: string, position: AdSlotPosition): string {
+  const marker = adSlotMarkerComment(position);
+  const { content: deduped, count } = dedupeMarkerOccurrences(content, marker);
+  if (count === 1) return deduped;
+
+  const anchor = AD_SLOT_ANCHORS[position];
+  const lines = deduped.split("\n");
+  const headingIndex = findHeadingLineIndex(lines, anchor.headingPattern);
+
+  const insertIndex =
+    headingIndex === -1
+      ? findFallbackLineIndex(lines, anchor.fallbackRatio)
+      : anchor.insertBefore
+        ? headingIndex
+        : findSectionEndIndex(lines, headingIndex);
+
+  const result = [...lines];
+  result.splice(insertIndex, 0, "", marker, "");
+  return result.join("\n");
+}
+
+/**
+ * 본문에 AD_SLOT_MARKERS가 모두 존재하는지 확인하고, 빠진 marker는 heading을
+ * 단서로 삼아 의미 있는 위치에 삽입한다(anchor를 못 찾으면 본문 내 비율 기준
+ * fallback 위치에 삽입 — 본문 끝에 6개를 몰아서 넣지 않는다). marker가
+ * 중복되면 첫 번째만 남긴다. 실제 AdSense 코드는 절대 삽입하지 않고 HTML
+ * 주석 marker만 사용한다.
  */
 function ensureAdSlotMarkers(content: string): { content: string; adSlots: AdSlotEntry[] } {
   let result = content;
-  const adSlots: AdSlotEntry[] = [];
 
   for (const position of AD_SLOT_MARKERS) {
-    const marker = adSlotMarkerComment(position);
-    if (!result.includes(marker)) {
-      result += `\n\n${marker}`;
-    }
-    adSlots.push({ position, marker });
+    result = insertAdSlotMarker(result, position);
   }
 
+  // 삽입 과정에서 생긴 3줄 이상의 연속 빈 줄을 2줄로 정리한다.
+  result = result.replace(/\n{3,}/g, "\n\n");
+
+  const adSlots: AdSlotEntry[] = AD_SLOT_MARKERS.map((position) => ({
+    position,
+    marker: adSlotMarkerComment(position),
+  }));
+
   return { content: result, adSlots };
+}
+
+const DISALLOWED_AD_CODE_PATTERN =
+  /<script[\s\S]*?<\/script>|<iframe\b[^>]*>[\s\S]*?<\/iframe>|adsbygoogle|googlesyndication|data-ad-client|data-ad-slot/gi;
+
+/**
+ * 모델이 실수로 실제 광고 스크립트/iframe을 생성했을 경우를 대비한 마지막
+ * 방어선. 프롬프트로 금지해도 100% 보장되지 않으므로, 코드 레벨에서 한 번
+ * 더 해당 패턴을 제거한다. AD_SLOT 주석 marker는 이 패턴에 걸리지 않는다.
+ */
+function stripDisallowedAdCode(content: string): string {
+  return content.replace(DISALLOWED_AD_CODE_PATTERN, "");
 }
 
 const MIN_CONTENT_LENGTH = 500;
@@ -685,46 +854,159 @@ async function generateGeneralNewsAiDraft(
 // Phase 2-1: 수익형 블로그형(monetized_blog) AI 생성
 // ─────────────────────────────────────────────────────────────
 
-const MONETIZED_BLOG_SYSTEM_PROMPT = `당신은 검색 유입과 체류시간을 고려하는 SEO 콘텐츠 전문 작가입니다.
-독자의 문제 해결을 최우선으로 하는 수익형 블로그 글을 작성합니다.
+const MONETIZED_BLOG_SYSTEM_PROMPT = `당신은 검색 유입, 독자 만족도, 체류시간, 수익화 가능성을 함께 고려하는
+SEO 콘텐츠 전문 작가입니다. 그러나 최우선 목표는 광고 수익이 아니라
+독자의 문제를 정확하고 신뢰성 있게 해결하는 것입니다. 검색엔진
+최적화는 사람에게 유용한 콘텐츠를 더 잘 발견되게 하기 위한 보조
+수단으로만 사용합니다.
+
+monetized_blog는 단순 광고 수익형 글이 아니라, 독자의 문제를
+해결하고, 검색엔진이 이해하기 쉽고, 생성형 AI 검색에서도 요약하기
+쉬우며, 광고 정책과 신뢰성 기준을 지키는 "문제 해결형 수익 블로그"
+콘텐츠입니다.
+
+【E-E-A-T / 신뢰성 기준】
+- 이 글은 수익화 목적이 있더라도 독자의 문제 해결과 신뢰성을 최우선으로 한다.
+- 실제 경험, 사용 후기, 전문가 자격, 조사 결과를 출처 없이 만들어내지 않는다.
+- 출처에서 확인 가능한 사실과 작성자의 해석을 구분한다.
+- 의료, 금융, 법률, 안전, 공공정책 등 고위험(YMYL) 주제에서는 단정적
+  조언을 피하고, 확인이 필요한 사항과 일반적 판단 기준을 제시한다.
+- 독자가 스스로 판단할 수 있도록 비교 기준, 주의점, 한계, 확인
+  방법을 제공한다.
+- 출처가 부족하거나 확인이 필요한 내용은 단정하지 않는다.
+- "직접 사용해봤다", "전문가가 검증했다", "조사 결과 밝혀졌다" 같은
+  표현은 실제 근거가 있을 때만 사용한다.
+
+【SEO 기준】
+- targetKeyword는 seoTitle, 도입부, 주요 heading 중 일부에 자연스럽게 포함한다.
+- secondaryKeywords는 문맥에 맞을 때만 사용하며, 키워드 반복이나
+  부자연스러운 삽입을 금지한다.
+- metaDescription은 검색 사용자가 글의 가치를 이해할 수 있도록
+  120~160자 내외로 작성한다.
+- heading은 검색엔진보다 독자가 내용을 쉽게 이해할 수 있도록
+  구성한다.
+- 내부 링크 제안은 실제로 연결하면 도움이 될 만한 주제로만 작성한다.
+- 제목은 클릭하고 싶게 만들되, 과장·낚시·허위 기대를 만들지 않는다.
+- 검색엔진만 의식한 빈 문장, 키워드 나열, 의미 없는 장문을 금지한다.
+
+【AEO / 직접 답변 기준】
+- answerSummary는 tool 필드로 별도 작성한다 — 독자의 핵심 질문에
+  2~4문장으로 직접 답하며, 결론을 먼저 제시하되 조건이나 예외가
+  있으면 함께 표시한다. 출처 없는 수치, 단정적 전망, 허위 결론을
+  넣지 않는다.
+- **다만 본문(content)은 answerSummary로 바로 시작하지 않는다.**
+  일반 독자가 자연스럽게 읽을 수 있도록 도입부를 먼저 배치하고,
+  그 직후에 answerSummary 내용을 "짧은 핵심 답변" 섹션으로 자연스럽게
+  풀어서 제시한다 (아래 【구조】참고). 보고서나 AI 응답처럼 느껴지는
+  "답변부터 던지고 시작하는" 구성을 피한다.
+- content 안의 짧은 핵심 답변 섹션은 answerSummary를 그대로
+  복사하지 말고 자연스러운 문장으로 풀어 쓰되, answerSummary와
+  content의 결론이 서로 충돌하지 않아야 한다.
+- 본문에는 "무엇인가", "왜 중요한가", "어떻게 선택해야 하나", "주의할
+  점은 무엇인가"와 같은 질문형 흐름을 자연스럽게 반영한다.
+- FAQ는 본문 내용을 보완하는 실제 질문과 답변으로 작성하며, 본문에
+  없는 내용을 새로 만들어 답하지 않는다.
+- 질문만 많이 만들고 답이 빈약한 구조를 금지한다.
+
+【GEO / 생성형 AI 검색 이해성 기준】
+- 각 섹션은 독립적으로 읽어도 의미가 통하도록 작성한다.
+- 중요한 결론은 먼저 제시하고, 그 뒤에 근거와 예외를 설명한다.
+- geoSummary.keyFacts는 출처에 있는 사실만 사용한다.
+- geoSummary.caveats에는 주의점, 예외, 판단 한계를 명확히 적는다.
+- 표, 체크리스트, FAQ, 요약 박스를 활용해 내용을 구조화한다.
+- 특정 AI 검색 기능에 노출되거나 인용된다고 보장하지 않는다.
+- "AI Overview에 노출", "검색 1위 보장", "AI가 반드시 인용" 같은
+  표현을 절대 사용하지 않는다.
 
 【절대 금지】
+- 허위 경험담, 허위 사용 후기, 허위 전문가 검토
+- 출처 없는 통계·주장, 원문 15단어 이상 연속 복사
+- 키워드 반복(keyword stuffing), 제목 낚시(클릭베이트)
+- 본문과 불일치하는 FAQ
 - 과장된 클릭베이트, 허위 또는 과장된 수익 약속
-- AdSense 정책을 위반할 수 있는 광고 클릭 유도 문구
-- 의료/금융/법률 등 고위험 주제에 대한 단정적 조언
-- 출처 없는 주장, 원문 15단어 이상 연속 복사
+- 실제 광고 클릭을 유도하는 문구(AdSense 정책 위반 소지)
+- "AI Overview에 노출되도록", "AI가 인용하도록", "검색 1위 보장" 같은
+  검색/AI 노출 보장 표현
+- 의료/금융/법률/안전/공공정책 등 고위험(YMYL) 주제에 대한 단정적 조언
+- "무조건", "100%", "반드시 수익", "확실한 방법" 같은 과장 표현
 
 【실제 광고 코드 절대 금지】
 - 실제 AdSense 스크립트나 광고 코드를 절대 작성하지 마세요.
 - 광고 위치는 반드시 HTML 주석 marker만 사용하세요: <!-- AD_SLOT: after_summary --> 형태.
 - 사용 가능한 marker: after_summary, after_intro, mid_content_1, mid_content_2, before_faq, before_conclusion
+- after_intro는 도입부와 짧은 핵심 답변 섹션 사이에 배치하세요.
+- after_summary는 짧은 핵심 답변이 아니라 그 뒤에 오는 "핵심 요약
+  박스" 섹션 다음에 배치하세요.
+- 각 marker는 최대 1회만 사용하세요. 광고 marker가 글의 흐름(도입부
+  → 핵심 답변 전환 등)을 방해하지 않게 하세요.
 
-【구조】
-SEO 제목 → 메타 설명 → 도입부 → 핵심 요약 박스(AD_SLOT: after_summary) → 목차 → 문제 설명 →
-핵심 정보(AD_SLOT: mid_content_1) → 비교표(AD_SLOT: mid_content_2) → 체크리스트 → 주의점 →
-FAQ(AD_SLOT: before_faq) → 결론(AD_SLOT: before_conclusion) → 관련 글 추천 → 참고자료
+【구조 — 도입부를 먼저, 핵심 답변은 그 뒤에. heading은 자연스럽게】
+SEO 제목 → 메타 설명 → 도입부 → 짧은 핵심 답변(answerSummary를
+자연스럽게 반영) → 핵심 요약 박스(AD_SLOT: after_summary) → 목차 →
+문제 설명 → 핵심 정보(AD_SLOT: mid_content_1) → 비교표
+(AD_SLOT: mid_content_2) → 선택 기준 → 체크리스트 → 주의점/한계 →
+FAQ(AD_SLOT: before_faq) → 결론(AD_SLOT: before_conclusion) → 관련
+글 추천 → 참고자료
 
-monetizationScore(0~100)는 검색 수요, 문제 해결성, 비교/구매 의도, 콘텐츠 확장성, 광고 적합성,
-장기 검색 가능성, 경쟁 강도, 정책 위험도를 종합해 산출하세요.
-policyRiskScore(0~100, 높을수록 위험)는 허위/과장 수익 약속, 광고 클릭 유도 문구, 선정적 제목,
-고위험 단정, 출처 없는 주장, 복사/저작권 위험을 종합해 산출하세요.`;
+이 순서는 AEO/GEO 이점(직접 답변, 명확한 결론 우선 제시)은
+유지하면서도 일반 블로그 독자가 보고서식·AI 답변식이 아니라
+자연스럽게 읽히도록 하기 위한 하이브리드 구조입니다. 도입부 없이
+곧바로 결론부터 던지는 구성을 사용하지 마세요.
+
+【도입부 작성 기준】
+- 독자의 상황이나 문제의식에서 시작한다.
+- 왜 이 주제가 중요한지 설명한다.
+- 이 글에서 무엇을 정리할지 안내한다.
+- 과장, 클릭베이트, 광고성 표현은 사용하지 않는다.
+- targetKeyword는 자연스럽게 포함하되 억지로 반복하지 않는다.
+
+【짧은 핵심 답변 섹션 작성 기준】
+- 도입부 바로 뒤에 배치한다.
+- answerSummary의 내용을 바탕으로 2~4문장으로 작성하되, 그대로
+  복사하지 말고 자연스럽게 풀어 쓴다.
+- heading은 주제에 맞게 자연스럽게 선택한다. 허용 heading 예:
+  "## 먼저 결론부터 보면", "## 핵심만 정리하면", "## 이 글의 핵심",
+  "## 짧게 정리하면", "## 결론부터 말하면".
+- 아래와 같은 heading은 금지한다: "## 무조건 이것만 보세요",
+  "## 이거 모르면 손해입니다", "## 충격적인 결론", "## 반드시 수익
+  나는 방법" — 클릭베이트/과장 표현이 섞인 heading은 쓰지 않는다.
+
+광고 marker는 글 흐름을 해치지 않는 위치에만 삽입하세요.
+
+【점수 산출】
+monetizationScore(0~100)는 검색 수요, 문제 해결성, 비교/구매 의도,
+콘텐츠 확장성, 광고 적합성, 장기 검색 가능성, 경쟁 강도, 정책
+위험도를 종합해 산출하세요. 높은 monetizationScore가 과장 표현이나
+허위 수익 약속을 사용하라는 의미가 아닙니다.
+policyRiskScore(0~100, 높을수록 위험)는 허위/과장 수익 약속, 광고
+클릭 유도 문구, 선정적 제목, 고위험(YMYL) 단정, 출처 없는 주장,
+복사/저작권 위험, 허위 E-E-A-T 표현, AI 검색 노출 보장 표현, 본문과
+불일치하는 FAQ, 키워드 반복, 실제 광고 코드를 종합해 산출하세요.`;
 
 const MONETIZED_BLOG_TOOL = {
   name: "write_monetized_blog_article",
-  description: "수익형 블로그형(monetized_blog) 결과를 저장한다.",
+  description: "수익형 블로그형(monetized_blog) 결과를 저장한다. 독자 문제 해결이 최우선이며, answerSummary/eeatNotes/geoSummary를 반드시 포함해야 한다.",
   input_schema: {
     type: "object" as const,
     properties: {
-      seoTitle: { type: "string", description: "SEO 제목 (60자 이내, 타깃 키워드 포함)" },
-      metaDescription: { type: "string", description: "메타 설명 (160자 이내)" },
+      seoTitle: { type: "string", description: "SEO 제목 (60자 이내, 타깃 키워드 포함, 클릭베이트 금지)" },
+      metaDescription: { type: "string", description: "메타 설명 (120~160자 내외)" },
       targetKeyword: { type: "string", description: "타깃 키워드" },
-      secondaryKeywords: { type: "array", items: { type: "string" }, description: "보조 키워드 목록" },
+      secondaryKeywords: { type: "array", items: { type: "string" }, description: "보조 키워드 목록 (자연스러운 경우만)" },
       searchIntent: { type: "string", description: "검색 의도 (informational/commercial/transactional 등)" },
       readerPersona: { type: "string", description: "독자 페르소나 설명" },
       title: { type: "string", description: "본문에 표시할 제목" },
+      answerSummary: {
+        type: "string",
+        description:
+          "독자의 핵심 질문에 대한 2~4문장 직접 답변. 결론을 먼저 제시하고 조건/예외를 함께 표시한다. 출처에 없는 수치·단정은 넣지 않는다. " +
+          "content는 이 값을 그대로 복사한 문장으로 시작하지 않는다 — 도입부 뒤에 자연스럽게 풀어서 반영한다.",
+      },
       content: {
         type: "string",
-        description: "기사 본문 (markdown, AD_SLOT marker 포함, 목차/비교표/체크리스트/FAQ 포함, 1200자 이상)",
+        description:
+          "기사 본문 (markdown, 도입부로 시작, 도입부 직후 answerSummary를 자연스럽게 반영한 짧은 핵심 답변 섹션 포함, " +
+          "AD_SLOT marker 각 1회 포함, 목차/비교표/체크리스트/FAQ 포함, 1200자 이상)",
       },
       citedSourceIds: {
         type: "array",
@@ -755,19 +1037,241 @@ const MONETIZED_BLOG_TOOL = {
       },
       monetizationScore: { type: "number", description: "수익화 적합도 점수 (0~100)" },
       policyRiskScore: { type: "number", description: "AdSense 정책 위험도 점수 (0~100, 높을수록 위험)" },
+      eeatNotes: {
+        type: "object",
+        description: "E-E-A-T 자가 점검 메모. 실제 근거가 있는 항목만 채우고, 없으면 비워둔다(지어내지 않는다).",
+        properties: {
+          experience: { type: "string", description: "이 글이 반영한 실제 경험적 근거(있는 경우만)" },
+          expertise: { type: "string", description: "이 글이 반영한 전문성 근거(있는 경우만)" },
+          authoritativeness: { type: "string", description: "출처의 권위성 근거(있는 경우만)" },
+          trustworthiness: { type: "string", description: "신뢰성을 뒷받침하는 근거(있는 경우만)" },
+        },
+      },
+      readerQuestions: {
+        type: "array",
+        description: "독자가 가질 법한 질문과 짧은 답변 목록 (선택)",
+        items: {
+          type: "object",
+          properties: {
+            question: { type: "string" },
+            shortAnswer: { type: "string" },
+          },
+          required: ["question", "shortAnswer"],
+        },
+      },
+      geoSummary: {
+        type: "object",
+        description: "생성형 AI 검색 이해성을 위한 내부 요약. 검색/AI 노출 보장 표현을 사용하지 않는다.",
+        properties: {
+          directAnswer: { type: "string", description: "핵심 결론 1~2문장" },
+          keyFacts: { type: "array", items: { type: "string" }, description: "출처 기반 핵심 사실 3~5개" },
+          caveats: { type: "array", items: { type: "string" }, description: "주의점/한계/예외 2~4개" },
+        },
+      },
+      structuredDataSuggestions: {
+        type: "array",
+        description: "schema.org 구조화 데이터 후보 제안 (실제 JSON-LD 코드는 생성하지 않는다)",
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["Article", "BlogPosting", "FAQPage", "HowTo"] },
+            reason: { type: "string" },
+          },
+          required: ["type", "reason"],
+        },
+      },
     },
     required: [
       "seoTitle",
       "metaDescription",
       "targetKeyword",
       "title",
+      "answerSummary",
       "content",
       "citedSourceIds",
       "monetizationScore",
       "policyRiskScore",
+      "eeatNotes",
+      "geoSummary",
     ],
   },
 };
+
+/**
+ * "짧은 핵심 답변" 섹션에 이미 자연스럽게 반영됐다고 볼 수 있는 heading
+ * 패턴(허용 heading 목록 + 하위 호환용 "핵심 답변"). 프롬프트가 지시하는
+ * 허용 heading 예시와 맞춰뒀다 — 이 중 하나가 이미 있으면 fallback 삽입을
+ * 건너뛴다(모델이 자연스럽게 반영한 것으로 본다).
+ */
+const CORE_ANSWER_HEADING_PATTERN =
+  /^#{2,3}\s*.*(핵심\s*답변|결론부터|핵심만\s*정리|이\s*글의\s*핵심|짧게\s*정리|먼저\s*결론)/im;
+
+/** fallback 삽입 시 사용할 기본 heading (허용 heading 목록 중 하나). */
+const DEFAULT_CORE_ANSWER_HEADING = "## 핵심만 정리하면";
+
+/** 도입부 heading을 찾기 위한 패턴 (AD_SLOT_ANCHORS.after_intro와 동일한 기준을 공유). */
+const INTRO_HEADING_PATTERN = /^#{2,3}\s*.*(도입부|들어가|서론|intro)/im;
+
+/** answerSummary가 지나치게 길면(직접 답변이라기엔 장황함) 검토가 필요하다고 본다. */
+const ANSWER_SUMMARY_MAX_RECOMMENDED_LENGTH = 400;
+/** policyRiskScore가 이 값 이상이면 검토가 필요하다고 본다(차단은 아님 — 최종 판단은 사람이 한다). */
+const POLICY_RISK_WARNING_THRESHOLD = 70;
+
+const EEAT_NOTE_KEYS = ["experience", "expertise", "authoritativeness", "trustworthiness"] as const;
+
+/** eeatNotes를 파싱한다. 존재하지 않는 근거를 지어내지 않도록, 빈 값은 채우지 않고 그대로 둔다. */
+function parseEeatNotes(raw: unknown): EeatNotes {
+  const notes: EeatNotes = {};
+  if (!raw || typeof raw !== "object") return notes;
+
+  const record = raw as Record<string, unknown>;
+  for (const key of EEAT_NOTE_KEYS) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      notes[key] = value.trim();
+    }
+  }
+  return notes;
+}
+
+/** readerQuestions를 파싱한다. question/shortAnswer가 모두 있는 항목만 유지한다. */
+function parseReaderQuestions(raw: unknown): ReaderQuestionEntry[] {
+  if (!Array.isArray(raw)) return [];
+
+  const result: ReaderQuestionEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const question = typeof record.question === "string" ? record.question.trim() : "";
+    const shortAnswer = typeof record.shortAnswer === "string" ? record.shortAnswer.trim() : "";
+    if (!question || !shortAnswer) continue;
+    result.push({ question, shortAnswer });
+  }
+  return result;
+}
+
+/** geoSummary를 파싱한다. 검색/AI 노출 보장 여부는 별도로 검증하지 않고 있는 값만 정리한다. */
+function parseGeoSummary(raw: unknown): GeoSummary {
+  const empty: GeoSummary = { directAnswer: "", keyFacts: [], caveats: [] };
+  if (!raw || typeof raw !== "object") return empty;
+
+  const record = raw as Record<string, unknown>;
+  const directAnswer = typeof record.directAnswer === "string" ? record.directAnswer.trim() : "";
+  const keyFacts = Array.isArray(record.keyFacts)
+    ? record.keyFacts.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : [];
+  const caveats = Array.isArray(record.caveats)
+    ? record.caveats.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : [];
+
+  return { directAnswer, keyFacts, caveats };
+}
+
+const STRUCTURED_DATA_TYPES: readonly StructuredDataSuggestionType[] = ["Article", "BlogPosting", "FAQPage", "HowTo"];
+
+function isStructuredDataSuggestionType(value: unknown): value is StructuredDataSuggestionType {
+  return typeof value === "string" && (STRUCTURED_DATA_TYPES as readonly string[]).includes(value);
+}
+
+/**
+ * structuredDataSuggestions를 파싱한다. 허용된 type이 아니면 버린다 — 이 필드는
+ * 실제 schema markup 자동 삽입이 아니라 후보 제안일 뿐이며, JSON-LD 코드를
+ * 생성하지 않는다.
+ */
+function parseStructuredDataSuggestions(raw: unknown): StructuredDataSuggestionEntry[] {
+  if (!Array.isArray(raw)) return [];
+
+  const result: StructuredDataSuggestionEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (!isStructuredDataSuggestionType(record.type)) continue;
+    const reason = typeof record.reason === "string" ? record.reason.trim() : "";
+    if (!reason) continue;
+    result.push({ type: record.type, reason });
+  }
+  return result;
+}
+
+/**
+ * answerSummary가 본문 어딘가에 "짧은 핵심 답변" 형태로 반영되도록 보장하되,
+ * content 전체를 answerSummary로 시작하게 만들지 않는다 — 독자 친화성을
+ * 위해 도입부를 먼저 존중한다.
+ *
+ * - 이미 허용된 핵심 답변류 heading(CORE_ANSWER_HEADING_PATTERN)이 있으면
+ *   모델이 자연스럽게 반영한 것으로 보고 그대로 둔다(원문을 그대로 복사해
+ *   비교하지 않는다 — 자연스럽게 풀어 쓴 표현은 문자열이 다를 수 있다).
+ * - 없으면 도입부 섹션이 끝나는 지점(도입부 heading을 못 찾으면 본문 초반
+ *   대략적인 위치)에 fallback heading + answerSummary 원문을 삽입한다.
+ */
+function ensureCoreAnswerInContent(content: string, answerSummary: string): string {
+  if (CORE_ANSWER_HEADING_PATTERN.test(content)) return content;
+
+  const lines = content.split("\n");
+  const introHeadingIndex = findHeadingLineIndex(lines, INTRO_HEADING_PATTERN);
+  const insertIndex =
+    introHeadingIndex === -1 ? findFallbackLineIndex(lines, 0.15) : findSectionEndIndex(lines, introHeadingIndex);
+
+  const section = [DEFAULT_CORE_ANSWER_HEADING, "", answerSummary].join("\n");
+  const result = [...lines];
+  result.splice(insertIndex, 0, "", section, "");
+  return result.join("\n");
+}
+
+/**
+ * 차단하지는 않지만 사람이 검토할 만한 신호를 모은다. 프롬프트 지시만으로는
+ * 100% 보장되지 않는 항목(요약 길이, 위험도 점수, 키워드 반복 의심 등)을
+ * 코드에서 한 번 더 가볍게 점검한다. 여기서 발견된 항목은 자동으로
+ * 수정하지 않는다 — 최종 판단은 사람이 한다.
+ */
+function assessMonetizedBlogQuality(
+  content: string,
+  answerSummary: string,
+  targetKeyword: string,
+  policyRiskScore: number
+): MonetizedBlogQualityWarning[] {
+  const warnings: MonetizedBlogQualityWarning[] = [];
+
+  if (answerSummary.length > ANSWER_SUMMARY_MAX_RECOMMENDED_LENGTH) {
+    warnings.push({
+      code: "answer_summary_too_long",
+      message: `answerSummary가 권장 길이(${ANSWER_SUMMARY_MAX_RECOMMENDED_LENGTH}자)보다 깁니다 (${answerSummary.length}자). 직접 답변은 간결해야 합니다.`,
+    });
+  }
+
+  if (policyRiskScore >= POLICY_RISK_WARNING_THRESHOLD) {
+    warnings.push({
+      code: "policy_risk_high",
+      message: `policyRiskScore가 ${policyRiskScore}점으로 높습니다 (기준: ${POLICY_RISK_WARNING_THRESHOLD}점 이상). 게시 전 사람이 검토해야 합니다.`,
+    });
+  }
+
+  const trimmedKeyword = targetKeyword.trim();
+  if (trimmedKeyword.length > 0) {
+    const occurrences = content.split(trimmedKeyword).length - 1;
+    const contentLengthInThousands = Math.max(1, content.length / 1000);
+    // 1000자당 8회를 넘게 등장하면 키워드 반복(keyword stuffing) 의심으로 본다.
+    if (occurrences / contentLengthInThousands > 8) {
+      warnings.push({
+        code: "keyword_stuffing_suspected",
+        message: `targetKeyword가 본문에 ${occurrences}회 등장해 키워드 반복(keyword stuffing)이 의심됩니다.`,
+      });
+    }
+  }
+
+  for (const position of AD_SLOT_MARKERS) {
+    const marker = adSlotMarkerComment(position);
+    const count = content.split(marker).length - 1;
+    if (count !== 1) {
+      warnings.push({
+        code: "ad_slot_marker_count_invalid",
+        message: `AD_SLOT marker(${position})가 본문에 ${count}회 등장합니다 (정확히 1회여야 함).`,
+      });
+    }
+  }
+
+  return warnings;
+}
 
 async function generateMonetizedBlogAiDraft(
   client: AnthropicClient,
@@ -796,10 +1300,19 @@ async function generateMonetizedBlogAiDraft(
     throw new Error("generateAiArticleDraft: AI 응답에 title 또는 content가 없습니다.");
   }
 
+  // AEO 핵심 필드다 — title/content와 동일하게 누락 시 명확히 실패시킨다
+  // (조용히 빈 문자열로 채우면 "직접 답변"이 없는 글이 그대로 저장될 수 있다).
+  const answerSummary = typeof input.answerSummary === "string" ? input.answerSummary.trim() : "";
+  if (!answerSummary) {
+    throw new Error("generateAiArticleDraft: AI 응답에 answerSummary가 없습니다.");
+  }
+
   const citedSourceIds = Array.isArray(input.citedSourceIds)
     ? input.citedSourceIds.filter((id): id is string => typeof id === "string")
     : [];
 
+  content = ensureCoreAnswerInContent(content, answerSummary);
+  content = stripDisallowedAdCode(content);
   const { content: contentWithAllSlots, adSlots } = ensureAdSlotMarkers(content);
   content = contentWithAllSlots;
 
@@ -817,18 +1330,23 @@ async function generateMonetizedBlogAiDraft(
     return Math.max(0, Math.min(100, Math.round(num)));
   };
 
+  const targetKeyword =
+    typeof input.targetKeyword === "string" && input.targetKeyword.trim()
+      ? input.targetKeyword
+      : theme.keywords[0] || theme.title;
+  const monetizationScore = clampScore(input.monetizationScore);
+  const policyRiskScore = clampScore(input.policyRiskScore);
+
   return {
     title,
     content,
     citedSourceIds,
+    answerSummary,
     seoTitle: typeof input.seoTitle === "string" ? input.seoTitle : title,
     metaDescription: typeof input.metaDescription === "string" ? input.metaDescription : "",
     // AI가 targetKeyword를 누락하거나 빈 문자열로 응답해도 완전히 비지 않도록
     // theme 키워드/제목으로 fallback한다 (target_keyword 누락 방지).
-    targetKeyword:
-      typeof input.targetKeyword === "string" && input.targetKeyword.trim()
-        ? input.targetKeyword
-        : theme.keywords[0] || theme.title,
+    targetKeyword,
     secondaryKeywords: Array.isArray(input.secondaryKeywords)
       ? input.secondaryKeywords.filter((k): k is string => typeof k === "string")
       : [],
@@ -836,8 +1354,13 @@ async function generateMonetizedBlogAiDraft(
     readerPersona: typeof input.readerPersona === "string" ? input.readerPersona : "",
     adSlots,
     internalLinkSuggestions,
-    monetizationScore: clampScore(input.monetizationScore),
-    policyRiskScore: clampScore(input.policyRiskScore),
+    monetizationScore,
+    policyRiskScore,
+    eeatNotes: parseEeatNotes(input.eeatNotes),
+    readerQuestions: parseReaderQuestions(input.readerQuestions),
+    geoSummary: parseGeoSummary(input.geoSummary),
+    structuredDataSuggestions: parseStructuredDataSuggestions(input.structuredDataSuggestions),
+    qualityWarnings: assessMonetizedBlogQuality(content, answerSummary, targetKeyword, policyRiskScore),
   };
 }
 

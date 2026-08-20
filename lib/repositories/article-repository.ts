@@ -758,6 +758,55 @@ export async function markFeaturedImageReviewed(articleId: string): Promise<Arti
   return mapArticleRowToArticle(data, existing.citedSourceIds);
 }
 
+export interface SaveArticleWordPressFeaturedImageWaiverInput {
+  waived: boolean;
+  reasonCode: string | null;
+  memoPresent: boolean;
+}
+
+/**
+ * "원본 article을 WordPress Draft로 전송"할 때 대표 이미지 없이 진행하기로
+ * 한 선택(waiver)을 저장/해제한다. DB CHECK 제약(articles_featured_image_upload_status_check)
+ * 때문에 status 컬럼에 'waived' 값을 직접 저장할 수 없어, 기존 자유 형식
+ * JSON 컬럼인 format_metadata 안에 targetType='article'을 명시해 저장한다
+ * (social_posts 기준 wordpress_blog waive 상태와는 완전히 분리된 키다).
+ */
+export async function saveArticleWordPressFeaturedImageWaiver(
+  articleId: string,
+  input: SaveArticleWordPressFeaturedImageWaiverInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const formatMetadata = {
+    ...existing.formatMetadata,
+    article_wordpress_featured_image_waiver: {
+      targetType: "article",
+      featuredImageWaived: input.waived,
+      featuredImageWaiverReason: input.reasonCode,
+      featuredImageWaiverMemoPresent: input.memoPresent,
+      waivedAt: input.waived ? new Date().toISOString() : null,
+    },
+  };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({ format_metadata: formatMetadata })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`대표 이미지 생략(waive) 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
 export interface SaveFeaturedImageSourceResultInput {
   sourceType?: WordPressMediaSourceType;
   sourceStatus: FeaturedImageSourceStatus;

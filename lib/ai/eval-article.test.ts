@@ -185,6 +185,44 @@ describe("loadEvalConfig — Phase 2-1 mode별 eval 파일", () => {
     expect(config.name).toBe("monetized-blog.eval");
     expect(config.criteria.some((c) => c.id === "adsense-policy-risk")).toBe(true);
   });
+
+  it("monetized-blog.eval.yaml은 E-E-A-T/AEO/GEO/YMYL 기준을 포함한다", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    const ids = config.criteria.map((c) => c.id);
+    expect(ids).toContain("eeat-trustworthiness");
+    expect(ids).toContain("answer-summary-quality");
+    expect(ids).toContain("geo-clarity");
+    expect(ids).toContain("keyword-naturalness");
+    expect(ids).toContain("ymyl-risk");
+    expect(config.scoring.eeat_trustworthiness_min_threshold).toBeDefined();
+    expect(config.scoring.ymyl_risk_fail_threshold).toBeDefined();
+  });
+});
+
+describe("applyGateConditions — monetized_blog 개선 gate", () => {
+  it("eeat-trustworthiness가 임계값 미만이면 passed=false를 반환한다", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    const scores = { "eeat-trustworthiness": { score: 2, reason: "허위 경험 의심" }, "adsense-policy-risk": { score: 1, reason: "" }, "ymyl-risk": { score: 1, reason: "" } };
+    const aggregateScore = config.scoring.pass_threshold + 1;
+
+    expect(applyGateConditions(config, scores, aggregateScore)).toBe(false);
+  });
+
+  it("ymyl-risk가 임계값 이상이면 passed=false를 반환한다", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    const scores = { "eeat-trustworthiness": { score: 5, reason: "" }, "adsense-policy-risk": { score: 1, reason: "" }, "ymyl-risk": { score: 4, reason: "의료 단정 조언" } };
+    const aggregateScore = config.scoring.pass_threshold + 1;
+
+    expect(applyGateConditions(config, scores, aggregateScore)).toBe(false);
+  });
+
+  it("모든 gate를 통과하면 passed=true를 반환한다", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    const scores = { "eeat-trustworthiness": { score: 4, reason: "" }, "adsense-policy-risk": { score: 1, reason: "" }, "ymyl-risk": { score: 1, reason: "" } };
+    const aggregateScore = config.scoring.pass_threshold + 1;
+
+    expect(applyGateConditions(config, scores, aggregateScore)).toBe(true);
+  });
 });
 
 describe("evaluateArticleModeMock", () => {

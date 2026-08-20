@@ -341,13 +341,14 @@ export function resolveWordPressTitle(article: Article): string {
 const EXCERPT_MAX_LENGTH = 160;
 
 /**
- * WordPress excerpt를 결정한다. meta_description이 있으면 그대로 사용하고,
- * 없으면 본문(AD_SLOT marker 제외) 앞부분에서 안전하게 생성한다.
+ * meta_description이 있으면 그대로 사용하고, 없으면 본문(AD_SLOT marker
+ * 제외) 앞부분에서 안전하게 excerpt를 생성한다. resolveWordPressExcerpt와
+ * contentOverride(아래) 양쪽에서 공통으로 사용하는 순수 헬퍼다.
  */
-export function resolveWordPressExcerpt(article: Article): string | undefined {
-  if (article.metaDescription) return article.metaDescription;
+function resolveExcerptFromContent(content: string, metaDescription: string | null | undefined): string | undefined {
+  if (metaDescription) return metaDescription;
 
-  const plainText = article.content
+  const plainText = content
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/[#*_>`|-]/g, " ")
     .replace(/\s+/g, " ")
@@ -358,6 +359,14 @@ export function resolveWordPressExcerpt(article: Article): string | undefined {
   return plainText.length > EXCERPT_MAX_LENGTH
     ? `${plainText.slice(0, EXCERPT_MAX_LENGTH)}…`
     : plainText;
+}
+
+/**
+ * WordPress excerpt를 결정한다. meta_description이 있으면 그대로 사용하고,
+ * 없으면 본문(AD_SLOT marker 제외) 앞부분에서 안전하게 생성한다.
+ */
+export function resolveWordPressExcerpt(article: Article): string | undefined {
+  return resolveExcerptFromContent(article.content, article.metaDescription);
 }
 
 /**
@@ -374,6 +383,20 @@ export interface PublishArticleOptions {
    * 함수 구조만 준비해 둔다 (기본값 false — 항상 중복 방지가 우선한다).
    */
   force?: boolean;
+  /**
+   * wordpress_blog social_post 기준으로 실제 WordPress에 전송할
+   * title/content/excerpt를 지정한다. 넘기지 않으면(undefined) 기존
+   * 동작 그대로 article.title/article.content/article.metaDescription을
+   * 사용한다 — article 페이지 "고급 기능"(원본 article 전송)은 이
+   * 옵션을 넘기지 않아 동작이 전혀 바뀌지 않는다. wordpress_blog 카드
+   * 기준 Draft 생성/업데이트만 이 옵션을 넘겨 실제 payload를
+   * wordpress_blog 글의 title/body로 대체한다.
+   */
+  contentOverride?: {
+    title?: string;
+    content?: string;
+    excerpt?: string;
+  };
 }
 
 /** 승인/reviewed 관련 게시 skip을 기존 이벤트(wordpress_publish_skipped_not_reviewed)와
@@ -448,7 +471,8 @@ export async function publishArticleToWordPressDraft(
     };
   }
 
-  if (!article.content.trim()) {
+  const effectiveContent = options.contentOverride?.content ?? article.content;
+  if (!effectiveContent.trim()) {
     return { success: false, dryRun: false, message: "기사 본문이 비어 있어 게시할 수 없습니다." };
   }
 
@@ -493,8 +517,8 @@ export async function publishArticleToWordPressDraft(
     };
   }
 
-  const title = resolveWordPressTitle(article);
-  const excerpt = resolveWordPressExcerpt(article);
+  const title = options.contentOverride?.title ?? resolveWordPressTitle(article);
+  const excerpt = options.contentOverride?.excerpt ?? resolveExcerptFromContent(effectiveContent, article.metaDescription);
 
   await logEvent({
     type: "wordpress_publish_started",
@@ -605,7 +629,7 @@ export async function publishArticleToWordPressDraft(
 
   const result = await createDraftPost({
     title,
-    content: article.content,
+    content: effectiveContent,
     excerpt,
     slug: article.slug ?? undefined,
     categories: categoryIds.length > 0 ? categoryIds : undefined,
