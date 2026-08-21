@@ -423,6 +423,214 @@ Step 7의 "전체 체크리스트 보기" 아코디언 요약줄에 완료/확�
 "다음 단계: 확인 필요 항목 검토" → "다음 단계: 게시 URL 기록" →
 "다음 단계: 완료됨" 순으로 추천을 좁혀 간다.
 
+### "WordPress 게시 미리보기" — 실제로 올라갈 모양을 카드 안에서 먼저 확인한다
+
+WordPress 게시 준비 섹션 맨 위(단계별 상태 요약보다도 위)에 "검사가 많은
+이유" 안내 박스와 "WordPress 게시 미리보기" 섹션을 둔다.
+
+- **검사가 많은 이유**: "자동 생성 글을 바로 공개하지 않고, WordPress에
+  올리기 전에 제목·본문·SEO·대표 이미지·정책 위험을 나누어 확인하기
+  위해서입니다. 이 과정은 중복 게시, 잘못된 메타데이터, 누락된 대표
+  이미지, 광고 정책 위반 가능성을 줄이기 위한 안전장치입니다."라는
+  안내를 항상 보여준다.
+- **WordPress 게시 미리보기**(`lib/social/wordpress-blog-post-preview-builder.ts`의
+  `buildWordPressBlogPostPreview()`): wordpress_blog 자신의
+  `post.postTitle`/`post.postBody`/`blogMetadata`(seoTitle/metaDescription/
+  targetKeyword)/`featuredImage.wordpressUrl`만 입력으로 받는다 —
+  **article 원문(article.title/article.content)은 이 함수에 절대
+  전달하지 않는다.** 표시 항목:
+  - WordPress 제목, SEO 제목, Meta Description, Target Keyword
+  - 대표 이미지 미리보기(없으면 "대표 이미지가 아직 없습니다.")
+  - 본문 미리보기 — 기본 700자까지만 보여주고(`BODY_PREVIEW_LENGTH`),
+    넘으면 `<details>` "전체 미리보기 보기"로 전체 본문을 펼쳐 볼 수
+    있다. markdown을 HTML로 변환하지는 않는다(known limitation — 아래
+    참고).
+  - FAQ 영역 미리보기 — 본문에서 `## FAQ`/`자주 묻는 질문` 같은
+    heading을 찾아 그 아래 텍스트 일부를 보여준다(heuristic 추출,
+    실제 FAQ가 있음을 보장하지 않는다).
+  - 광고 위치(AD_SLOT) — `lib/articles/article-modes.ts`의
+    `AD_SLOT_MARKERS`/`adSlotMarkerComment()`를 재사용해 본문에 실제로
+    존재하는 marker만 감지하고, "[광고 위치 예정: 요약 아래]"처럼
+    한국어 라벨의 배지로만 보여준다. **실제 광고 코드는 절대 넣지
+    않는다.**
+  - 참고자료/출처 미리보기 — `## 참고자료`/`## 출처`/`## References`
+    heading을 찾아 그 아래 텍스트 일부를 보여준다.
+- **known limitation**: 본문 미리보기는 markdown 원문을 그대로 보여주는
+  텍스트 미리보기다(HTML 렌더링 아님). WordPress 관리자 화면에서 실제
+  보이는 모양과 줄바꿈/서식이 다를 수 있다 — 최종 확인은 여전히 WordPress
+  관리자 화면(Step 7의 "WordPress에서 Draft 보기")에서 해야 한다.
+
+### "WordPress 반영 데이터" — 실제로 전송되는 값 요약
+
+미리보기 아래에 실제 WordPress로 보내는 값을 그대로 나열한다: 제목,
+SEO title/meta description/target keyword, 대표 이미지(media ID 또는
+"이미지 없음"), WordPress Post ID, 업데이트 대상("새 Draft 생성" 또는
+"기존 Draft 업데이트"). "아래 정보가 WordPress에 반영됩니다. 기사 원문
+article이 아니라 이 wordpress_blog 글 기준으로 전송됩니다."라는 안내를
+함께 보여준다.
+
+### "WordPress에 반영하기" 버튼 — Draft 생성/업데이트와 공개 게시의 차이
+
+기존 "게시 준비 자동 실행" 버튼을 **"WordPress에 반영하기"**로
+재명명했다(action은 그대로 `prepareWordPressBlogPostForPublishingAction`
+재사용 — 새 action 없음). 버튼 아래에 "이 버튼은 WordPress Draft
+생성/업데이트까지만 실행합니다. 공개 게시 버튼은 누르지 않습니다.
+최종 공개는 WordPress 관리자 화면에서 확인 후 진행하세요."를 항상
+표시해, Draft 업데이트와 공개 게시(public publish)가 다른 작업이라는
+것을 명확히 한다. 이 프로젝트에는 실제 public publish를 수행하는 버튼이
+없다(MVP 범위 밖) — "WordPress에 반영하기"를 포함한 모든 버튼은 draft
+상태로만 반영한다. primary button 바로 아래에는 "개별 단계만 다시
+실행하려면 아래 보조 버튼을 사용하세요."를 덧붙여, Step 1~7 안의
+개별 버튼이 보조 수단임을 알려준다.
+
+### 업데이트 성공 여부 확인 방법
+
+- **WordPress Draft**(Step 3): Post ID/URL 외에 "마지막 업데이트"
+  시각을 함께 보여준다(`publish_logs`의 성공 기록 `created_at` —
+  `getSuccessfulWordPressDraft()`가 반환하는 `createdAt`, DB schema
+  변경 없이 기존 select 컬럼만 늘렸다).
+- **SEO Metadata**(Step 4 안의 "SEO Plugin Metadata"): provider,
+  update status, "last updated at"를 항상 보여준다.
+- **대표 이미지**(Step 5): 연결 상태/업로드 상태 옆에 "마지막 연결"
+  시각을 보여준다(`articles.wordpress_featured_media_attached_at` —
+  기존 컬럼, 요약에 새로 노출만 했다).
+- **"WordPress에 반영하기" 실행 결과**: 아래 "최근 WordPress 반영 결과"
+  섹션 참고.
+
+### "WordPress에서 Draft 확인하기" — WordPress 관리자로 바로 이동
+
+Step 3(WordPress Draft)에 "WordPress에서 Draft 보기" 버튼을 추가했다.
+`draft.postUrl`이 있으면 새 탭에서 열리는 링크로, 없으면 비활성화된
+모양의 텍스트와 함께 "아직 WordPress Draft가 생성되지 않았습니다."
+안내를 보여준다(disabled 버튼처럼 보이지만 실제로는 `<a>` 대신 `<span>`을
+렌더링하는 방식이라 클라이언트 JS 없이 동작한다).
+
+### "최근 WordPress 반영 결과" — 페이지를 새로고침해도 마지막 실행 결과가 남는다
+
+`prepareWordPressBlogPostForPublishing()`(오케스트레이터)이 실행을
+끝내기 직전에 결과를
+`social_posts.platformMetadata.lastPublishPreparationRun`(JSON, **DB
+schema 변경 없음**)에 저장한다: `{success, failedStep, steps, message,
+ranAt}`. action 실행 후 redirect되어 flash message가 사라져도, Step
+1~7 카드 위쪽의 "최근 WordPress 반영 결과" 섹션이 이 값을 읽어
+단계별 성공/건너뜀/경고/실패 배지와 실행 시간을 계속 보여준다
+(`getWordPressBlogPreparationStepLabel()`/`getWordPressBlogPreparationStepStatusLabel()`이
+단계/상태 코드를 한국어로 변환한다). 저장 자체가 실패해도(네트워크
+오류 등) "WordPress에 반영하기"의 실행 결과 자체는 영향받지 않는다 —
+화면에 최근 결과가 갱신되지 않을 뿐이다.
+
+### 카드 내부 탭 구조 — 스크롤 부담을 줄이기 위한 구조 개선
+
+wordpress_blog 카드 안에 글 생성/미리보기/품질검사/승인/WordPress 반영/
+대표 이미지/체크리스트가 전부 세로로 쌓이면서 카드가 매우 길어지고,
+사용자가 다음 작업 버튼을 찾으려고 계속 스크롤해야 하는 문제가 있었다.
+`lib/social/wordpress-blog-card-tabs.ts`가 이를 해결한다 — 카드 내용을
+**고정 영역(탭과 무관하게 항상 보임) + 탭 6개**로 나눈다.
+
+**고정 영역**(탭 위, 항상 보임): 단계별 상태 요약(7개 badge) → 다음
+추천 작업(+ 해당 탭으로 이동하는 버튼, `getTabForWorkflowStep()`이
+`nextAction.step`을 탭으로 변환) → "WordPress에 반영하기" primary
+button(+ 공개 게시를 하지 않는다는 안내).
+
+**탭 내비게이션**: `WORDPRESS_BLOG_CARD_TABS` 6개(글 내용/WordPress
+미리보기/품질·승인/WordPress 반영/대표 이미지/체크리스트)를 카드 안에서
+`sticky top-0`로 상단에 고정된 것처럼 배치한다(새 라이브러리 추가 없이
+기존 Tailwind class만 사용, 좁은 화면은 `overflow-x-auto`로 가로
+스크롤). 각 탭 이름 옆에는 `getWordPressBlogCardTabBadges()`가 계산한
+완료/필요/확인 필요 badge를 붙여, 어느 탭에 할 일이 남았는지 탭을
+열어보지 않고도 알 수 있다.
+
+**탭별 내용**:
+- `content`(글 내용): wordpress_blog 제목, 본문 요약(기본 접힘, "전체
+  본문 보기"로 펼침), 이 글 자신이 생성한 SEO/게시용 metadata.
+- `preview`(WordPress 미리보기): WordPress 게시 미리보기 + WordPress
+  반영 데이터 요약.
+- `quality`(품질·승인): 검사가 많은 이유 안내 + Step 1(품질검사) +
+  Step 2(승인).
+- `wordpress`(WordPress 반영): 최근 WordPress 반영 결과 + Step
+  3(WordPress Draft) + Step 4(SEO Metadata, SEO Plugin Metadata 포함).
+- `image`(대표 이미지): Step 5 전체.
+- `checklist`(체크리스트): Step 6(게시 가능 상태 확인) + Step 7(체크리스트/
+  Handoff).
+
+**탭 이동 시 상태 유지**: `articleId`/`socialPostId`/`returnTo`/
+`highlight`에 `tab` query param을 더한다
+(`buildArticleBlogUrl(id, { socialPostId, highlight, tab })` —
+`lib/navigation/article-deep-links.ts`에 `tab` 옵션을 추가했다, DB
+schema와 무관한 순수 URL 파라미터). wordpress_blog 카드 안의 모든
+action form은 `selfReturnTo = buildArticleBlogUrl(id, { socialPostId:
+post.id, highlight: post.id, tab: activeTab })`를 `returnTo`로 사용해,
+action 실행 후에도 같은 카드·같은 탭으로 돌아온다(카드 상단 공통
+버튼 — naver_blog와 공유 — 은 이 tab-aware returnTo를 쓰지 않는다).
+
+**naver_blog에는 이 탭 구조가 없다**: 위 고정 영역/탭 내비게이션/탭별
+내용은 모두 `platform === "wordpress_blog"` 블록 안에서만 렌더링되고,
+naver_blog 카드는 기존 manual export 중심 UI를 그대로 유지한다.
+
+### "프로세스 로그 / 실행 이력"은 페이지 하단으로 분리한다
+
+wordpress_blog 카드 안에 프로세스 로그·실행 이력·raw JSON details 같은
+디버그성 정보가 섞여 있으면, 사용자가 실제 작업(글 작성, 미리보기,
+검사, 승인, WordPress 반영)을 하다가 계속 스크롤해야 하는 문제가
+생긴다. `lib/social/wordpress-blog-process-log-view.ts`가 로그와 작업
+UI를 분리한다.
+
+**카드 안에 남기는 것**: 기존 "최근 WordPress 반영 결과"(마지막 실행
+성공/실패, Draft/SEO/대표 이미지/게시 준비 단계별 결과, 실행 시간)에
+"상세 실행 로그는 페이지 하단에서 확인할 수 있습니다."라는 안내와
+"상세 로그 보기" 링크만 추가했다. 링크는
+`#${buildAnchorId("process-log-group", post.id)}`로 페이지 하단의 해당
+post 로그 그룹으로 바로 스크롤한다(새 페이지 이동 없음, JS 불필요).
+
+**페이지 하단(`/articles/[id]/blog#process-logs`)으로 옮긴 것**: 실제
+pipeline_logs 항목 목록, raw JSON details, dry-run/handoff 상세 로그,
+체크리스트 생성 관련 로그 등 시스템 실행 기록 전반.
+
+- **데이터 소스**: 기존 `getLogsByArticleId(article.id, 100)`을 그대로
+  재사용한다(새 쿼리 함수 없음). `isWordPressBlogRelevantLog()`가
+  `details.socialPostId`가 이 article의 wordpress_blog post 중
+  하나이거나 `details.platform === "wordpress_blog"`인 로그만 골라낸다
+  — quality gate/승인/생성 등 article 전체에 걸친 무관한 로그는
+  제외된다.
+- **카테고리 분류**: `categorizeLogEvent()`가 event type 문자열을 보고
+  WordPress/SEO/대표 이미지/게시 준비/Handoff/기타 6개 카테고리로
+  자동 분류한다(별도 목록 유지 없이 type 이름 패턴으로 판단 — 새
+  event type이 추가돼도 별도 등록 없이 합리적으로 분류된다).
+- **기본 접힘**: `<section id="process-logs">` 안을 `<details>`(열림
+  속성 없음)로 감싸 기본 접힘 상태로 둔다. 펼치면 "문제가 발생했을
+  때만 로그를 확인하세요. 일반적인 글 작성과 WordPress 반영
+  작업에는 필요하지 않습니다."와 "이 영역은 시스템 실행 기록입니다.
+  WordPress 반영 실패나 상태 확인이 필요할 때 참고하세요." 안내를
+  보여준다.
+- **필터**: 전체/WordPress/SEO/대표 이미지/게시 준비/Handoff/실패만
+  보기 7개 버튼(`LOG_FILTER_OPTIONS`)을 `?logFilter=...#process-logs`
+  링크로 구현했다(서버 컴포넌트 + 쿼리 파라미터, 클라이언트 JS
+  불필요). `filterWordPressBlogProcessLogEntries()`가 실제 필터링을
+  담당한다.
+- **카드별 구분**: wordpress_blog post마다 별도 그룹(글 제목/platform/
+  socialPostId + 로그 목록)으로 나눠 보여준다. 각 그룹에
+  `id={buildAnchorId("process-log-group", post.id)}`를 붙여, 카드의
+  "상세 로그 보기" 링크가 정확히 그 그룹으로 스크롤되게 한다.
+- **정렬**: `sortWordPressBlogProcessLogEntriesForDisplay()`가 실패
+  로그를 앞으로 모으고(있는 경우), 나머지는 최신순을 유지한다.
+- **개수 제한**: 카드(post)별로 최근 20개(`PROCESS_LOG_VISIBLE_COUNT`)만
+  먼저 보여주고, 그 이상은 `<details>` "더 보기"로 접어둔다 — 페이지
+  성능을 위해 `getLogsByArticleId`도 최대 100개까지만 조회한다.
+- **raw JSON은 기본 숨김**: 각 로그 항목은 event_name/status/message/
+  created_at + 짧은 한 줄 요약(`detailsSummary`, 주요 key=value 3개만)만
+  기본으로 보여주고, 전체 details는 항목마다 별도 "상세 JSON 보기"
+  `<details>`로 펼쳐야 볼 수 있다.
+
+**체크리스트는 로그가 아니다**: Step 7(체크리스트/Handoff)의 needs_review
+항목 확인, 확인 완료 표시, 게시 URL 입력은 여전히 카드 안 체크리스트
+탭(`checklist`)에 그대로 있다 — 이 항목들은 "지금 사람이 해야 하는
+작업"이지 "이미 실행된 기록"이 아니기 때문이다.
+
+**naver_blog에는 영향이 없다**: `#process-logs` 섹션은
+`wordpressBlogPostIds.size > 0`일 때만 렌더링되고, wordpress_blog가
+아닌 카드(naver_blog 등)의 로그는 애초에
+`isWordPressBlogRelevantLog()`를 통과하지 못해 포함되지 않는다.
+
 ### `WordPress 게시 준비` 섹션 — 무엇을 보여주는가
 
 `lib/social/wordpress-blog-publish-preparation-summary.ts`의

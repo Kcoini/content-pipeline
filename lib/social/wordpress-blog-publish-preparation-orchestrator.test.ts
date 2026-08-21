@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSocialPostById = vi.fn();
+const updateSocialPostContent = vi.fn();
 const getSuccessfulWordPressDraft = vi.fn();
 const publishArticleToWordPressDraft = vi.fn();
 const attachFeaturedMediaToDraft = vi.fn();
@@ -10,6 +11,7 @@ const getArticleById = vi.fn();
 
 vi.mock("@/lib/repositories/social-posts-repository", () => ({
   getSocialPostById: (...args: unknown[]) => getSocialPostById(...args),
+  updateSocialPostContent: (...args: unknown[]) => updateSocialPostContent(...args),
 }));
 vi.mock("@/lib/repositories/publish-repository", () => ({
   getSuccessfulWordPressDraft: (...args: unknown[]) => getSuccessfulWordPressDraft(...args),
@@ -44,6 +46,7 @@ function makePost(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   getSocialPostById.mockReset();
+  updateSocialPostContent.mockReset();
   getSuccessfulWordPressDraft.mockReset();
   publishArticleToWordPressDraft.mockReset();
   attachFeaturedMediaToDraft.mockReset();
@@ -51,6 +54,7 @@ beforeEach(() => {
   updateWordPressSeoMetadataFromBlogPost.mockReset();
   getArticleById.mockReset();
 
+  updateSocialPostContent.mockResolvedValue({});
   getSuccessfulWordPressDraft.mockResolvedValue(null);
   publishArticleToWordPressDraft.mockResolvedValue({ success: true, message: "draft 생성 완료" });
   updateWordPressSeoMetadataFromBlogPost.mockResolvedValue({ success: true, message: "SEO 업데이트 완료" });
@@ -182,5 +186,70 @@ describe("prepareWordPressBlogPostForPublishing", () => {
     expect(result.success).toBe(false);
     expect(result.steps).toEqual([]);
     expect(publishArticleToWordPressDraft).not.toHaveBeenCalled();
+  });
+
+  it("성공하면 결과를 platformMetadata.lastPublishPreparationRun에 저장한다 (DB schema 변경 없음)", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platformMetadata: { seoTitle: "기존 값" } }));
+
+    await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    expect(updateSocialPostContent).toHaveBeenCalledWith(
+      "post-1",
+      expect.objectContaining({
+        platformMetadata: expect.objectContaining({
+          seoTitle: "기존 값",
+          lastPublishPreparationRun: expect.objectContaining({
+            success: true,
+            failedStep: null,
+            steps: expect.any(Array),
+            ranAt: expect.any(String),
+          }),
+        }),
+      })
+    );
+  });
+
+  it("중간 단계에서 실패해도 결과를 lastPublishPreparationRun에 저장한다", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ qualityStatus: "needs_revision" }));
+
+    await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    expect(updateSocialPostContent).toHaveBeenCalledWith(
+      "post-1",
+      expect.objectContaining({
+        platformMetadata: expect.objectContaining({
+          lastPublishPreparationRun: expect.objectContaining({ success: false, failedStep: "quality" }),
+        }),
+      })
+    );
+  });
+
+  it("결과 저장(updateSocialPostContent)이 실패해도 게시 준비 결과 자체는 그대로 반환한다", async () => {
+    getSocialPostById.mockResolvedValue(makePost());
+    updateSocialPostContent.mockRejectedValue(new Error("저장 실패"));
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("getWordPressBlogPreparationStepLabel / getWordPressBlogPreparationStepStatusLabel", () => {
+  it("단계 코드를 한국어 라벨로 변환한다", async () => {
+    const { getWordPressBlogPreparationStepLabel } = await import("./wordpress-blog-publish-preparation-orchestrator");
+    expect(getWordPressBlogPreparationStepLabel("quality")).toBe("품질검사");
+    expect(getWordPressBlogPreparationStepLabel("approval")).toBe("승인");
+    expect(getWordPressBlogPreparationStepLabel("draft")).toBe("WordPress Draft");
+    expect(getWordPressBlogPreparationStepLabel("seo_metadata")).toBe("SEO Metadata");
+    expect(getWordPressBlogPreparationStepLabel("featured_image")).toBe("대표 이미지");
+    expect(getWordPressBlogPreparationStepLabel("publish_guard")).toBe("게시 가능 상태");
+  });
+
+  it("단계 실행 상태를 한국어 라벨로 변환한다", async () => {
+    const { getWordPressBlogPreparationStepStatusLabel } = await import("./wordpress-blog-publish-preparation-orchestrator");
+    expect(getWordPressBlogPreparationStepStatusLabel("success")).toBe("성공");
+    expect(getWordPressBlogPreparationStepStatusLabel("skipped")).toBe("건너뜀");
+    expect(getWordPressBlogPreparationStepStatusLabel("warning")).toBe("경고");
+    expect(getWordPressBlogPreparationStepStatusLabel("failed")).toBe("실패");
   });
 });

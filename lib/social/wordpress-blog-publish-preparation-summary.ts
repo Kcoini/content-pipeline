@@ -17,6 +17,8 @@ export interface WordPressBlogDraftSummary {
   exists: boolean;
   postId: string | null;
   postUrl: string | null;
+  /** 마지막으로 draft가 성공적으로 생성/업데이트된 시각(없으면 null). */
+  lastUpdatedAt: string | null;
 }
 
 export interface WordPressBlogSeoMetadataSummary {
@@ -33,6 +35,8 @@ export interface WordPressBlogFeaturedImageSummary {
   /** WordPress post에 실제로 featured_media를 연결한 결과(attachFeaturedMediaToDraft). */
   attachStatus: string;
   attachError: string | null;
+  /** 마지막으로 연결(attach)이 성공/시도된 시각(없으면 null). */
+  attachedAt: string | null;
   /** 로컬 이미지 → WordPress Media Library 업로드 진행 상태(not_ready/prepared/uploaded/failed/skipped 등). */
   uploadStatus: string;
   uploadError: string | null;
@@ -144,6 +148,7 @@ export async function buildWordPressBlogPublishPreparationSummary(
       exists: draft !== null,
       postId: draft?.externalPostId ?? null,
       postUrl: draft?.postUrl ?? null,
+      lastUpdatedAt: draft?.createdAt ?? null,
     },
     seo: {
       status: article?.wpMetadataStatus ?? "not_ready",
@@ -157,6 +162,7 @@ export async function buildWordPressBlogPublishPreparationSummary(
       wordpressUrl: article?.featuredImageWordpressUrl ?? null,
       attachStatus: article?.wordpressFeaturedMediaAttachStatus ?? "not_attached",
       attachError: article?.wordpressFeaturedMediaAttachError ?? null,
+      attachedAt: article?.wordpressFeaturedMediaAttachedAt ?? null,
       uploadStatus: article?.featuredImageUploadStatus ?? "not_ready",
       uploadError: article?.featuredImageUploadError ?? null,
       waived,

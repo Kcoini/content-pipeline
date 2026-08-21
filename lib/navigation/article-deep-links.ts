@@ -22,6 +22,8 @@ export interface ArticleDeepLinkOptions {
   abTestId?: string;
   /** 페이지 내 특정 섹션으로 이동하기 위한 anchor 이름 (예: "suggestions", "versions"). */
   section?: string;
+  /** wordpress_blog 카드 내부 탭 이름(예: "content"/"preview"/"quality"/"wordpress"/"image"/"checklist"). */
+  tab?: string;
   /** 강조 표시할 카드의 id. 지정하지 않으면 위 id 필드 중 하나를 그대로 사용해도 된다. */
   highlight?: string;
   /** 안전한 내부 경로일 때만 query에 포함된다. */
@@ -39,6 +41,7 @@ function buildUrl(basePath: string, options: ArticleDeepLinkOptions = {}): strin
   if (options.rewriteSocialPostId) params.set("rewriteSocialPostId", options.rewriteSocialPostId);
   if (options.abTestId) params.set("abTestId", options.abTestId);
   if (options.section) params.set("section", options.section);
+  if (options.tab) params.set("tab", options.tab);
   if (options.highlight) params.set("highlight", options.highlight);
   if (options.returnTo && isSafeInternalReturnTo(options.returnTo)) params.set("returnTo", options.returnTo);
 

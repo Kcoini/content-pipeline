@@ -229,6 +229,75 @@ draft 생성/업데이트부터 SEO metadata 업데이트, 대표 이미지 연�
   버튼(클라이언트 전용, 서버 저장 없음)이 나타난다. 다음 추천 작업도
   체크리스트 상태를 반영해 "확인 필요 항목 검토" → "게시 URL 기록"
   → "완료됨" 순으로 좁혀진다.
+- **WordPress 게시 미리보기/반영 데이터**(맨 위): "검사가 많은 이유"
+  안내 박스 다음에 WordPress에 올라갈 제목/SEO/대표 이미지/본문
+  일부(700자, "전체 미리보기 보기"로 펼침)/FAQ/광고 위치(AD_SLOT,
+  실제 광고 코드 아님)/참고자료 영역을 미리 보여준다(wordpress_blog
+  자신의 값만 사용, article 원문 아님). 그 아래 "WordPress 반영
+  데이터"에 실제 전송 값을 요약한다.
+- **"WordPress에 반영하기"**(예전 "게시 준비 자동 실행"): action은
+  그대로 `prepareWordPressBlogPostForPublishingAction`이다. 버튼
+  아래에 "이 버튼은 WordPress Draft 생성/업데이트까지만 실행합니다.
+  공개 게시 버튼은 누르지 않습니다. 최종 공개는 WordPress 관리자
+  화면에서 확인 후 진행하세요."를 항상 표시한다. 이 프로젝트에는
+  실제 public publish 버튼 자체가 없다.
+- **최근 WordPress 반영 결과**: "WordPress에 반영하기" 실행 결과가
+  `social_posts.platformMetadata.lastPublishPreparationRun`(JSON, DB
+  schema 변경 없음)에 저장되어, 페이지를 새로고침해도 마지막 실행의
+  단계별 성공/건너뜀/경고/실패와 실행 시간을 계속 볼 수 있다.
+- **Draft/대표 이미지에 마지막 실행 시간 표시**: Step 3(WordPress
+  Draft)에 "마지막 업데이트" 시각과 "WordPress에서 Draft 보기"
+  버튼(URL 없으면 비활성화 + "아직 WordPress Draft가 생성되지
+  않았습니다." 안내)을, Step 5(대표 이미지)에 "마지막 연결" 시각을
+  추가로 보여준다.
+- **카드 내부 탭 구조**: 카드가 너무 길어져 스크롤 부담이 커지는 문제를
+  줄이기 위해, 카드 상단에는 항상 보이는 고정 영역(단계별 상태 요약 +
+  다음 추천 작업 + WordPress에 반영하기 버튼)만 두고, 나머지 내용은
+  6개 탭(글 내용/WordPress 미리보기/품질·승인/WordPress 반영/대표
+  이미지/체크리스트, `lib/social/wordpress-blog-card-tabs.ts`)으로
+  나눈다. 탭 이름 옆에는 완료/필요/확인 필요 badge가 붙어 어느 탭에
+  할 일이 남았는지 바로 알 수 있다. 탭 내비게이션은 카드 안에서
+  `sticky top-0`로 고정된 것처럼 보인다(새 라이브러리 없이 기존
+  Tailwind만 사용). 탭 이동은 `?tab=image`처럼 query param을 쓰고,
+  action 실행 후에도 `returnTo`에 포함된 `tab` 값 덕분에 같은 카드·
+  같은 탭으로 돌아온다.
+- **프로세스 로그 / 실행 이력은 페이지 하단으로 분리**: wordpress_blog
+  카드 안에는 pipeline_logs 원본/raw JSON details 같은 디버그성 정보를
+  두지 않는다. 카드 안 "최근 WordPress 반영 결과"에는 짧은 요약(마지막
+  실행 성공/실패, 실행 시간)과 "상세 로그 보기" 링크만 남기고, 실제
+  로그 목록은 `/articles/[id]/blog` 페이지 최하단 `#process-logs`
+  섹션에 모은다(`lib/social/wordpress-blog-process-log-view.ts`가
+  `getLogsByArticleId()` 결과에서 wordpress_blog 관련 로그만 골라
+  카테고리(WordPress/SEO/대표 이미지/게시 준비/Handoff/기타)로
+  분류한다). 하단 섹션은 기본 `<details>` 접힘 상태이고, 카드별로
+  로그를 나눠 보여주며(카드의 링크는 해당 post의 로그 그룹 anchor로
+  바로 스크롤), 필터(전체/카테고리별/실패만 보기)와 최근 20개 +
+  "더 보기"로 페이지 성능을 보호한다. raw JSON은 항목마다 "상세 JSON
+  보기"로 따로 접어둔다.
+- **action 결과 메시지는 toast(TransientNotice)로 표시**: 본문 중간에
+  계속 남아 있던 성공/실패 alert box(`?publishMessage=...`/`?error=...`)를
+  `components/ui/transient-notice.tsx`로 교체했다 — 화면 오른쪽 위에
+  기본 4초만 떴다 자동으로 사라지고, 닫기 버튼도 있다(레이아웃을 밀지
+  않는 `position: fixed`). "선택한 항목을 강조 표시했습니다." 같은
+  확인 메시지는 아예 표시하지 않는다(카드 하이라이트만 유지). 이
+  변경은 페이지 전체(naver_blog 포함)에 적용되지만, action 자체나
+  query param 전달 방식(`appendMessageQuery`)은 그대로다 — 이 페이지의
+  렌더링 방식만 바꿨다.
+- **카드 가독성 개선(요약 → 상세 접기)**: SEO/게시용 metadata
+  박스는 상태 badge와 짧은 설명만 기본으로 보이고, seoTitle/
+  metaDescription/targetKeyword/secondaryKeywords 등 전체 값은
+  "SEO Metadata 상세 보기"(`<details>`)로 접어둔다. 대표 이미지
+  박스도 현재 상태/media ID만 기본으로 보이고, media URL/업로드
+  상태/마지막 연결 시각은 "대표 이미지 상세 보기"로 접는다. quality_status/
+  approval_status/publish_status/export_status/manual_post_status 같은
+  raw DB 상태값은 상단에 노출하지 않고 "내부 상태값 보기"에만 둔다.
+  "WordPress에 반영하기" 버튼 설명도 한 줄 요약 + "자세히 보기"로
+  나눴다. 설명 문장은 파란색(indigo) 대신 muted(zinc) 색상을 쓰고,
+  파란색은 링크에만 남긴다. 대표 이미지가 "이미지 없이 진행"으로
+  waived 처리된 상태에서 예전 Media 연결 실패 기록이 있으면, 그
+  오류를 지금 문제인 것처럼 크게 보여주지 않고 "참고: 이전 Media ID
+  연결 시도 실패 기록 있음"처럼 참고 이력으로만 짧게 보여준다(원문은
+  상세 보기 안에).
 
 `naver_blog` 카드에는 WordPress 관련 버튼이 전혀 표시되지 않고,
 기존과 동일하게 Manual Export/복사/수동 게시 결과 기록 흐름만

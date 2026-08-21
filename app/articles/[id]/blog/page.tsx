@@ -6,6 +6,7 @@ import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-
 import { WordPressFeaturedImageFilePicker } from "@/components/social/wordpress-featured-image-file-picker";
 import { CopyUrlButton } from "@/components/social/copy-url-button";
 import { DeepLinkNotice, getHighlightClassName, buildAnchorId } from "@/components/navigation/deep-link-highlight";
+import { TransientNotice } from "@/components/ui/transient-notice";
 import {
   buildArticleBlogUrl,
   buildMetricsDeepLink,
@@ -31,6 +32,29 @@ import {
   getWordPressBlogWorkflowStatusSummary,
   getWordPressBlogNextRecommendedAction,
 } from "@/lib/social/wordpress-blog-workflow-steps";
+import { buildWordPressBlogPostPreview } from "@/lib/social/wordpress-blog-post-preview-builder";
+import {
+  WORDPRESS_BLOG_CARD_TABS,
+  normalizeWordPressBlogCardTab,
+  getTabForWorkflowStep,
+  getWordPressBlogCardTabBadges,
+} from "@/lib/social/wordpress-blog-card-tabs";
+import { getLogsByArticleId } from "@/lib/repositories/log-repository";
+import {
+  buildWordPressBlogProcessLogEntries,
+  filterWordPressBlogProcessLogEntries,
+  filterWordPressBlogProcessLogEntriesByPost,
+  sortWordPressBlogProcessLogEntriesForDisplay,
+  WORDPRESS_BLOG_LOG_CATEGORY_LABELS,
+  type WordPressBlogLogFilter,
+  type WordPressBlogProcessLogEntry,
+} from "@/lib/social/wordpress-blog-process-log-view";
+import {
+  getWordPressBlogPreparationStepLabel,
+  getWordPressBlogPreparationStepStatusLabel,
+  type WordPressBlogPreparationStep,
+  type WordPressBlogPreparationStepResult,
+} from "@/lib/social/wordpress-blog-publish-preparation-orchestrator";
 import {
   computeManualPostingChecklistItemStatus,
   summarizeManualPostingChecklistStatus,
@@ -76,10 +100,21 @@ export const dynamic = "force-dynamic";
 
 const BLOG_PLATFORMS: SocialPlatform[] = ["wordpress_blog", "naver_blog"];
 const ANCHOR_PREFIX = "social-post";
+const PROCESS_LOG_VISIBLE_COUNT = 20;
+
+const LOG_FILTER_OPTIONS: { key: WordPressBlogLogFilter; label: string }[] = [
+  { key: "all", label: "전체" },
+  { key: "wordpress", label: "WordPress" },
+  { key: "seo", label: "SEO" },
+  { key: "image", label: "대표 이미지" },
+  { key: "publish_guard", label: "게시 준비" },
+  { key: "handoff", label: "Handoff" },
+  { key: "failed_only", label: "실패만 보기" },
+];
 
 /** WordPress 게시 준비 단계형 UI의 상태 badge 색상. 새 디자인 시스템을 추가하지 않고 기존 tailwind 팔레트만 사용한다. */
 function stepBadgeClass(status: string): string {
-  if (["완료", "승인됨", "생성됨", "준비됨", "연결됨", "ready", "handoff 완료"].includes(status)) {
+  if (["완료", "승인됨", "생성됨", "준비됨", "연결됨", "ready", "handoff 완료", "성공"].includes(status)) {
     return "bg-green-100 text-green-800";
   }
   if (["실패", "차단됨", "없음"].includes(status)) {
@@ -89,6 +124,40 @@ function stepBadgeClass(status: string): string {
     return "bg-amber-100 text-amber-800";
   }
   return "bg-zinc-100 text-zinc-600";
+}
+
+function logStatusBadgeClass(status: string): string {
+  if (status === "success") return "bg-green-100 text-green-800";
+  if (status === "failed") return "bg-red-100 text-red-800";
+  return "bg-zinc-100 text-zinc-600";
+}
+
+/**
+ * 페이지 하단 "프로세스 로그 / 실행 이력" 섹션의 로그 항목 하나를 렌더링한다.
+ * event_name/status/message/created_at과 짧은 details 요약만 기본으로
+ * 보여주고, raw JSON은 "상세 JSON 보기"로 따로 접어둔다.
+ */
+function renderProcessLogEntry(entry: WordPressBlogProcessLogEntry) {
+  return (
+    <li key={entry.id} className="rounded border border-zinc-100 p-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-zinc-700">{entry.eventName}</span>
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${logStatusBadgeClass(entry.status)}`}>
+          {entry.status}
+        </span>
+      </div>
+      <p className="mt-0.5 text-zinc-600">{entry.message}</p>
+      <p className="mt-0.5 text-zinc-400">
+        {entry.createdAt} · {WORDPRESS_BLOG_LOG_CATEGORY_LABELS[entry.category]} · {entry.detailsSummary}
+      </p>
+      <details className="mt-0.5">
+        <summary className="cursor-pointer text-zinc-400">상세 JSON 보기</summary>
+        <pre className="mt-0.5 overflow-x-auto rounded bg-zinc-50 p-1 text-[9px] text-zinc-600">
+          {JSON.stringify(entry.rawDetails, null, 2)}
+        </pre>
+      </details>
+    </li>
+  );
 }
 
 export default async function ArticleBlogPage({
@@ -102,6 +171,10 @@ export default async function ArticleBlogPage({
     includeRewriteVersions?: string;
     socialPostId?: string;
     section?: string;
+    /** wordpress_blog 카드 내부 탭(글 내용/미리보기/품질승인/WordPress 반영/대표 이미지/체크리스트). */
+    tab?: string;
+    /** 페이지 하단 "프로세스 로그 / 실행 이력" 섹션 필터(전체/WordPress/SEO/대표 이미지/게시 준비/Handoff/실패만). */
+    logFilter?: string;
     returnTo?: string;
     page?: string;
     perPage?: string;
@@ -113,10 +186,22 @@ export default async function ArticleBlogPage({
     publishMessage,
     includeRewriteVersions: includeRewriteVersionsParam,
     socialPostId: targetSocialPostId,
+    tab,
+    logFilter: logFilterParam,
     returnTo,
     page: pageParam,
     perPage: perPageParam,
   } = await searchParams;
+  const activeTab = normalizeWordPressBlogCardTab(tab);
+  const logFilter: WordPressBlogLogFilter =
+    logFilterParam === "wordpress" ||
+    logFilterParam === "seo" ||
+    logFilterParam === "image" ||
+    logFilterParam === "publish_guard" ||
+    logFilterParam === "handoff" ||
+    logFilterParam === "failed_only"
+      ? logFilterParam
+      : "all";
   const includeRewriteVersions = includeRewriteVersionsParam === "true";
   const { page, perPage } = parsePagination({ page: pageParam, perPage: perPageParam });
 
@@ -141,6 +226,13 @@ export default async function ArticleBlogPage({
     )
   );
 
+  // wordpress_blog 카드 안에는 프로세스 로그/실행 이력을 두지 않고, 페이지 하단
+  // "프로세스 로그 / 실행 이력" 섹션으로 모은다(카드 안에는 짧은 요약 + 링크만 남긴다).
+  const wordpressBlogPostIds = new Set(posts.filter((post) => post.platform === "wordpress_blog").map((post) => post.id));
+  const allProcessLogs = wordpressBlogPostIds.size > 0 ? await getLogsByArticleId(article.id, 100) : [];
+  const wordpressBlogProcessLogEntries = buildWordPressBlogProcessLogEntries(allProcessLogs, wordpressBlogPostIds);
+  const filteredProcessLogEntries = filterWordPressBlogProcessLogEntries(wordpressBlogProcessLogEntries, logFilter);
+
   // Phase 3-17: action form이 "이 카드를 강조한 채 이 페이지로 돌아오기" 위해 사용하는 returnTo.
   const selfReturnToFor = (postId: string) => buildArticleBlogUrl(id, { socialPostId: postId, highlight: postId });
   const targetFound = targetSocialPostId ? posts.some((p) => p.id === targetSocialPostId) : true;
@@ -163,36 +255,10 @@ export default async function ArticleBlogPage({
 
         <ArticleWorkflowNavigation articleId={id} active="blog" returnTo={returnTo} />
 
-        <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-          이 페이지에서는 원본 article을 기반으로 플랫폼별 블로그 글을 생성합니다.
-          <br />
-          <strong>wordpress_blog</strong>는 WordPress 게시용 SEO/수익형 블로그 글이며,{" "}
-          <strong>naver_blog</strong>는 네이버 블로그 게시용 자연스러운 블로그 글입니다.
-          <br />
-          WordPress에 게시할 글은 wordpress_blog로 생성된 블로그 글입니다. article 원문을
-          그대로 게시하려면 article 페이지의 &ldquo;고급 기능&rdquo;을 사용하세요.
-          작업 후 이 페이지로 돌아오도록 returnTo가 적용됩니다.
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-800">
-            <p className="font-semibold">wordpress_blog</p>
-            <p className="mt-1">
-              WordPress 게시용 블로그 글입니다. SEO 제목, 메타 설명, target keyword, 승인, FAQ/
-              AD_SLOT 등 SEO/AdSense 정책 위험 검증, WordPress Draft 생성 흐름을 사용합니다.
-            </p>
-          </div>
-          <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-            <p className="font-semibold">naver_blog</p>
-            <p className="mt-1">
-              네이버 블로그 게시용 글입니다. 자연스러운 도입부, 네이버 검색 의도, 과장 없는
-              설명형 문체, manual export 흐름을 사용합니다. WordPress 관련 기능은 표시되지
-              않습니다.
-            </p>
-          </div>
-        </div>
-
-        {targetSocialPostId && <DeepLinkNotice targetId={targetSocialPostId} found={targetFound} />}
+        {/* "선택한 항목을 강조 표시했습니다." 같은 확인 메시지는 표시하지 않는다 —
+            카드 자체의 강조 표시(getHighlightClassName)만으로 충분하다. 항목을
+            찾지 못했을 때의 경고는 실제로 필요한 정보이므로 그대로 둔다. */}
+        {targetSocialPostId && !targetFound && <DeepLinkNotice targetId={targetSocialPostId} found={false} />}
         {targetOnDifferentPage && (
           <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
             선택한 항목이 현재 page에 없습니다.{" "}
@@ -202,8 +268,11 @@ export default async function ArticleBlogPage({
           </div>
         )}
 
-        {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-        {publishMessage && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}</div>}
+        {/* action 실행 결과(성공/실패)는 본문 중간에 계속 남는 alert box 대신
+            잠깐 떴다 사라지는 toast로 보여준다. 상세 기록은 여전히 로그에 남고
+            (harness logger), 상태 자체는 각 카드의 상태 요약에 남는다. */}
+        <TransientNotice message={error ?? null} variant="error" />
+        <TransientNotice message={publishMessage ?? null} variant="success" />
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h1 className="text-lg font-semibold">{article.title}</h1>
@@ -449,6 +518,42 @@ export default async function ArticleBlogPage({
                         };
                         const workflowStatus = getWordPressBlogWorkflowStatusSummary(workflowInput);
                         const nextAction = getWordPressBlogNextRecommendedAction(workflowInput);
+                        const postPreview = buildWordPressBlogPostPreview({
+                          postTitle: post.postTitle,
+                          postBody: post.postBody,
+                          seoTitle: blogMetadata.seoTitle,
+                          metaDescription: blogMetadata.metaDescription,
+                          targetKeyword: blogMetadata.targetKeyword,
+                          featuredImageUrl: featuredImage.wordpressUrl,
+                        });
+                        const lastRunRaw =
+                          typeof post.platformMetadata.lastPublishPreparationRun === "object" &&
+                          post.platformMetadata.lastPublishPreparationRun !== null
+                            ? (post.platformMetadata.lastPublishPreparationRun as Record<string, unknown>)
+                            : null;
+                        const lastRunSteps: WordPressBlogPreparationStepResult[] = Array.isArray(lastRunRaw?.steps)
+                          ? (lastRunRaw.steps as WordPressBlogPreparationStepResult[])
+                          : [];
+                        const lastRunSuccess = lastRunRaw?.success === true;
+                        const lastRunFailedStep = typeof lastRunRaw?.failedStep === "string" ? (lastRunRaw.failedStep as WordPressBlogPreparationStep) : null;
+                        const lastRunMessage = typeof lastRunRaw?.message === "string" ? lastRunRaw.message : null;
+                        const lastRunAt = typeof lastRunRaw?.ranAt === "string" ? lastRunRaw.ranAt : null;
+                        // wordpress_blog 카드 안 탭 이동 시에도 지금 보고 있는 탭(activeTab)을
+                        // 유지한 채 같은 카드로 돌아오도록, 이 IIFE 안에서만 selfReturnTo를
+                        // tab을 포함한 값으로 새로 정의한다(바깥 selfReturnTo — 카드 상단 공통
+                        // 버튼용 — 는 그대로 둔다. 이 지역 변수가 아래 JSX 전체에서 selfReturnTo를 가린다).
+                        const selfReturnTo = buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: activeTab });
+                        const tabBadges = getWordPressBlogCardTabBadges({
+                          qualityStatus: workflowStatus.quality,
+                          approvalStatus: workflowStatus.approval,
+                          draftStatus: workflowStatus.draft,
+                          seoStatus: workflowStatus.seo,
+                          publishGuardStatus: workflowStatus.publishGuard,
+                          featuredImageStatus: workflowStatus.featuredImage,
+                          checklistStatus: workflowStatus.checklist,
+                          checklistNeedsReviewCount: checklistSummary.needsReview,
+                        });
+                        const nextActionTab = getTabForWorkflowStep(nextAction.step);
                         return (
                           <WordPressPublishingPanel
                             targetType="wordpress_blog"
@@ -478,8 +583,10 @@ export default async function ArticleBlogPage({
                               lastUpdatedAt: post.updatedAt,
                             }}
                           >
-                            {/* 단계별 상태 요약 — 버튼을 누르기 전에 지금 어디까지 왔는지 한눈에 보여준다. */}
-                            <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
+                            {/* 고정 상태 요약 — 탭과 무관하게 항상 보인다(탭 위에 위치). 카드가 길어서
+                                생기는 스크롤 부담을 줄이기 위해, 카드 안의 나머지 내용은 아래 탭
+                                내비게이션으로 분리한다. */}
+                            <div className="rounded border border-indigo-200 bg-white p-2">
                               <p className="text-[11px] font-semibold text-indigo-900">단계별 상태 요약</p>
                               <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-indigo-800 sm:grid-cols-4">
                                 <div className="flex items-center justify-between gap-1">
@@ -513,13 +620,26 @@ export default async function ArticleBlogPage({
                               </dl>
                             </div>
 
-                            {/* 다음 추천 작업 — 지금 상태 기준으로 다음에 눌러야 할 버튼 하나를 안내한다. */}
+                            {/* 다음 추천 작업 — 지금 상태 기준으로 다음에 눌러야 할 버튼 하나를 안내하고,
+                                해당 작업이 있는 탭으로 바로 이동하는 버튼을 함께 보여준다. */}
                             <div className="mt-2 rounded border border-indigo-300 bg-indigo-100/70 p-2">
-                              <p className="text-[11px] font-semibold text-indigo-900">{nextAction.title}</p>
-                              <p className="mt-1 text-[10px] text-indigo-700">{nextAction.description}</p>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-[11px] font-semibold text-indigo-900">{nextAction.title}</p>
+                                  <p className="mt-1 text-[10px] text-zinc-600">{nextAction.description}</p>
+                                </div>
+                                <a
+                                  href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: nextActionTab })}
+                                  className="shrink-0 rounded border border-indigo-400 bg-white px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50"
+                                >
+                                  {WORDPRESS_BLOG_CARD_TABS.find((t) => t.key === nextActionTab)?.label} 탭으로 이동
+                                </a>
+                              </div>
                             </div>
 
-                            {/* 게시 준비 자동 실행 — Draft/SEO/대표 이미지/게시 가능 확인을 순서대로 실행한다(공개 게시 아님). */}
+                            {/* WordPress에 반영하기 — primary button. Draft/SEO/대표 이미지/게시 가능
+                                확인을 순서대로 실행한다(prepareWordPressBlogPostForPublishingAction 재사용,
+                                공개 게시 아님). 탭과 무관하게 항상 보인다. */}
                             <form action={prepareWordPressBlogPostForPublishingAction} className="mt-2">
                               <input type="hidden" name="articleId" value={article.id} />
                               <input type="hidden" name="socialPostId" value={post.id} />
@@ -529,48 +649,349 @@ export default async function ArticleBlogPage({
                                 disabled={!readiness.ready}
                                 className="w-full rounded bg-indigo-800 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                게시 준비 자동 실행
+                                WordPress에 반영하기
                               </button>
                             </form>
-                            <p className="mt-1 text-[10px] text-indigo-500">
-                              Draft 생성/업데이트, SEO Metadata 업데이트, 대표 이미지 연결, 게시 가능 상태
-                              확인을 순서대로 실행합니다. 실패 단계가 있으면 그 단계에서 중단됩니다. 공개
-                              게시는 하지 않습니다.
+                            <p className="mt-1 text-[10px] text-zinc-500">
+                              wordpress_blog 글을 WordPress Draft에 반영합니다. 공개 게시는 하지 않습니다.
                             </p>
-
-                            {/* Step 1. 품질검사 (버튼은 카드 상단의 공통 '품질검사' 버튼을 그대로 사용 — 중복 배치하지 않음) */}
-                            <div className="mt-3 rounded border border-indigo-200 bg-white p-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-[11px] font-semibold text-indigo-900">Step 1. 품질검사</p>
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.quality)}`}>{workflowStatus.quality}</span>
-                              </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
-                                WordPress 블로그 글의 SEO/정책/구조 품질을 확인합니다. 위쪽의 &ldquo;품질검사&rdquo;
-                                버튼을 사용하세요.
+                            <details className="mt-1">
+                              <summary className="cursor-pointer text-[10px] text-zinc-400">자세히 보기</summary>
+                              <p className="mt-1 text-[10px] text-zinc-500">
+                                Draft 생성/업데이트, SEO metadata, 대표 이미지를 가능한 범위에서 함께
+                                반영합니다. 실패 단계가 있으면 그 단계에서 중단됩니다. 이 버튼은 WordPress
+                                Draft 생성/업데이트까지만 실행합니다. 공개 게시 버튼은 누르지 않습니다.
+                                최종 공개는 WordPress 관리자 화면에서 확인 후 진행하세요.
                               </p>
-                            </div>
+                              <p className="mt-1 text-[10px] text-zinc-500">개별 단계만 다시 실행하려면 아래 탭에서 보조 버튼을 사용하세요.</p>
+                            </details>
 
-                            {/* Step 2. 승인 (버튼은 카드 상단의 공통 '승인 요청'/'승인' 버튼을 그대로 사용 — 중복 배치하지 않음) */}
+                            {/* 탭 내비게이션 — 카드 안에서 sticky로 상단에 고정된 것처럼 배치한다.
+                                새 라이브러리 없이 기존 Tailwind만 사용한다. 좁은 화면에서는
+                                overflow-x-auto로 가로 스크롤된다. */}
+                            <nav className="sticky top-0 z-10 mt-3 -mx-1 flex gap-1 overflow-x-auto border-b border-indigo-200 bg-white/95 px-1 py-1 text-[11px] backdrop-blur">
+                              {WORDPRESS_BLOG_CARD_TABS.map((t) => {
+                                const badge =
+                                  t.key === "quality"
+                                    ? tabBadges.quality
+                                    : t.key === "wordpress"
+                                      ? tabBadges.wordpress
+                                      : t.key === "image"
+                                        ? tabBadges.image
+                                        : t.key === "checklist"
+                                          ? tabBadges.checklist
+                                          : null;
+                                const isActive = activeTab === t.key;
+                                return (
+                                  <a
+                                    key={t.key}
+                                    href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: t.key })}
+                                    className={`shrink-0 whitespace-nowrap rounded-t px-2 py-1 font-medium ${
+                                      isActive ? "border-b-2 border-indigo-700 text-indigo-900" : "text-indigo-500 hover:text-indigo-700"
+                                    }`}
+                                  >
+                                    {t.label}
+                                    {badge && (
+                                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${stepBadgeClass(badge)}`}>
+                                        {badge}
+                                      </span>
+                                    )}
+                                  </a>
+                                );
+                              })}
+                            </nav>
+
+                            {/* 검사가 많은 이유 — 품질·승인 탭. 왜 이렇게 단계가 많은지 한 번에 설명한다. */}
+                            {activeTab === "quality" && (
+                              <div className="mt-2 rounded border border-indigo-200 bg-indigo-50 p-2 text-[10px] text-indigo-800">
+                                검사가 많은 이유는 자동 생성 글을 바로 공개하지 않고, WordPress에 올리기
+                                전에 제목·본문·SEO·대표 이미지·정책 위험을 나누어 확인하기 위해서입니다.
+                                이 과정은 중복 게시, 잘못된 메타데이터, 누락된 대표 이미지, 광고 정책
+                                위반 가능성을 줄이기 위한 안전장치입니다.
+                              </div>
+                            )}
+
+                            {/* 글 내용 — content 탭. wordpress_blog 자신의 제목/본문 요약(전체 본문은
+                                접어둔다). SEO/게시용 자체 생성 metadata는 이 탭 아래쪽에 있다. */}
+                            {activeTab === "content" && (
+                              <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
+                                <p className="text-[11px] font-semibold text-indigo-900">글 내용</p>
+                                <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800">
+                                  <div>
+                                    <dt className="font-medium">제목</dt>
+                                    <dd>{post.postTitle ?? "-"}</dd>
+                                  </div>
+                                </dl>
+                                <div className="mt-2">
+                                  <p className="text-[10px] font-medium text-indigo-800">본문 요약</p>
+                                  <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">
+                                    {postPreview.bodyPreviewText || "본문이 아직 없습니다."}
+                                    {postPreview.bodyTruncated && "…"}
+                                  </p>
+                                  {postPreview.bodyTruncated && (
+                                    <details className="mt-1">
+                                      <summary className="cursor-pointer text-[10px] text-indigo-600">
+                                        전체 본문 보기 (전체 {postPreview.bodyFullLength}자)
+                                      </summary>
+                                      <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">{post.postBody}</p>
+                                    </details>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* WordPress 게시 미리보기 — WordPress에 실제로 반영되기 전에 이 wordpress_blog
+                                글이 어떤 모양으로 올라갈지 미리 보여준다. article 원문이 아니라 이 글
+                                자신의 내용(postPreview)만 사용한다. preview 탭. */}
+                            {activeTab === "preview" && (
+                              <>
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-[11px] font-semibold text-indigo-900">Step 2. 승인</p>
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.approval)}`}>{workflowStatus.approval}</span>
-                              </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
-                                게시 준비 전에 사람이 승인합니다. 위쪽의 &ldquo;승인 요청&rdquo;/&ldquo;승인&rdquo;
-                                버튼을 사용하세요.
+                              <p className="text-[11px] font-semibold text-indigo-900">WordPress 게시 미리보기</p>
+                              <p className="mt-1 text-[10px] text-zinc-600">
+                                WordPress에 실제로 반영되기 전에 이 wordpress_blog 글이 어떤 모양으로
+                                올라갈지 미리 확인합니다. article 원문이 아니라 이 글 자체의 내용입니다.
                               </p>
+                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
+                                <div className="sm:col-span-2">
+                                  <dt className="font-medium">WordPress 제목</dt>
+                                  <dd>{postPreview.title}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">SEO 제목</dt>
+                                  <dd>{postPreview.seoTitle ?? "-"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">Target Keyword</dt>
+                                  <dd>{postPreview.targetKeyword ?? "-"}</dd>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <dt className="font-medium">Meta Description</dt>
+                                  <dd>{postPreview.metaDescription ?? "-"}</dd>
+                                </div>
+                              </dl>
+                              <div className="mt-2">
+                                <p className="text-[10px] font-medium text-indigo-800">대표 이미지 미리보기</p>
+                                {postPreview.featuredImageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={postPreview.featuredImageUrl}
+                                    alt="대표 이미지 미리보기"
+                                    className="mt-1 h-24 w-24 rounded border border-indigo-200 object-cover"
+                                  />
+                                ) : (
+                                  <p className="mt-1 text-[10px] text-zinc-500">대표 이미지가 아직 없습니다.</p>
+                                )}
+                              </div>
+                              <div className="mt-2">
+                                <p className="text-[10px] font-medium text-indigo-800">본문 미리보기</p>
+                                <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">
+                                  {postPreview.bodyPreviewText || "본문이 아직 없습니다."}
+                                  {postPreview.bodyTruncated && "…"}
+                                </p>
+                                {postPreview.bodyTruncated && (
+                                  <details className="mt-1">
+                                    <summary className="cursor-pointer text-[10px] text-indigo-600">
+                                      전체 미리보기 보기 (전체 {postPreview.bodyFullLength}자)
+                                    </summary>
+                                    <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">{post.postBody}</p>
+                                  </details>
+                                )}
+                              </div>
+                              <div className="mt-2">
+                                <p className="text-[10px] font-medium text-indigo-800">FAQ 영역 미리보기</p>
+                                <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">
+                                  {postPreview.faqPreviewText ?? "FAQ 영역이 감지되지 않았습니다."}
+                                </p>
+                              </div>
+                              <div className="mt-2">
+                                <p className="text-[10px] font-medium text-indigo-800">광고 위치 (AD_SLOT)</p>
+                                {postPreview.adSlotMarkers.length > 0 ? (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {postPreview.adSlotMarkers.map((slot) => (
+                                      <span
+                                        key={slot.marker}
+                                        className="rounded-full bg-zinc-200 px-2 py-0.5 text-[9px] font-medium text-zinc-700"
+                                      >
+                                        [광고 위치 예정: {slot.label}]
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="mt-1 text-[10px] text-zinc-500">감지된 광고 위치가 없습니다.</p>
+                                )}
+                              </div>
+                              <div className="mt-2">
+                                <p className="text-[10px] font-medium text-indigo-800">참고자료/출처 미리보기</p>
+                                <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">
+                                  {postPreview.sourcesPreviewText ?? "참고자료/출처 영역이 감지되지 않았습니다."}
+                                </p>
+                              </div>
                             </div>
 
-                            {/* Step 3. WordPress Draft */}
+                            {/* WordPress 반영 데이터 — 실제로 WordPress에 전송되는 값 요약. */}
+                            <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
+                              <p className="text-[11px] font-semibold text-indigo-900">WordPress 반영 데이터</p>
+                              <p className="mt-1 text-[10px] text-zinc-600">
+                                아래 정보가 WordPress에 반영됩니다. 기사 원문 article이 아니라 이
+                                wordpress_blog 글 기준으로 전송됩니다.
+                              </p>
+                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
+                                <div className="sm:col-span-2">
+                                  <dt className="font-medium">제목</dt>
+                                  <dd>{post.postTitle ?? "-"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">SEO title</dt>
+                                  <dd>{blogMetadata.seoTitle ?? "-"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">Meta description</dt>
+                                  <dd>{blogMetadata.metaDescription ?? "-"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">Target keyword</dt>
+                                  <dd>{blogMetadata.targetKeyword ?? "-"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">대표 이미지</dt>
+                                  <dd>{featuredImage.wordpressMediaId ? `media ID: ${featuredImage.wordpressMediaId}` : "이미지 없음"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">WordPress Post ID</dt>
+                                  <dd>{draft.postId ?? "-"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium">업데이트 대상</dt>
+                                  <dd>{draft.exists ? "기존 Draft 업데이트" : "새 Draft 생성"}</dd>
+                                </div>
+                              </dl>
+                            </div>
+                            </>
+                            )}
+
+                            {/* 최근 WordPress 반영 결과 — WordPress 반영 탭. "WordPress에 반영하기" 실행
+                                결과를 platformMetadata.lastPublishPreparationRun에서 읽어 보여준다.
+                                페이지를 새로고침해도(redirect 이후) 마지막 실행 결과를 계속 볼 수 있다. */}
+                            {activeTab === "wordpress" && lastRunRaw && (
+                              <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
+                                <p className="text-[11px] font-semibold text-indigo-900">최근 WordPress 반영 결과</p>
+                                <p className="mt-1 text-[10px] text-zinc-600">
+                                  {lastRunSuccess ? "성공" : "실패"} · 실행 시간: {lastRunAt ?? "-"}
+                                </p>
+                                <ul className="mt-1 space-y-0.5 text-[10px] text-zinc-700">
+                                  {lastRunSteps.map((step, i) => (
+                                    <li key={i} className="flex items-center justify-between gap-2">
+                                      <span>{getWordPressBlogPreparationStepLabel(step.step)}</span>
+                                      <span
+                                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${stepBadgeClass(
+                                          getWordPressBlogPreparationStepStatusLabel(step.status)
+                                        )}`}
+                                      >
+                                        {getWordPressBlogPreparationStepStatusLabel(step.status)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                {!lastRunSuccess && lastRunFailedStep && (
+                                  <p className="mt-1 text-[10px] text-red-600">
+                                    실패 단계: {getWordPressBlogPreparationStepLabel(lastRunFailedStep)}
+                                    {lastRunMessage ? ` — ${lastRunMessage}` : ""}
+                                  </p>
+                                )}
+                                <p className="mt-1 text-[10px] text-zinc-500">
+                                  상세 실행 로그는 페이지 하단에서 확인할 수 있습니다.{" "}
+                                  <a href={`#${buildAnchorId("process-log-group", post.id)}`} className="text-indigo-600 underline hover:text-indigo-700">
+                                    상세 로그 보기
+                                  </a>
+                                </p>
+                              </div>
+                            )}
+
+                            {/* 내부 상태값 보기 — raw DB 상태값(quality_status 등)을 접어서 보여준다.
+                                WordPress 반영 탭. 일반 사용자는 상단의 한국어 상태 요약만 보면 되고,
+                                필요할 때만 펼쳐서 원본 status 문자열을 확인한다. */}
+                            {activeTab === "wordpress" && (
+                              <details className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                                <summary className="cursor-pointer text-[10px] font-medium text-zinc-500">내부 상태값 보기</summary>
+                                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-zinc-600 sm:grid-cols-3">
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">quality_status</dt>
+                                    <dd>{post.qualityStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">approval_status</dt>
+                                    <dd>{post.approvalStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">publish_status</dt>
+                                    <dd>{post.publishStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">export_status</dt>
+                                    <dd>{post.exportStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">manual_post_status</dt>
+                                    <dd>{post.manualPostStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">updatedAt</dt>
+                                    <dd>{post.updatedAt}</dd>
+                                  </div>
+                                </dl>
+                              </details>
+                            )}
+
+                            {/* Step 1. 품질검사 (버튼은 카드 상단의 공통 '품질검사' 버튼을 그대로 사용 — 중복 배치하지 않음) + Step 2. 승인. quality 탭. */}
+                            {activeTab === "quality" && (
+                              <>
+                                <div className="mt-3 rounded border border-indigo-200 bg-white p-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[11px] font-semibold text-indigo-900">Step 1. 품질검사</p>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.quality)}`}>{workflowStatus.quality}</span>
+                                  </div>
+                                  <p className="mt-1 text-[10px] text-zinc-600">
+                                    본문 구조, SEO 요소, 정책 위험, 광고 슬롯 위치를 확인합니다. WordPress에
+                                    보내기 전에 글 자체가 게시 가능한 상태인지 점검합니다. 위쪽의
+                                    &ldquo;품질검사&rdquo; 버튼을 사용하세요.
+                                  </p>
+                                  <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-indigo-800">
+                                    <div>
+                                      <dt className="font-medium">score</dt>
+                                      <dd>{post.qualityScore ?? "-"}</dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-medium">마지막 실행 시간</dt>
+                                      <dd>{post.lastQualityCheckedAt ?? "-"}</dd>
+                                    </div>
+                                  </dl>
+                                </div>
+
+                                {/* Step 2. 승인 (버튼은 카드 상단의 공통 '승인 요청'/'승인' 버튼을 그대로 사용 — 중복 배치하지 않음) */}
+                                <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[11px] font-semibold text-indigo-900">Step 2. 승인</p>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.approval)}`}>{workflowStatus.approval}</span>
+                                  </div>
+                                  <p className="mt-1 text-[10px] text-zinc-600">
+                                    자동 생성 글을 바로 게시하지 않기 위해 사람이 한 번 확인하는 단계입니다.
+                                    위쪽의 &ldquo;승인 요청&rdquo;/&ldquo;승인&rdquo; 버튼을 사용하세요.
+                                  </p>
+                                </div>
+                              </>
+                            )}
+
+                            {/* Step 3. WordPress Draft — WordPress 반영 탭. */}
+                            {activeTab === "wordpress" && (
+                              <>
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-[11px] font-semibold text-indigo-900">Step 3. WordPress Draft</p>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.draft)}`}>{workflowStatus.draft}</span>
                               </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
-                                wordpress_blog 글의 제목과 본문을 WordPress Draft에 반영합니다(article 원문
-                                아님).
+                              <p className="mt-1 text-[10px] text-zinc-600">
+                                이 단계에서 wordpress_blog 글의 제목과 본문이 실제 WordPress Draft로
+                                생성되거나 업데이트됩니다(article 원문 아님).
                               </p>
                               <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
                                 <div>
@@ -588,6 +1009,10 @@ export default async function ArticleBlogPage({
                                       "-"
                                     )}
                                   </dd>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <dt className="font-medium">마지막 업데이트</dt>
+                                  <dd>{draft.lastUpdatedAt ?? "-"}</dd>
                                 </div>
                               </dl>
                               <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
@@ -615,7 +1040,24 @@ export default async function ArticleBlogPage({
                                     WordPress Draft 업데이트
                                   </button>
                                 </form>
+                                {draft.postUrl ? (
+                                  <a
+                                    href={draft.postUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-50"
+                                  >
+                                    WordPress에서 Draft 보기
+                                  </a>
+                                ) : (
+                                  <span className="cursor-not-allowed rounded border border-zinc-200 bg-zinc-100 px-2 py-1 font-medium text-zinc-400">
+                                    WordPress에서 Draft 보기
+                                  </span>
+                                )}
                               </div>
+                              {!draft.postUrl && (
+                                <p className="mt-1 text-[10px] text-zinc-500">아직 WordPress Draft가 생성되지 않았습니다.</p>
+                              )}
                               {!readiness.ready && (
                                 <p className="mt-1 text-[10px] text-red-600">
                                   {workflowStatus.approval !== "승인됨"
@@ -633,67 +1075,78 @@ export default async function ArticleBlogPage({
                                 <p className="text-[11px] font-semibold text-indigo-900">Step 4. SEO Metadata</p>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.seo)}`}>{workflowStatus.seo}</span>
                               </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
-                                wordpress_blog의 SEO metadata를 WordPress SEO plugin에 반영합니다.
+                              <p className="mt-1 text-[10px] text-zinc-600">
+                                Rank Math, Yoast, AIOSEO 등 SEO plugin에 SEO title, meta description,
+                                target keyword를 반영합니다.
                               </p>
                             </div>
+                              </>
+                            )}
 
+                            {/* SEO/게시용 metadata — 이 wordpress_blog 글 자신이 생성한 값. 글 내용 탭. */}
+                            {activeTab === "content" && (
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
-                              <p className="text-[11px] font-semibold text-indigo-900">SEO/게시용 metadata</p>
-                              <p className="mt-1 text-[10px] text-indigo-700">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] font-semibold text-indigo-900">SEO/게시용 metadata</p>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.seo)}`}>{workflowStatus.seo}</span>
+                              </div>
+                              <p className="mt-1 text-[10px] text-zinc-600">
                                 article에는 없을 수 있는 WordPress 게시용 정보를 이 wordpress_blog 글
                                 자신이 생성합니다(article 값으로 대체하지 않습니다).
                               </p>
-                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
-                                <div>
-                                  <dt className="font-medium">seoTitle</dt>
-                                  <dd>{blogMetadata.seoTitle ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">metaDescription</dt>
-                                  <dd>{blogMetadata.metaDescription ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">targetKeyword</dt>
-                                  <dd>{blogMetadata.targetKeyword ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">secondaryKeywords</dt>
-                                  <dd>{blogMetadata.secondaryKeywords.length > 0 ? blogMetadata.secondaryKeywords.join(", ") : "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">searchIntent</dt>
-                                  <dd>{blogMetadata.searchIntent ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">monetizationScore</dt>
-                                  <dd>{blogMetadata.monetizationScore ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">policyRiskScore</dt>
-                                  <dd>{blogMetadata.policyRiskScore ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">adSlots</dt>
-                                  <dd>{blogMetadata.adSlots.length > 0 ? `${blogMetadata.adSlots.length}개` : "-"}</dd>
-                                </div>
-                                <div className="sm:col-span-2">
-                                  <dt className="font-medium">answerSummary</dt>
-                                  <dd>{blogMetadata.answerSummary ?? "-"}</dd>
-                                </div>
-                                <div className="sm:col-span-2">
-                                  <dt className="font-medium">eeatNotes 요약</dt>
-                                  <dd>{blogMetadata.eeatNotes ? JSON.stringify(blogMetadata.eeatNotes) : "-"}</dd>
-                                </div>
-                                <div className="sm:col-span-2">
-                                  <dt className="font-medium">geoSummary 요약</dt>
-                                  <dd>
-                                    {blogMetadata.geoSummary && typeof blogMetadata.geoSummary.directAnswer === "string"
-                                      ? blogMetadata.geoSummary.directAnswer
-                                      : "-"}
-                                  </dd>
-                                </div>
-                              </dl>
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-[10px] font-medium text-zinc-500">SEO Metadata 상세 보기</summary>
+                                <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-zinc-600 sm:grid-cols-2">
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">seoTitle</dt>
+                                    <dd>{blogMetadata.seoTitle ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">metaDescription</dt>
+                                    <dd>{blogMetadata.metaDescription ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">targetKeyword</dt>
+                                    <dd>{blogMetadata.targetKeyword ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">secondaryKeywords</dt>
+                                    <dd>{blogMetadata.secondaryKeywords.length > 0 ? blogMetadata.secondaryKeywords.join(", ") : "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">searchIntent</dt>
+                                    <dd>{blogMetadata.searchIntent ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">monetizationScore</dt>
+                                    <dd>{blogMetadata.monetizationScore ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">policyRiskScore</dt>
+                                    <dd>{blogMetadata.policyRiskScore ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">adSlots</dt>
+                                    <dd>{blogMetadata.adSlots.length > 0 ? `${blogMetadata.adSlots.length}개` : "-"}</dd>
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <dt className="font-medium text-zinc-700">answerSummary</dt>
+                                    <dd>{blogMetadata.answerSummary ?? "-"}</dd>
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <dt className="font-medium text-zinc-700">eeatNotes 요약</dt>
+                                    <dd>{blogMetadata.eeatNotes ? JSON.stringify(blogMetadata.eeatNotes) : "-"}</dd>
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <dt className="font-medium text-zinc-700">geoSummary 요약</dt>
+                                    <dd>
+                                      {blogMetadata.geoSummary && typeof blogMetadata.geoSummary.directAnswer === "string"
+                                        ? blogMetadata.geoSummary.directAnswer
+                                        : "-"}
+                                    </dd>
+                                  </div>
+                                </dl>
+                              </details>
                               <form action={regenerateWordPressBlogMetadataAction} className="mt-2">
                                 <input type="hidden" name="articleId" value={article.id} />
                                 <input type="hidden" name="socialPostId" value={post.id} />
@@ -703,10 +1156,14 @@ export default async function ArticleBlogPage({
                                 </button>
                               </form>
                             </div>
+                            )}
 
+                            {/* SEO Plugin Metadata — 실제 WordPress SEO plugin 반영. WordPress 반영 탭. */}
+                            {activeTab === "wordpress" && (
+                              <>
                             <div className="mt-3 rounded border border-indigo-200 bg-white p-2">
                               <p className="text-[11px] font-semibold text-indigo-900">SEO Plugin Metadata</p>
-                              <p className="mt-1 text-[10px] text-indigo-700">
+                              <p className="mt-1 text-[10px] text-zinc-600">
                                 Rank Math/Custom Endpoint는 실제로 WordPress에 반영되고, Yoast/AIOSEO도
                                 표준 REST 경로로 반영을 시도합니다. article과 같은 WordPress post를
                                 대상으로 하지만, wordpress_blog 자신의 seoTitle/metaDescription/
@@ -775,46 +1232,67 @@ export default async function ArticleBlogPage({
                                 </span>
                               )}
                             </div>
+                              </>
+                            )}
 
+                            {/* Step 5. 대표 이미지 — 대표 이미지 탭. */}
+                            {activeTab === "image" && (
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-[11px] font-semibold text-indigo-900">Step 5. 대표 이미지</p>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.featuredImage)}`}>{workflowStatus.featuredImage}</span>
                               </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
-                                대표 이미지를 연결하거나, 명시적으로 이미지 없이 진행합니다. 대표 이미지
-                                연결 전, 먼저 WordPress Media Library에 있는 이미지의 media ID를
-                                입력하세요. media ID는 WordPress 관리자 &gt; 미디어에서 확인할 수 있습니다.
+                              <p className="mt-1 text-[10px] text-zinc-600">
+                                WordPress 목록, 공유 링크, 본문 상단에 표시될 대표 이미지를 설정합니다.
+                                이미지가 없으면 CTR이 낮아질 수 있어 확인이 필요합니다. 대표 이미지 연결
+                                전, 먼저 WordPress Media Library에 있는 이미지의 media ID를 입력하세요.
+                                media ID는 WordPress 관리자 &gt; 미디어에서 확인할 수 있습니다.
                               </p>
 
-                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
+                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-zinc-600 sm:grid-cols-2">
                                 <div>
-                                  <dt className="font-medium">현재 대표 이미지 상태</dt>
+                                  <dt className="font-medium text-zinc-700">현재 대표 이미지 상태</dt>
                                   <dd>{featuredImage.status}</dd>
                                 </div>
                                 <div>
-                                  <dt className="font-medium">WordPress media ID</dt>
+                                  <dt className="font-medium text-zinc-700">WordPress media ID</dt>
                                   <dd>{featuredImage.wordpressMediaId ?? "-"}</dd>
                                 </div>
-                                <div>
-                                  <dt className="font-medium">WordPress media URL</dt>
-                                  <dd className="break-all">{featuredImage.wordpressUrl ?? "-"}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">연결 상태</dt>
-                                  <dd>{featuredImage.attachStatus}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">업로드 상태</dt>
-                                  <dd>{featuredImage.uploadStatus}</dd>
-                                </div>
-                                {(featuredImage.attachError || featuredImage.uploadError) && (
-                                  <div className="sm:col-span-2">
-                                    <dt className="font-medium text-red-700">오류 메시지</dt>
-                                    <dd className="text-red-700">{featuredImage.attachError ?? featuredImage.uploadError}</dd>
-                                  </div>
-                                )}
                               </dl>
+                              {(featuredImage.attachError || featuredImage.uploadError) && (
+                                <p className="mt-1 text-[10px] font-medium text-red-700">
+                                  {featuredImage.waived
+                                    ? "참고: 이전 Media ID 연결 시도 실패 기록 있음(현재는 이미지 없이 진행 중)."
+                                    : `오류: ${featuredImage.attachError ?? featuredImage.uploadError}`}
+                                </p>
+                              )}
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-[10px] font-medium text-zinc-500">대표 이미지 상세 보기</summary>
+                                <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-zinc-600 sm:grid-cols-2">
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">WordPress media URL</dt>
+                                    <dd className="break-all">{featuredImage.wordpressUrl ?? "-"}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">연결 상태</dt>
+                                    <dd>{featuredImage.attachStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">업로드 상태</dt>
+                                    <dd>{featuredImage.uploadStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium text-zinc-700">마지막 연결</dt>
+                                    <dd>{featuredImage.attachedAt ?? "-"}</dd>
+                                  </div>
+                                  {(featuredImage.attachError || featuredImage.uploadError) && (
+                                    <div className="sm:col-span-2">
+                                      <dt className="font-medium text-red-700">오류 메시지 원문</dt>
+                                      <dd className="text-red-700">{featuredImage.attachError ?? featuredImage.uploadError}</dd>
+                                    </div>
+                                  )}
+                                </dl>
+                              </details>
 
                               <form action={saveWordPressFeaturedImageMediaForBlogPostAction} className="mt-2 flex flex-wrap items-end gap-2 text-[11px]">
                                 <input type="hidden" name="articleId" value={article.id} />
@@ -853,7 +1331,7 @@ export default async function ArticleBlogPage({
 
                               <div className="mt-3 rounded border border-indigo-100 bg-indigo-50/40 p-2">
                                 <p className="text-[11px] font-semibold text-indigo-900">내 컴퓨터에서 이미지 업로드</p>
-                                <p className="mt-1 text-[10px] text-indigo-700">
+                                <p className="mt-1 text-[10px] text-zinc-600">
                                   내 컴퓨터의 이미지를 선택하면 WordPress Media Library에 업로드됩니다. 업로드가
                                   완료되면 media ID가 자동으로 저장되고, 이후 대표 이미지로 연결할 수 있습니다.
                                 </p>
@@ -874,7 +1352,7 @@ export default async function ArticleBlogPage({
 
                               <div className="mt-3 rounded border border-indigo-100 bg-indigo-50/40 p-2">
                                 <p className="text-[11px] font-semibold text-indigo-900">AI 대표 이미지 생성</p>
-                                <p className="mt-1 text-[10px] text-indigo-700">
+                                <p className="mt-1 text-[10px] text-zinc-600">
                                   IMAGE_GENERATION_ENABLED=false이면 실제 이미지 생성 없이 mock으로
                                   처리됩니다. 생성된 이미지는 article이 아니라 이 wordpress_blog 글
                                   기준으로만 저장됩니다.
@@ -941,7 +1419,7 @@ export default async function ArticleBlogPage({
                                 <p className="text-[11px] font-semibold text-indigo-900">대표 이미지 없이 진행</p>
                                 {featuredImage.waived ? (
                                   <>
-                                    <p className="mt-1 text-[10px] text-indigo-700">
+                                    <p className="mt-1 text-[10px] text-zinc-600">
                                       상태: <span className="font-medium">대표 이미지 없음으로 진행</span> — 사용자가
                                       대표 이미지 없이 게시 준비를 진행하도록 선택했습니다.
                                       {featuredImage.waivedReasonCode &&
@@ -961,7 +1439,7 @@ export default async function ArticleBlogPage({
                                   </>
                                 ) : (
                                   <>
-                                    <p className="mt-1 text-[10px] text-indigo-700">
+                                    <p className="mt-1 text-[10px] text-zinc-600">
                                       대표 이미지 없이 진행할 수 있습니다. 다만 검색 결과 클릭률, SNS 공유 미리보기,
                                       블로그 가독성에 영향을 줄 수 있습니다.
                                     </p>
@@ -1024,15 +1502,19 @@ export default async function ArticleBlogPage({
                                 </ul>
                               )}
                             </div>
+                            )}
 
-                            {/* Step 6. 게시 가능 상태 확인 */}
+                            {/* Step 6. 게시 가능 상태 확인 — 체크리스트 탭. */}
+                            {activeTab === "checklist" && (
+                              <>
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-[11px] font-semibold text-indigo-900">Step 6. 게시 가능 상태 확인</p>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.publishGuard)}`}>{workflowStatus.publishGuard}</span>
                               </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
-                                Draft, SEO, 대표 이미지, 승인 상태를 확인합니다.
+                              <p className="mt-1 text-[10px] text-zinc-600">
+                                Draft, SEO metadata, 대표 이미지, 승인 상태가 모두 준비되었는지 최종
+                                확인합니다.
                               </p>
                               <p className="mt-1 text-[11px] font-medium text-indigo-800">
                                 게시 준비 상태: {readiness.ready ? "준비됨" : "차단됨"}
@@ -1070,7 +1552,7 @@ export default async function ArticleBlogPage({
                                 <p className="text-[11px] font-semibold text-indigo-900">Step 7. 게시 체크리스트 / Handoff</p>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.checklist)}`}>{workflowStatus.checklist}</span>
                               </div>
-                              <p className="mt-1 text-[10px] text-indigo-700">
+                              <p className="mt-1 text-[10px] text-zinc-600">
                                 WordPress 관리자 화면에서 최종 확인하기 위한 체크리스트와 handoff를
                                 준비합니다. 위쪽의 &ldquo;게시 체크리스트 준비&rdquo; 버튼으로 체크리스트를
                                 만들 수 있습니다.
@@ -1192,7 +1674,7 @@ export default async function ArticleBlogPage({
                               )}
 
                               {(post.manualPostUrl || post.postUrl) && (
-                                <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-indigo-700">
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-zinc-600">
                                   <span>
                                     게시 URL 기록 완료:{" "}
                                     <a
@@ -1233,6 +1715,8 @@ export default async function ArticleBlogPage({
                                 </details>
                               )}
                             </div>
+                              </>
+                            )}
                           </WordPressPublishingPanel>
                         );
                       })()}
@@ -1284,6 +1768,75 @@ export default async function ArticleBlogPage({
           )}
           <PaginationControls basePath={basePath} searchParams={currentSearchParams} pagination={pagination} />
         </section>
+
+        {/* 프로세스 로그 / 실행 이력 — wordpress_blog 카드 안에서 프로세스 로그/실행
+            이력/raw details_json 같은 디버그성 정보를 빼서 여기로 모은다. 카드
+            안에는 짧은 요약 + "상세 로그 보기" 링크만 남긴다(위 카드의 "최근
+            WordPress 반영 결과" 참고). 기본은 접힌 상태다. */}
+        {wordpressBlogPostIds.size > 0 && (
+          <section id="process-logs" className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <details>
+              <summary className="cursor-pointer text-sm font-semibold text-zinc-700">
+                프로세스 로그 / 실행 이력 ({filteredProcessLogEntries.length}개)
+              </summary>
+              <p className="mt-2 text-xs text-zinc-500">
+                문제가 발생했을 때만 로그를 확인하세요. 일반적인 글 작성과 WordPress 반영 작업에는 필요하지
+                않습니다.
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                이 영역은 시스템 실행 기록입니다. WordPress 반영 실패나 상태 확인이 필요할 때 참고하세요.
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
+                {LOG_FILTER_OPTIONS.map((opt) => (
+                  <a
+                    key={opt.key}
+                    href={`${basePath}?${new URLSearchParams({ ...currentSearchParams, logFilter: opt.key }).toString()}#process-logs`}
+                    className={`rounded-full px-2 py-0.5 font-medium ${
+                      logFilter === opt.key ? "bg-indigo-700 text-white" : "border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100"
+                    }`}
+                  >
+                    {opt.label}
+                  </a>
+                ))}
+              </div>
+
+              {posts
+                .filter((post) => post.platform === "wordpress_blog")
+                .map((post) => {
+                  const groupEntries = sortWordPressBlogProcessLogEntriesForDisplay(
+                    filterWordPressBlogProcessLogEntriesByPost(filteredProcessLogEntries, post.id)
+                  );
+                  const visible = groupEntries.slice(0, PROCESS_LOG_VISIBLE_COUNT);
+                  const rest = groupEntries.slice(PROCESS_LOG_VISIBLE_COUNT);
+                  return (
+                    <div
+                      key={post.id}
+                      id={buildAnchorId("process-log-group", post.id)}
+                      className="mt-3 rounded border border-zinc-200 p-2"
+                    >
+                      <p className="text-xs font-medium text-zinc-700">
+                        {post.postTitle || "(제목 없음)"} · wordpress_blog · {post.id}
+                      </p>
+                      {groupEntries.length === 0 ? (
+                        <p className="mt-1 text-[11px] text-zinc-400">표시할 로그가 없습니다.</p>
+                      ) : (
+                        <>
+                          <ul className="mt-1 space-y-1 text-[11px]">{visible.map((entry) => renderProcessLogEntry(entry))}</ul>
+                          {rest.length > 0 && (
+                            <details className="mt-1">
+                              <summary className="cursor-pointer text-[11px] text-indigo-600">더 보기 ({rest.length}개)</summary>
+                              <ul className="mt-1 space-y-1 text-[11px]">{rest.map((entry) => renderProcessLogEntry(entry))}</ul>
+                            </details>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+            </details>
+          </section>
+        )}
       </div>
     </div>
   );

@@ -5,7 +5,8 @@
 // (public) 게시는 어떤 단계에서도 수행하지 않는다 — WordPress에는
 // 항상 draft 상태로만 남는다.
 
-import { getSocialPostById } from "@/lib/repositories/social-posts-repository";
+import { getSocialPostById, updateSocialPostContent } from "@/lib/repositories/social-posts-repository";
+import type { SocialPost } from "./social-platform-types";
 import { getSuccessfulWordPressDraft } from "@/lib/repositories/publish-repository";
 import { publishArticleToWordPressDraft } from "@/lib/publish/publish-service";
 import type { PublishArticleOptions } from "@/lib/publish/publish-service";
@@ -28,6 +29,63 @@ export interface PrepareWordPressBlogPostForPublishingResult {
   failedStep?: WordPressBlogPreparationStep;
   steps: WordPressBlogPreparationStepResult[];
   message: string;
+}
+
+const STEP_LABELS: Record<WordPressBlogPreparationStep, string> = {
+  quality: "품질검사",
+  approval: "승인",
+  draft: "WordPress Draft",
+  seo_metadata: "SEO Metadata",
+  featured_image: "대표 이미지",
+  publish_guard: "게시 가능 상태",
+};
+
+/** "최근 WordPress 반영 결과" UI에서 단계 코드를 사용자 친화적인 한국어로 보여줄 때 쓴다. */
+export function getWordPressBlogPreparationStepLabel(step: WordPressBlogPreparationStep): string {
+  return STEP_LABELS[step] ?? step;
+}
+
+const STEP_STATUS_LABELS: Record<WordPressBlogPreparationStepResult["status"], string> = {
+  success: "성공",
+  skipped: "건너뜀",
+  warning: "경고",
+  failed: "실패",
+};
+
+export function getWordPressBlogPreparationStepStatusLabel(status: WordPressBlogPreparationStepResult["status"]): string {
+  return STEP_STATUS_LABELS[status] ?? status;
+}
+
+/**
+ * 실행 결과를 반환하기 직전에 social_posts.platformMetadata.lastPublishPreparationRun
+ * (JSON, DB schema 변경 없음)에 그대로 남긴다 — "WordPress에 반영하기"를
+ * 실행한 뒤 페이지를 새로고침해도(redirect 이후 flash message가 사라져도)
+ * "최근 WordPress 반영 결과" 섹션에서 마지막 실행 결과를 계속 볼 수 있게
+ * 하기 위해서다. 저장 자체가 실패해도 게시 준비 결과(steps)는 그대로
+ * 반환한다 — 화면에 최근 결과가 갱신되지 않을 뿐 실행 결과에는 영향 없다.
+ */
+async function finishAndPersist(
+  post: SocialPost,
+  result: PrepareWordPressBlogPostForPublishingResult
+): Promise<PrepareWordPressBlogPostForPublishingResult> {
+  try {
+    const existingMetadata = post.platformMetadata ?? {};
+    await updateSocialPostContent(post.id, {
+      platformMetadata: {
+        ...existingMetadata,
+        lastPublishPreparationRun: {
+          success: result.success,
+          failedStep: result.failedStep ?? null,
+          steps: result.steps,
+          message: result.message,
+          ranAt: new Date().toISOString(),
+        },
+      },
+    });
+  } catch {
+    // 저장 실패는 무시한다 — 아래 주석 참고.
+  }
+  return result;
 }
 
 /**
@@ -56,7 +114,7 @@ export async function prepareWordPressBlogPostForPublishing(
   if (post.qualityStatus !== "ready") {
     const message = `quality_status가 ready가 아닙니다 (현재: ${post.qualityStatus}). 먼저 품질검사를 통과하세요.`;
     steps.push({ step: "quality", status: "failed", message });
-    return { success: false, failedStep: "quality", steps, message };
+    return finishAndPersist(post, { success: false, failedStep: "quality", steps, message });
   }
   steps.push({ step: "quality", status: "success", message: "quality_status=ready 확인됨." });
 
@@ -64,7 +122,7 @@ export async function prepareWordPressBlogPostForPublishing(
   if (post.approvalStatus !== "approved") {
     const message = `approval_status가 approved가 아닙니다 (현재: ${post.approvalStatus}). 먼저 승인하세요.`;
     steps.push({ step: "approval", status: "failed", message });
-    return { success: false, failedStep: "approval", steps, message };
+    return finishAndPersist(post, { success: false, failedStep: "approval", steps, message });
   }
   steps.push({ step: "approval", status: "success", message: "approval_status=approved 확인됨." });
 
@@ -82,7 +140,7 @@ export async function prepareWordPressBlogPostForPublishing(
     : await publishArticleToWordPressDraft(articleId, { contentOverride });
   if (!draftResult.success) {
     steps.push({ step: "draft", status: "failed", message: draftResult.message });
-    return { success: false, failedStep: "draft", steps, message: draftResult.message };
+    return finishAndPersist(post, { success: false, failedStep: "draft", steps, message: draftResult.message });
   }
   steps.push({ step: "draft", status: "success", message: draftResult.message });
 
@@ -90,7 +148,7 @@ export async function prepareWordPressBlogPostForPublishing(
   const seoResult = await updateWordPressSeoMetadataFromBlogPost(articleId, socialPostId);
   if (!seoResult.success) {
     steps.push({ step: "seo_metadata", status: "failed", message: seoResult.message });
-    return { success: false, failedStep: "seo_metadata", steps, message: seoResult.message };
+    return finishAndPersist(post, { success: false, failedStep: "seo_metadata", steps, message: seoResult.message });
   }
   steps.push({ step: "seo_metadata", status: "success", message: seoResult.message });
 
@@ -112,7 +170,7 @@ export async function prepareWordPressBlogPostForPublishing(
       message: mediaResult.message,
     });
     if (!mediaResult.success) {
-      return { success: false, failedStep: "featured_image", steps, message: mediaResult.message };
+      return finishAndPersist(post, { success: false, failedStep: "featured_image", steps, message: mediaResult.message });
     }
   } else if (featuredImageWaived) {
     steps.push({
@@ -137,12 +195,12 @@ export async function prepareWordPressBlogPostForPublishing(
     message: guardResult.message,
   });
   if (!guardResult.success) {
-    return { success: false, failedStep: "publish_guard", steps, message: guardResult.message };
+    return finishAndPersist(post, { success: false, failedStep: "publish_guard", steps, message: guardResult.message });
   }
 
-  return {
+  return finishAndPersist(post, {
     success: true,
     steps,
     message: "WordPress 게시 준비를 모두 완료했습니다 (실제 공개 게시는 수행하지 않았습니다).",
-  };
+  });
 }

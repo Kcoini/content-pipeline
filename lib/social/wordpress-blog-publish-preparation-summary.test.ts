@@ -34,13 +34,22 @@ beforeEach(() => {
 });
 
 describe("buildWordPressBlogPublishPreparationSummary", () => {
-  it("draft가 있으면 postId/postUrl을 담는다", async () => {
+  it("draft가 있으면 postId/postUrl/lastUpdatedAt을 담는다", async () => {
     getArticleById.mockResolvedValue(null);
-    getSuccessfulWordPressDraft.mockResolvedValue({ externalPostId: "123", postUrl: "https://example.com/post" });
+    getSuccessfulWordPressDraft.mockResolvedValue({
+      externalPostId: "123",
+      postUrl: "https://example.com/post",
+      createdAt: "2026-08-20T02:10:00.000Z",
+    });
 
     const summary = await buildWordPressBlogPublishPreparationSummary("article-1", makePost() as never);
 
-    expect(summary.draft).toEqual({ exists: true, postId: "123", postUrl: "https://example.com/post" });
+    expect(summary.draft).toEqual({
+      exists: true,
+      postId: "123",
+      postUrl: "https://example.com/post",
+      lastUpdatedAt: "2026-08-20T02:10:00.000Z",
+    });
   });
 
   it("draft가 없으면 exists=false를 반환한다", async () => {
@@ -96,7 +105,7 @@ describe("buildWordPressBlogPublishPreparationSummary", () => {
     expect(summary.readiness.ready).toBe(false);
   });
 
-  it("featuredImage 요약에 wordpressUrl/attachStatus/attachError/uploadStatus/uploadError를 포함한다", async () => {
+  it("featuredImage 요약에 wordpressUrl/attachStatus/attachError/attachedAt/uploadStatus/uploadError를 포함한다", async () => {
     getSuccessfulWordPressDraft.mockResolvedValue(null);
     getArticleById.mockResolvedValue({
       featuredImageStatus: "ready",
@@ -104,6 +113,7 @@ describe("buildWordPressBlogPublishPreparationSummary", () => {
       featuredImageWordpressUrl: "https://example.com/image.jpg",
       wordpressFeaturedMediaAttachStatus: "failed",
       wordpressFeaturedMediaAttachError: "미디어를 찾을 수 없습니다.",
+      wordpressFeaturedMediaAttachedAt: "2026-08-20T02:13:00.000Z",
       featuredImageUploadStatus: "uploaded",
       featuredImageUploadError: null,
     });
@@ -116,6 +126,7 @@ describe("buildWordPressBlogPublishPreparationSummary", () => {
       wordpressUrl: "https://example.com/image.jpg",
       attachStatus: "failed",
       attachError: "미디어를 찾을 수 없습니다.",
+      attachedAt: "2026-08-20T02:13:00.000Z",
       uploadStatus: "uploaded",
       uploadError: null,
       waived: false,

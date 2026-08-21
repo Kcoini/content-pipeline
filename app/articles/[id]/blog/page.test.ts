@@ -59,10 +59,23 @@ describe("article blog page pagination (정적 소스 검사, Phase 3-18)", () =
 });
 
 describe("article/blog 역할 분리 (정적 소스 검사)", () => {
-  it("wordpress_blog/naver_blog 역할을 구분하는 안내 문구를 표시한다", () => {
-    expect(pageSource).toContain("wordpress_blog로 생성된 블로그 글입니다");
+  it("wordpress_blog/naver_blog 역할을 구분하는 카드 내부 안내 문구를 표시한다(페이지 상단 설명 박스는 제거됨)", () => {
     expect(pageSource).toContain("이 글은 WordPress 게시용 블로그 글입니다.");
     expect(pageSource).toContain("이 글은 네이버 블로그 수동 게시용 글입니다.");
+  });
+
+  it("페이지 상단 안내 박스와 platform 설명 카드가 제거되어 있다", () => {
+    expect(pageSource).not.toContain("이 페이지에서는 원본 article을 기반으로 플랫폼별 블로그 글을 생성합니다.");
+    expect(pageSource).not.toContain("작업 후 이 페이지로 돌아오도록 returnTo가 적용됩니다.");
+    expect(pageSource).not.toContain("SEO 제목, 메타 설명, target keyword, 승인, FAQ/");
+    expect(pageSource).not.toContain("자연스러운 도입부, 네이버 검색 의도, 과장 없는");
+  });
+
+  it("ArticleWorkflowNavigation 바로 다음에 오는 것은 더 이상 상단 설명 박스가 아니다(DeepLinkNotice 또는 그 이후 UI)", () => {
+    const navIdx = pageSource.indexOf("<ArticleWorkflowNavigation");
+    const navEndIdx = pageSource.indexOf("/>", navIdx);
+    const afterNav = pageSource.slice(navEndIdx, navEndIdx + 200);
+    expect(afterNav).not.toContain("원본 article을 기반으로");
   });
 
   it("wordpress_blog 카드에서만 WordPress 게시 관련 버튼을 조건부로 렌더링한다", () => {
@@ -124,7 +137,7 @@ describe("WordPress 게시 준비 섹션 (blog 카드 내부, 정적 소스 검�
     expect(pageSource).toContain("attachWordPressFeaturedImageFromBlogPostAction");
     expect(pageSource).toContain("updateWordPressDraftFromBlogPostAction");
     expect(pageSource).toContain("prepareWordPressBlogPostForPublishingAction");
-    expect(pageSource).toContain("게시 준비 자동 실행");
+    expect(pageSource).toContain("WordPress에 반영하기");
   });
 
   it("article 페이지 고급 기능을 사용하라는 안내 문구가 더 이상 없다", () => {
@@ -477,9 +490,9 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
     expect(pageSource).toContain("수동 게시 완료 표시");
   });
 
-  it("WordPress 게시 준비 일괄 실행은 '게시 준비 자동 실행'으로 표시되고, Step 목록보다 앞(상단)에 있다", () => {
-    expect(pageSource).toContain("게시 준비 자동 실행");
-    const batchButtonIdx = pageSource.indexOf("게시 준비 자동 실행");
+  it("WordPress 게시 준비 일괄 실행은 'WordPress에 반영하기'로 표시되고, Step 목록보다 앞(상단)에 있다", () => {
+    expect(pageSource).toContain("WordPress에 반영하기");
+    const batchButtonIdx = pageSource.indexOf("WordPress에 반영하기");
     const step1Idx = pageSource.indexOf("Step 1. 품질검사");
     expect(batchButtonIdx).toBeLessThan(step1Idx);
   });
@@ -637,5 +650,398 @@ describe("확인 필요 항목 수동 검토 UI (Step 7, blog 카드 내부, 정
     const guideBlockIdx = pageSource.indexOf("지금 확인이 필요한 항목");
     expect(guideBlockIdx).toBeGreaterThan(wordpressBlockStart);
     expect(guideBlockIdx).toBeLessThan(naverContentSafetyBlockStart);
+  });
+});
+
+describe("WordPress 게시 미리보기 / 반영 데이터 / 검사 이유 / 최근 반영 결과 (blog 카드 내부, 정적 소스 검사)", () => {
+  it("WordPress 게시 미리보기 섹션이 표시되고 postPreview(wordpress_blog 자신의 값)를 사용한다", () => {
+    expect(pageSource).toContain("WordPress 게시 미리보기");
+    expect(pageSource).toContain("buildWordPressBlogPostPreview({");
+    expect(pageSource).toContain("postTitle: post.postTitle");
+    expect(pageSource).toContain("postBody: post.postBody");
+    expect(pageSource).toContain("{postPreview.title}");
+    expect(pageSource).toContain("{postPreview.bodyPreviewText");
+  });
+
+  it("미리보기는 article content를 사용하지 않는다", () => {
+    const previewIdx = pageSource.indexOf("buildWordPressBlogPostPreview({");
+    const previewCallBlock = pageSource.slice(previewIdx, previewIdx + 400);
+    expect(previewCallBlock).not.toContain("article.content");
+    expect(previewCallBlock).not.toContain("article.title");
+  });
+
+  it("전체 미리보기 보기를 위한 접기/펼치기가 있다", () => {
+    expect(pageSource).toContain("전체 미리보기 보기");
+    expect(pageSource).toContain("postPreview.bodyTruncated");
+  });
+
+  it("FAQ/AD_SLOT/참고자료 미리보기를 표시한다", () => {
+    expect(pageSource).toContain("FAQ 영역 미리보기");
+    expect(pageSource).toContain("광고 위치 (AD_SLOT)");
+    expect(pageSource).toContain("광고 위치 예정");
+    expect(pageSource).toContain("참고자료/출처 미리보기");
+  });
+
+  it("WordPress 반영 데이터 요약이 표시된다", () => {
+    expect(pageSource).toContain("WordPress 반영 데이터");
+    expect(pageSource).toContain("아래 정보가 WordPress에 반영됩니다");
+    expect(pageSource).toContain("업데이트 대상");
+  });
+
+  it("검사가 많은 이유 안내 박스가 표시된다", () => {
+    expect(pageSource).toContain("검사가 많은 이유는 자동 생성 글을 바로 공개하지 않고");
+  });
+
+  it("Step 1~6마다 왜 필요한지 설명이 표시된다", () => {
+    expect(pageSource).toContain("본문 구조, SEO 요소, 정책 위험, 광고 슬롯 위치를 확인합니다");
+    expect(pageSource).toContain("자동 생성 글을 바로 게시하지 않기 위해 사람이 한 번 확인하는 단계입니다");
+    expect(pageSource).toContain("이 단계에서 wordpress_blog 글의 제목과 본문이 실제 WordPress Draft로");
+    expect(pageSource).toContain("Rank Math, Yoast, AIOSEO 등 SEO plugin에 SEO title, meta description");
+    expect(pageSource).toContain("WordPress 목록, 공유 링크, 본문 상단에 표시될 대표 이미지를 설정합니다");
+    expect(pageSource).toContain("Draft, SEO metadata, 대표 이미지, 승인 상태가 모두 준비되었는지 최종");
+  });
+
+  it("Draft 상태에 마지막 업데이트 시간과 WordPress에서 보기 버튼이 있다", () => {
+    expect(pageSource).toContain("마지막 업데이트");
+    expect(pageSource).toContain("{draft.lastUpdatedAt");
+    expect(pageSource).toContain("WordPress에서 Draft 보기");
+  });
+
+  it("Draft URL이 없으면 WordPress에서 보기 버튼이 비활성화되고 안내 문구를 보여준다", () => {
+    expect(pageSource).toContain("아직 WordPress Draft가 생성되지 않았습니다.");
+    const noUrlButtonIdx = pageSource.indexOf("cursor-not-allowed rounded border border-zinc-200 bg-zinc-100 px-2 py-1 font-medium text-zinc-400");
+    expect(noUrlButtonIdx).toBeGreaterThan(-1);
+  });
+
+  it("대표 이미지 상태에 마지막 연결 시간이 표시된다", () => {
+    expect(pageSource).toContain("마지막 연결");
+    expect(pageSource).toContain("{featuredImage.attachedAt");
+  });
+
+  it("primary button은 'WordPress에 반영하기'이고 공개 게시를 하지 않는다는 안내를 포함한다", () => {
+    expect(pageSource).toContain("WordPress에 반영하기");
+    expect(pageSource).toContain("공개 게시 버튼은 누르지 않습니다");
+    expect(pageSource).toContain("최종 공개는 WordPress");
+  });
+
+  it("개별 단계는 보조 버튼이라는 안내 문구가 primary button 아래에 있다", () => {
+    expect(pageSource).toContain("개별 단계만 다시 실행하려면 아래 탭에서 보조 버튼을 사용하세요.");
+  });
+
+  it("최근 WordPress 반영 결과 섹션이 lastPublishPreparationRun을 읽어 표시한다", () => {
+    expect(pageSource).toContain("최근 WordPress 반영 결과");
+    expect(pageSource).toContain("post.platformMetadata.lastPublishPreparationRun");
+    expect(pageSource).toContain("getWordPressBlogPreparationStepLabel");
+    expect(pageSource).toContain("getWordPressBlogPreparationStepStatusLabel");
+  });
+
+  it("WordPress 게시 미리보기/반영 데이터/최근 반영 결과는 wordpress_blog 조건부 블록 안, naver_blog 블록 밖에 있다", () => {
+    const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
+    const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
+    const previewIdx = pageSource.indexOf("WordPress 게시 미리보기");
+    const dataIdx = pageSource.indexOf("WordPress 반영 데이터");
+    const lastRunIdx = pageSource.indexOf("최근 WordPress 반영 결과");
+    expect(previewIdx).toBeGreaterThan(wordpressBlockStart);
+    expect(previewIdx).toBeLessThan(naverContentSafetyBlockStart);
+    expect(dataIdx).toBeGreaterThan(wordpressBlockStart);
+    expect(dataIdx).toBeLessThan(naverContentSafetyBlockStart);
+    expect(lastRunIdx).toBeGreaterThan(wordpressBlockStart);
+    expect(lastRunIdx).toBeLessThan(naverContentSafetyBlockStart);
+  });
+});
+
+describe("wordpress_blog 카드 내부 탭 구조 (blog 카드 내부, 정적 소스 검사)", () => {
+  it("tab searchParam을 읽고 normalizeWordPressBlogCardTab으로 정규화한다", () => {
+    expect(pageSource).toContain("tab?: string");
+    expect(pageSource).toContain("normalizeWordPressBlogCardTab(tab)");
+  });
+
+  it("6개 탭 내비게이션(WORDPRESS_BLOG_CARD_TABS)이 표시된다", () => {
+    expect(pageSource).toContain("WORDPRESS_BLOG_CARD_TABS.map((t)");
+    expect(pageSource).toContain('tab: t.key');
+  });
+
+  it("탭마다 상태 badge(getWordPressBlogCardTabBadges)를 계산해서 표시한다", () => {
+    expect(pageSource).toContain("getWordPressBlogCardTabBadges({");
+    expect(pageSource).toContain("tabBadges.quality");
+    expect(pageSource).toContain("tabBadges.wordpress");
+    expect(pageSource).toContain("tabBadges.image");
+    expect(pageSource).toContain("tabBadges.checklist");
+  });
+
+  it("글 내용 탭이 표시된다", () => {
+    expect(pageSource).toContain('activeTab === "content"');
+    expect(pageSource).toContain(">글 내용<");
+    expect(pageSource).toContain("본문 요약");
+  });
+
+  it("WordPress 미리보기 탭이 표시된다", () => {
+    expect(pageSource).toContain('activeTab === "preview"');
+  });
+
+  it("품질·승인 탭이 표시된다", () => {
+    expect(pageSource).toContain('activeTab === "quality"');
+  });
+
+  it("WordPress 반영 탭이 표시된다", () => {
+    expect(pageSource).toContain('activeTab === "wordpress"');
+  });
+
+  it("대표 이미지 탭이 표시된다", () => {
+    expect(pageSource).toContain('activeTab === "image"');
+  });
+
+  it("체크리스트 탭이 표시된다", () => {
+    expect(pageSource).toContain('activeTab === "checklist"');
+  });
+
+  it("상단 상태 요약과 WordPress에 반영하기 buttons은 탭 게이트 없이(탭과 무관하게) 항상 보인다", () => {
+    const navIdx = pageSource.indexOf("<nav");
+    const statusSummaryIdx = pageSource.indexOf("단계별 상태 요약");
+    const primaryButtonIdx = pageSource.indexOf("WordPress에 반영하기");
+    expect(statusSummaryIdx).toBeLessThan(navIdx);
+    expect(primaryButtonIdx).toBeLessThan(navIdx);
+  });
+
+  it("다음 추천 작업에 해당 탭으로 이동하는 버튼이 있다(getTabForWorkflowStep)", () => {
+    expect(pageSource).toContain("getTabForWorkflowStep(nextAction.step)");
+    expect(pageSource).toContain("탭으로 이동");
+  });
+
+  it("action 후 returnTo/highlight/tab이 유지되도록 selfReturnTo가 activeTab을 포함한다", () => {
+    expect(pageSource).toContain(
+      "const selfReturnTo = buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: activeTab });"
+    );
+  });
+
+  it("naver_blog 카드에는 WordPress 탭 내비게이션(WORDPRESS_BLOG_CARD_TABS)이 표시되지 않는다", () => {
+    const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
+    const detailsSectionStart = pageSource.indexOf("게시 결과 기록 / Metrics 입력");
+    const naverBlockSource = pageSource.slice(naverContentSafetyBlockStart, detailsSectionStart);
+    expect(naverBlockSource).not.toContain("WORDPRESS_BLOG_CARD_TABS");
+    expect(naverBlockSource).not.toContain("activeTab");
+  });
+
+  it("탭 내비게이션과 탭 게이트는 wordpress_blog 조건부 블록 안에 있다", () => {
+    const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
+    const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
+    const navIdx = pageSource.indexOf("<nav");
+    expect(navIdx).toBeGreaterThan(wordpressBlockStart);
+    expect(navIdx).toBeLessThan(naverContentSafetyBlockStart);
+  });
+
+  it("탭 내비게이션은 새 라이브러리 없이 sticky(기존 Tailwind class)로 구현되어 있다", () => {
+    expect(pageSource).toContain("sticky top-0");
+  });
+});
+
+describe("프로세스 로그 / 실행 이력 (페이지 하단, 정적 소스 검사)", () => {
+  it("페이지 하단에 process-logs 섹션이 있다", () => {
+    expect(pageSource).toContain('id="process-logs"');
+    expect(pageSource).toContain("프로세스 로그 / 실행 이력");
+  });
+
+  it("process-logs 섹션은 <details>로 기본 접힘 상태다", () => {
+    const sectionIdx = pageSource.indexOf('id="process-logs"');
+    const nearby = pageSource.slice(sectionIdx, sectionIdx + 200);
+    expect(nearby).toContain("<details>");
+    expect(nearby).not.toContain("<details open");
+  });
+
+  it("문제가 발생했을 때만 확인하라는 안내와 시스템 실행 기록이라는 안내 문구가 있다", () => {
+    expect(pageSource).toContain("문제가 발생했을 때만 로그를 확인하세요");
+    expect(pageSource).toContain("이 영역은 시스템 실행 기록입니다");
+  });
+
+  it("로그 필터(전체/WordPress/SEO/대표 이미지/게시 준비/Handoff/실패만 보기)가 표시된다", () => {
+    expect(pageSource).toContain("LOG_FILTER_OPTIONS");
+    expect(pageSource).toContain('{ key: "all", label: "전체" }');
+    expect(pageSource).toContain('{ key: "failed_only", label: "실패만 보기" }');
+  });
+
+  it("카드별로 로그를 구분해서 보여준다(post.id별 그룹, anchor 포함)", () => {
+    expect(pageSource).toContain('buildAnchorId("process-log-group", post.id)');
+    expect(pageSource).toContain("filterWordPressBlogProcessLogEntriesByPost");
+  });
+
+  it("최근 20개만 기본 표시하고 더 보기로 나머지를 접어둔다", () => {
+    expect(pageSource).toContain("PROCESS_LOG_VISIBLE_COUNT");
+    expect(pageSource).toContain("더 보기 (");
+  });
+
+  it("실패 로그를 우선 정렬한다(sortWordPressBlogProcessLogEntriesForDisplay)", () => {
+    expect(pageSource).toContain("sortWordPressBlogProcessLogEntriesForDisplay(");
+  });
+
+  it("raw JSON은 기본 표시되지 않고 '상세 JSON 보기'로 접혀 있다", () => {
+    expect(pageSource).toContain("상세 JSON 보기");
+    expect(pageSource).toContain("JSON.stringify(entry.rawDetails");
+  });
+
+  it("카드 안에는 최근 실행 결과 요약과 '상세 로그 보기' 링크만 있고, 긴 로그 목록은 없다", () => {
+    const cardBlockStart = pageSource.indexOf("최근 WordPress 반영 결과 —");
+    const cardBlockEnd = pageSource.indexOf("Step 1. 품질검사 (버튼은");
+    const cardBlock = pageSource.slice(cardBlockStart, cardBlockEnd);
+    expect(cardBlock).toContain("상세 실행 로그는 페이지 하단에서 확인할 수 있습니다.");
+    expect(cardBlock).toContain("상세 로그 보기");
+    expect(cardBlock).not.toContain("renderProcessLogEntry");
+    expect(cardBlock).not.toContain("JSON.stringify(entry.rawDetails");
+  });
+
+  it("'상세 로그 보기' 링크는 해당 socialPostId의 하단 로그 그룹 anchor로 이동한다", () => {
+    expect(pageSource).toContain('href={`#${buildAnchorId("process-log-group", post.id)}`}');
+  });
+
+  it("체크리스트(Step 7)는 카드 안 checklist 탭에 그대로 유지된다", () => {
+    const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
+    const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
+    const step7Idx = pageSource.indexOf("Step 7. 게시 체크리스트 / Handoff");
+    expect(step7Idx).toBeGreaterThan(wordpressBlockStart);
+    expect(step7Idx).toBeLessThan(naverContentSafetyBlockStart);
+  });
+
+  it("process-logs 섹션은 wordpress_blog post가 있을 때만 렌더링된다(wordpressBlogPostIds.size > 0)", () => {
+    expect(pageSource).toContain("wordpressBlogPostIds.size > 0 && (");
+  });
+
+  it("process-logs 섹션은 posts 목록 전체 렌더링이 끝난 뒤(페이지 최하단)에 위치한다", () => {
+    const paginationIdx = pageSource.lastIndexOf("<PaginationControls");
+    const processLogSectionIdx = pageSource.indexOf('id="process-logs"');
+    expect(processLogSectionIdx).toBeGreaterThan(paginationIdx);
+  });
+
+  it("naver_blog에는 process-logs 관련 로직이 없다(naver_blog 블록 안에서 참조하지 않는다)", () => {
+    const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
+    const detailsSectionStart = pageSource.indexOf("게시 결과 기록 / Metrics 입력");
+    const naverBlockSource = pageSource.slice(naverContentSafetyBlockStart, detailsSectionStart);
+    expect(naverBlockSource).not.toContain("process-log-group");
+    expect(naverBlockSource).not.toContain("wordpressBlogProcessLogEntries");
+  });
+});
+
+describe("일시적 action 결과 메시지 (toast/transient notice, 정적 소스 검사)", () => {
+  it("error/publishMessage를 본문 중간 alert box(div)가 아니라 TransientNotice로 렌더링한다", () => {
+    expect(pageSource).toContain("<TransientNotice message={error ?? null} variant=\"error\" />");
+    expect(pageSource).toContain('<TransientNotice message={publishMessage ?? null} variant="success" />');
+    expect(pageSource).not.toContain('border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}');
+    expect(pageSource).not.toContain('border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}');
+  });
+
+  it("TransientNotice를 import한다", () => {
+    expect(pageSource).toContain('import { TransientNotice } from "@/components/ui/transient-notice";');
+  });
+
+  it("\"선택한 항목을 강조 표시했습니다.\" 확인 메시지는 더 이상 표시하지 않는다(found=true인 DeepLinkNotice를 렌더링하지 않음)", () => {
+    expect(pageSource).toContain("targetSocialPostId && !targetFound && <DeepLinkNotice targetId={targetSocialPostId} found={false} />");
+    expect(pageSource).not.toContain("targetSocialPostId && <DeepLinkNotice targetId={targetSocialPostId} found={targetFound} />");
+  });
+
+  it("항목을 찾지 못했을 때의 경고(DeepLinkNotice found=false)는 여전히 표시된다", () => {
+    expect(pageSource).toContain("found={false}");
+  });
+
+  it("카드 highlight 기능(getHighlightClassName)은 그대로 유지된다", () => {
+    expect(pageSource).toContain("getHighlightClassName(post.id, targetSocialPostId)");
+  });
+
+  it("Step 1(품질검사)에 score와 마지막 실행 시간이 상태 요약으로 남아 있다", () => {
+    expect(pageSource).toContain("{post.qualityScore ?? \"-\"}");
+    expect(pageSource).toContain("{post.lastQualityCheckedAt ?? \"-\"}");
+  });
+
+  it("상세 로그는 여전히 페이지 하단 프로세스 로그 섹션에서 확인할 수 있다", () => {
+    expect(pageSource).toContain('id="process-logs"');
+    expect(pageSource).toContain("상세 로그 보기");
+  });
+
+  it("TransientNotice 사용은 wordpress_blog 전용이 아니라 페이지 상단(naver_blog 포함 전체)에 적용되어 두 platform 모두에서 동작한다", () => {
+    const navIdx = pageSource.indexOf("<ArticleWorkflowNavigation");
+    const postsListIdx = pageSource.indexOf("posts.map((post)");
+    const noticeIdx = pageSource.indexOf("<TransientNotice");
+    expect(noticeIdx).toBeGreaterThan(navIdx);
+    expect(noticeIdx).toBeLessThan(postsListIdx);
+  });
+});
+
+describe("wordpress_blog 카드 가독성 개선 (정적 소스 검사)", () => {
+  it("SEO/게시용 metadata는 기본 접힘 상태(details)이며 상태 badge를 상단에 보여준다", () => {
+    const boxIdx = pageSource.indexOf("SEO/게시용 metadata</p>");
+    const detailsIdx = pageSource.indexOf("SEO Metadata 상세 보기");
+    const seoTitleIdx = pageSource.indexOf(">seoTitle<");
+    expect(detailsIdx).toBeGreaterThan(boxIdx);
+    expect(seoTitleIdx).toBeGreaterThan(detailsIdx);
+  });
+
+  it("metaDescription/secondaryKeywords는 SEO Metadata 상세 보기 안에 있다", () => {
+    const detailsIdx = pageSource.indexOf("SEO Metadata 상세 보기");
+    const metaDescIdx = pageSource.indexOf(">metaDescription<");
+    const secondaryKeywordsIdx = pageSource.indexOf(">secondaryKeywords<");
+    expect(metaDescIdx).toBeGreaterThan(detailsIdx);
+    expect(secondaryKeywordsIdx).toBeGreaterThan(detailsIdx);
+  });
+
+  it("대표 이미지 상세(media URL/업로드 상태/마지막 연결)는 '대표 이미지 상세 보기' 안에 있다", () => {
+    const detailsIdx = pageSource.indexOf("대표 이미지 상세 보기");
+    const mediaUrlIdx = pageSource.indexOf("WordPress media URL");
+    const uploadStatusIdx = pageSource.lastIndexOf("업로드 상태");
+    expect(mediaUrlIdx).toBeGreaterThan(detailsIdx);
+    expect(uploadStatusIdx).toBeGreaterThan(detailsIdx);
+  });
+
+  it("대표 이미지 오류는 waived 여부에 따라 '참고' 문구와 '오류' 문구를 구분한다", () => {
+    expect(pageSource).toContain("참고: 이전 Media ID 연결 시도 실패 기록 있음(현재는 이미지 없이 진행 중).");
+    expect(pageSource).toContain("featuredImage.waived");
+  });
+
+  it("오류 메시지 원문은 대표 이미지 상세 보기 안에서만 노출된다", () => {
+    const detailsIdx = pageSource.indexOf("대표 이미지 상세 보기");
+    const rawErrorIdx = pageSource.indexOf("오류 메시지 원문");
+    expect(rawErrorIdx).toBeGreaterThan(detailsIdx);
+  });
+
+  it("내부 상태값 보기(raw quality_status 등)가 접힌 상태로 있다", () => {
+    expect(pageSource).toContain("내부 상태값 보기");
+    expect(pageSource).toContain("{post.qualityStatus}");
+    expect(pageSource).toContain("{post.approvalStatus}");
+    expect(pageSource).toContain("{post.publishStatus}");
+    expect(pageSource).toContain("{post.exportStatus}");
+    expect(pageSource).toContain("{post.manualPostStatus}");
+    const detailsIdx = pageSource.indexOf("내부 상태값 보기");
+    const summaryTagIdx = pageSource.lastIndexOf("<summary", detailsIdx + 5);
+    const detailsTagIdx = pageSource.lastIndexOf("<details", summaryTagIdx);
+    expect(detailsTagIdx).toBeGreaterThan(-1);
+  });
+
+  it("WordPress에 반영하기 버튼의 짧은 설명과 '자세히 보기' 접기가 있다", () => {
+    expect(pageSource).toContain("wordpress_blog 글을 WordPress Draft에 반영합니다. 공개 게시는 하지 않습니다.");
+    expect(pageSource).toContain("자세히 보기");
+  });
+
+  it("설명 문장은 파란색(indigo) 대신 muted(zinc) 색상을 사용한다(대부분의 description paragraph)", () => {
+    expect(pageSource).not.toContain('text-[10px] text-indigo-700"');
+  });
+
+  it("링크는 여전히 indigo 색상을 유지한다(파란색은 링크에만)", () => {
+    expect(pageSource).toContain('className="text-indigo-600 underline hover:text-indigo-700"');
+  });
+
+  it("다음 추천 작업 영역이 표시되고 해당 탭으로 이동하는 버튼이 있다", () => {
+    expect(pageSource).toContain("{nextAction.title}");
+    expect(pageSource).toContain("탭으로 이동");
+  });
+
+  it("WordPress에 반영하기 primary button은 여전히 명확하게 표시된다(항상 보이는 고정 영역)", () => {
+    const navIdx = pageSource.indexOf("<nav");
+    const primaryButtonIdx = pageSource.indexOf("WordPress에 반영하기");
+    expect(primaryButtonIdx).toBeGreaterThan(-1);
+    expect(primaryButtonIdx).toBeLessThan(navIdx);
+  });
+
+  it("가독성 개선은 wordpress_blog 조건부 블록 안에만 있고 naver_blog 블록 밖이다", () => {
+    const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
+    const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
+    const internalStatusIdx = pageSource.indexOf("내부 상태값 보기");
+    expect(internalStatusIdx).toBeGreaterThan(wordpressBlockStart);
+    expect(internalStatusIdx).toBeLessThan(naverContentSafetyBlockStart);
   });
 });

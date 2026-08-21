@@ -58,13 +58,22 @@ Phase 3에서 추가/확장된 라우트를 정리한다. Phase 1~2의 `/`,
   선택), 대표 이미지 정보 저장/로컬 업로드/**AI 이미지 생성**(prompt
   생성 + 실제 생성)/연결, 대표 이미지 없이 진행(wordpress_blog 게시
   준비 전용 waive — `/articles/[id]`의 article 원본 전송 waive와는
-  독립적), **게시 준비 자동 실행**(예전 WordPress 게시 준비 일괄
-  실행, 모두 readiness 통과 시에만 활성화). `naver_blog`에는
-  WordPress 관련 버튼이 표시되지 않는다.
-  이 버튼들은 화면에서 단순 나열되지 않고 "단계별 상태 요약" →
-  "다음 추천 작업" → 게시 준비 자동 실행 → Step 1(품질검사)~
-  Step 7(체크리스트/Handoff)의 단계형 workflow UI로 구성된다
-  (자세한 구성은 `docs/article-blog-wordpress-workflow.md` 참고).
+  독립적), **WordPress에 반영하기**(예전 게시 준비 자동 실행/
+  WordPress 게시 준비 일괄 실행, action은 그대로
+  `prepareWordPressBlogPostForPublishingAction`, 모두 readiness 통과
+  시에만 활성화, 공개 게시는 하지 않음). `naver_blog`에는 WordPress
+  관련 버튼이 표시되지 않는다.
+  이 버튼들은 화면에서 단순 나열되지 않고 "검사가 많은 이유" 안내 →
+  "WordPress 게시 미리보기"/"WordPress 반영 데이터" → "단계별 상태
+  요약" → "다음 추천 작업" → **WordPress에 반영하기** → "최근
+  WordPress 반영 결과" → Step 1(품질검사)~Step 7(체크리스트/Handoff)의
+  단계형 workflow UI로 구성된다(자세한 구성은
+  `docs/article-blog-wordpress-workflow.md` 참고). WordPress 게시
+  미리보기는 wordpress_blog 자신의 제목/본문/SEO/대표 이미지만 쓰고
+  (article 원문 아님) FAQ/AD_SLOT/참고자료 영역을 heuristic으로
+  감지해 보여준다. 최근 WordPress 반영 결과는
+  `platformMetadata.lastPublishPreparationRun`(JSON, DB schema 변경
+  없음)에 저장되어 페이지를 새로고침해도 유지된다.
   Step 5(대표 이미지) 안에서 파일 선택/업로드/Media ID 저장/연결/
   이미지 없이 진행까지 카드 이탈 없이 끝낼 수 있다 — 파일 선택 시
   파일명/크기/형식/업로드 가능 여부와 미리보기를
