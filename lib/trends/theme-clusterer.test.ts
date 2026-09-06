@@ -82,5 +82,75 @@ describe("candidateToThemeCluster", () => {
     expect(cluster.score).toBe(first.score);
     expect(cluster.status).toBe("candidate");
     expect(cluster.createdAt).toBe(now);
+    expect(cluster.normalizedKey).toBe(first.normalizedThemeKey);
+    expect(cluster.subtopics).toEqual(first.subtopics);
+    expect(cluster.evidence).toEqual(first.evidence);
+    expect(cluster.seenCount).toBe(1);
+    expect(cluster.lastSeenAt).toBe(now);
+  });
+});
+
+describe("normalizedThemeKey/subtopics/evidence (Phase 1-16 중복 방지)", () => {
+  it("각 후보는 정규화 키를 갖는다", () => {
+    const items = getMockTrendItems();
+    const clusters = clusterTrendItems(items);
+
+    for (const cluster of clusters) {
+      expect(cluster.normalizedThemeKey.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("evidence는 플랫폼별 최대 3건만 담는다", () => {
+    const manyNaverItems = Array.from({ length: 10 }, (_, i) => ({
+      platform: "naver" as const,
+      keyword: "AI",
+      title: `AI 뉴스 ${i}`,
+      snippet: "AI 관련 소식",
+      url: `https://example.com/${i}`,
+      rankPosition: i + 1,
+    }));
+
+    const clusters = clusterTrendItems(manyNaverItems);
+    const aiCluster = clusters.find((c) => c.group.id === "ai");
+
+    expect(aiCluster?.evidence.filter((e) => e.platform === "naver").length).toBeLessThanOrEqual(3);
+  });
+
+  it("같은 이슈를 표현만 다르게 담은 기사 제목은 subtopics에서 하나로 합쳐진다", () => {
+    const items = [
+      {
+        platform: "naver" as const,
+        keyword: "AI",
+        title: "AI 에이전트 상용화 확산",
+        snippet: "",
+        url: "https://example.com/a",
+        rankPosition: 1,
+      },
+      {
+        platform: "daum" as const,
+        keyword: "AI",
+        title: "AI  에이전트   상용화   확산", // 공백 차이만 있는 동일 제목
+        snippet: "",
+        url: "https://example.com/b",
+        rankPosition: 1,
+      },
+      {
+        platform: "naver" as const,
+        keyword: "AI",
+        title: "AI 반도체 투자 확대",
+        snippet: "",
+        url: "https://example.com/c",
+        rankPosition: 2,
+      },
+    ];
+
+    const clusters = clusterTrendItems(items);
+    const aiCluster = clusters.find((c) => c.group.id === "ai");
+
+    // "AI 에이전트 상용화 확산"과 공백만 다른 두 번째 제목은 정규화 키가
+    // 같으므로 subtopics에 중복으로 들어가지 않는다(하나만 남는다).
+    const occurrences =
+      aiCluster?.subtopics.filter((s) => s.replace(/\s+/g, "") === "AI에이전트상용화확산").length ?? 0;
+    expect(occurrences).toBe(1);
   });
 });

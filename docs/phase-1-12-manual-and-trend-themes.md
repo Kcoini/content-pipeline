@@ -44,18 +44,27 @@
 | metadata | jsonb | 추가 정보 |
 
 ### `theme_clusters`
-키워드 클러스터링 결과를 저장한다.
+키워드 클러스터링 결과(공통 테마 후보)를 저장한다. **여기가 사용자에게
+"최종 공통 테마 후보"로 보이는 테이블이다** — 원본 수집 결과는
+`trend_candidates`에 그대로 남고, 이 테이블만 중복 제거 대상이다
+(자세한 중복 방지 설계는 `docs/phase-1-16-theme-candidate-deduplication.md`
+참고, migration 043).
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | uuid | PK |
-| title | text | 클러스터 제목 |
+| title | text | 클러스터(대표 테마) 제목 |
 | description | text | 설명 |
 | keywords | jsonb | 매칭된 키워드 목록 |
-| naver_count | integer | 네이버에서 감지된 횟수 |
-| daum_count | integer | 다음에서 감지된 횟수 |
-| score | numeric | 점수 = naver+daum+(3 if both>0) |
+| naver_count | integer | 네이버에서 감지된 누적 횟수 |
+| daum_count | integer | 다음에서 감지된 누적 횟수 |
+| score | numeric | 점수 = naver+daum+(3 if both>0), 병합 시 기존/신규 중 큰 값 |
 | status | text | candidate / selected / dismissed |
+| normalized_key | text | (Phase 1-16) 정규화 비교 키 — 재수집 시 같은 키는 update로 병합 |
+| subtopics | jsonb | (Phase 1-16) 대표 테마 아래 하위 주제 목록 |
+| evidence | jsonb | (Phase 1-16) 근거 원본 기사(platform/title/url), "근거 보기"용 |
+| seen_count | integer | (Phase 1-16) 재수집 때마다 같은 후보가 다시 발견된 횟수 |
+| last_seen_at | timestamptz | (Phase 1-16) 가장 최근 발견 시각 |
 
 ### `themes.metadata` (기존 테이블 컬럼 추가)
 ```json
@@ -88,7 +97,17 @@
 
 ### `lib/repositories/trend-repository.ts`
 - `insertTrendCandidates()`, `getRecentTrendCandidates()`
-- `insertThemeClusters()`, `getThemeClusters()`, `getThemeClusterById()`, `updateThemeClusterStatus()`
+- `upsertThemeClusters()`(Phase 1-16, 신규): normalizedKey/제목 유사도로
+  기존 후보와 비교해 insert 대신 update(병합)한다. `insertThemeClusters()`는
+  이전 버전과의 호환을 위해 남아 있지만 `clusterCommonThemes()`는 더 이상
+  이 함수를 호출하지 않는다.
+- `getThemeClusters()`, `getThemeClusterById()`, `updateThemeClusterStatus()`
+
+### `lib/trends/theme-normalization.ts` (Phase 1-16, 신규)
+- `normalizeThemeKey()`: 공백/특수문자/연도/조사/일반어 차이를 흡수한
+  정확 비교 키.
+- `themeTitleSimilarity()`: 표현이 달라도 핵심 토큰이 겹치는 유사 후보를
+  잡아내는 Jaccard 유사도(0~1).
 
 ### `app/trends/page.tsx`
 - Mock 모드 배너
@@ -145,3 +164,13 @@ KAKAO_REST_API_KEY=
 - 클러스터 dismissed 처리 UI 미구현
 - /trends 페이지에 수집 결과 피드백(성공/실패 메시지) 미표시 (revalidate로 재렌더링만)
 - 향후: 실제 API 연결, 스케줄링(cron), 복수 클러스터 동시 선택 지원
+- 클러스터링 자체는 여전히 고정 키워드 그룹(`KEYWORD_GROUPS`) 매칭
+  방식이다 — AI가 자유 형식 제목을 동적으로 추출하는 방식이 아니므로,
+  "네이버/다음 표현이 달라도 같은 이슈면 하나로 묶는다"는 재수집 시의
+  중복 방지에는 충분하지만, 새로운 주제를 스스로 발견하지는 못한다.
+  자세한 내용과 중복 방지 설계는
+  `docs/phase-1-16-theme-candidate-deduplication.md` 참고.
+- naver 대비 daum(카카오) 수집 결과가 적어 보이는 문제와 그 진단/개선
+  내용은 `docs/phase-1-17-daum-collection-balance.md` 참고 — 실제
+  원인은 수집 자체가 아니라 `getRecentTrendCandidates()`의 조회 단계
+  tie-break 문제였다.

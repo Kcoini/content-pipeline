@@ -15,17 +15,22 @@ import {
 } from "@/lib/repositories/article-repository";
 import { logEvent } from "@/lib/harness/logger";
 import { publishArticleToWordPressDraft, runWordPressConnectionTest } from "@/lib/publish/publish-service";
-import type { PublishArticleOptions } from "@/lib/publish/publish-service";
-import { getSocialPostById } from "@/lib/repositories/social-posts-repository";
+import { getSocialPostById, archiveSocialPost } from "@/lib/repositories/social-posts-repository";
 import { checkWordPressBlogPublishReadiness } from "@/lib/social/wordpress-blog-publish-readiness";
 import { updateWordPressSeoMetadataFromBlogPost } from "@/lib/social/wordpress-blog-seo-metadata-service";
 import { regenerateWordPressBlogMetadata } from "@/lib/social/wordpress-blog-metadata-regeneration-service";
 import { writeWordPressBlogSeoPluginMetadata } from "@/lib/social/wordpress-blog-seo-plugin-service";
 import {
+  confirmWordPressBlogPersonalInfoFalsePositive,
+  openWordPressBlogSafetyReview,
+  checkWordPressBlogPersonalInfoOverrideEligibility,
+} from "@/lib/social/wordpress-blog-personal-info-review";
+import {
   generateWordPressBlogFeaturedImagePrompt,
   generateWordPressBlogFeaturedImage,
 } from "@/lib/social/wordpress-blog-image-generation-service";
 import { prepareWordPressBlogPostForPublishing } from "@/lib/social/wordpress-blog-publish-preparation-orchestrator";
+import { buildWordPressBlogContentOverride } from "@/lib/social/wordpress-blog-content-override-builder";
 import { saveWordPressFeaturedImageMediaForBlogPost } from "@/lib/social/wordpress-blog-featured-image-service";
 import { uploadWordPressFeaturedImageFromBlogPost } from "@/lib/social/wordpress-blog-local-image-upload-service";
 import { waiveWordPressFeaturedImageForBlogPost } from "@/lib/social/wordpress-blog-featured-image-waiver-service";
@@ -300,6 +305,53 @@ export async function waiveArticleWordPressFeaturedImageAction(formData: FormDat
  *   payload로 보내는 것은 이번 리팩터링 범위 밖이며, docs에 다음 단계로
  *   기록해 두었다.)
  */
+/**
+ * wordpress_blog의 WordPress Draft 생성/업데이트가 진행해도 되는지
+ * 판단한다. `checkWordPressBlogPublishReadiness` 자체는 바꾸지 않고,
+ * 개인정보 false positive override가 적용 가능하면(다른 차단 사유
+ * 없음, approval=approved, 실제 위험 없음, 확인 기록/지문 일치) 그
+ * 사실을 함께 반환한다 — SEO Metadata 반영(writeWordPressBlogSeoPluginMetadata)과
+ * 동일한 조건/판단 함수(checkWordPressBlogPersonalInfoOverrideEligibility)를
+ * 재사용한다. 실제 개인정보가 남아 있으면 여전히 차단된다.
+ */
+async function resolveWordPressBlogDraftReadiness(
+  articleId: string,
+  socialPostId: string,
+  post: SocialPost
+): Promise<{ ready: boolean; blockers: string[]; overrideApplied: boolean }> {
+  const readiness = checkWordPressBlogPublishReadiness(post);
+  if (readiness.ready) {
+    return { ready: true, blockers: [], overrideApplied: false };
+  }
+
+  await logEvent({
+    type: "wordpress_blog_safety_override_requested",
+    status: "info",
+    message: `wordpress_blog 글(${socialPostId})의 WordPress Draft 생성/업데이트가 차단되어 override 가능 여부를 확인합니다.`,
+    articleId,
+    targetType: "article",
+    targetId: articleId,
+    details: { socialPostId, blockers: readiness.blockers },
+  });
+
+  const overrideCheck = checkWordPressBlogPersonalInfoOverrideEligibility(post, readiness);
+  if (!overrideCheck.eligible) {
+    return { ready: false, blockers: readiness.blockers, overrideApplied: false };
+  }
+
+  await logEvent({
+    type: "wordpress_blog_safety_override_applied",
+    status: "info",
+    message: `wordpress_blog 글(${socialPostId})의 개인정보 false positive 확인을 근거로 WordPress Draft 생성/업데이트 차단을 override합니다.`,
+    articleId,
+    targetType: "article",
+    targetId: articleId,
+    details: { socialPostId },
+  });
+
+  return { ready: true, blockers: readiness.blockers, overrideApplied: true };
+}
+
 export async function createWordPressDraftFromBlogPostAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
   const socialPostId = String(formData.get("socialPostId") ?? "");
@@ -318,18 +370,18 @@ export async function createWordPressDraftFromBlogPostAction(formData: FormData)
       throw new Error(`이 기능은 wordpress_blog 글에서만 사용할 수 있습니다 (현재 platform: ${post.platform}).`);
     }
 
-    const readiness = checkWordPressBlogPublishReadiness(post);
-    if (!readiness.ready) {
+    const effectiveReadiness = await resolveWordPressBlogDraftReadiness(articleId, socialPostId, post);
+    if (!effectiveReadiness.ready) {
       await logEvent({
         type: "blog_post_wordpress_draft_blocked",
         status: "failed",
         message: `wordpress_blog 글(${socialPostId})이 WordPress 게시 준비 조건을 만족하지 못해 차단되었습니다.`,
-        details: { socialPostId, blockerCount: readiness.blockers.length },
+        details: { socialPostId, blockerCount: effectiveReadiness.blockers.length },
         articleId,
         targetType: "article",
         targetId: articleId,
       });
-      throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${readiness.blockers.join(" / ")}`);
+      throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${effectiveReadiness.blockers.join(" / ")}`);
     }
 
     await logEvent({
@@ -381,20 +433,10 @@ async function withWordPressBlogPost<T>(
   return run(post);
 }
 
-/**
- * wordpress_blog social_post의 title/body/excerpt를 실제 WordPress 전송
- * payload로 사용하기 위한 override를 만든다. article 원문의 title/content는
- * 여기서 전혀 읽지 않는다 — publishArticleToWordPressDraft의
- * contentOverride 옵션(기본값 undefined)을 통해서만 article 고급 기능의
- * 기존 동작(override 없음)과 분리된다.
- */
-function buildWordPressBlogContentOverride(post: SocialPost): PublishArticleOptions["contentOverride"] {
-  return {
-    title: post.postTitle?.trim() || undefined,
-    content: post.postBody?.trim() || undefined,
-    excerpt: post.excerpt?.trim() || undefined,
-  };
-}
+// buildWordPressBlogContentOverride는 lib/social/wordpress-blog-content-override-builder.ts로
+// 옮겼다 — 오케스트레이터(wordpress-blog-publish-preparation-orchestrator.ts)와
+// 로직을 공유해서, 두 곳이 서로 다르게 동작하는 일(예: 한쪽만 markdown→HTML
+// 변환을 잊는 것)을 막기 위해서다.
 
 /**
  * "WordPress Draft 업데이트" — 이미 생성된 WordPress draft가 있는 경우에만
@@ -413,9 +455,9 @@ export async function updateWordPressDraftFromBlogPostAction(formData: FormData)
 
   try {
     const contentOverride = await withWordPressBlogPost(socialPostId, async (post) => {
-      const readiness = checkWordPressBlogPublishReadiness(post);
-      if (!readiness.ready) {
-        throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${readiness.blockers.join(" / ")}`);
+      const effectiveReadiness = await resolveWordPressBlogDraftReadiness(articleId, socialPostId, post);
+      if (!effectiveReadiness.ready) {
+        throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${effectiveReadiness.blockers.join(" / ")}`);
       }
       return buildWordPressBlogContentOverride(post);
     });
@@ -505,6 +547,61 @@ export async function updateWordPressSeoPluginMetadataFromBlogPostAction(formDat
     const result = await writeWordPressBlogSeoPluginMetadata(articleId, socialPostId, provider);
     message = result.message;
     isError = !result.success && !result.skipped;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드에서 "차단 사유 상세 보기"/"의심 위치 확인" 버튼을
+ * 눌렀을 때 호출한다. 데이터를 변경하지 않고(read-only), 사람이 상세를
+ * 확인했다는 사실만 감사 로그(wordpress_blog_safety_review_opened)로
+ * 남긴다.
+ */
+export async function openWordPressBlogSafetyReviewAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await openWordPressBlogSafetyReview(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드에서 개인정보 의심 항목을 "개인정보 아님"으로
+ * 확인 처리한다. 실제 주민등록번호/010 휴대전화로 보이는 항목이 남아
+ * 있으면 서비스 단에서 거부한다. 사유(reason)는 필수다.
+ */
+export async function confirmWordPressBlogPersonalInfoFalsePositiveAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await confirmWordPressBlogPersonalInfoFalsePositive(socialPostId, {
+      reason,
+      confirmedBy: APPROVED_BY,
+    });
+    message = result.message;
+    isError = !result.success;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
@@ -1586,6 +1683,58 @@ export async function refreshSocialPostsAction(formData: FormData): Promise<void
 
   revalidatePath(`/articles/${articleId}`);
   redirect(`/articles/${articleId}`);
+}
+
+/**
+ * wordpress_blog/naver_blog 등 social post 목록에서 "삭제" 버튼을 누르면
+ * 실행된다. hard delete가 아니라 soft delete(archived_at = now())만
+ * 수행한다 — 앱 내부의 생성 글/상태만 삭제·숨김 처리되고, 이미 WordPress에
+ * 생성된 Draft/Post는 이 action이 절대 건드리지 않는다(원격 삭제 기능
+ * 자체를 만들지 않았다). 확인 모달은 화면(ConfirmSubmitButton)에서
+ * 처리하므로 여기서는 실행만 담당한다.
+ */
+export async function archiveSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  const post = await getSocialPostById(socialPostId);
+  if (!post) {
+    redirect(buildArticleOverviewUrl(articleId));
+  }
+
+  const fallbackUrl = getPlatformGroup(post.platform) === "blog" ? buildArticleBlogUrl(articleId) : buildArticleSocialUrl(articleId);
+
+  if (post.archivedAt) {
+    await logEvent({
+      type: "social_post_delete_blocked",
+      status: "failed",
+      message: `social post(${socialPostId})는 이미 삭제(보관 처리)되어 있습니다.`,
+      details: { socialPostId, platform: post.platform },
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+    });
+    redirectToSafeTarget(formData, fallbackUrl, "이미 삭제된 글입니다.", true);
+  }
+
+  await archiveSocialPost(socialPostId);
+
+  await logEvent({
+    type: "social_post_archived",
+    status: "success",
+    message: `social post(${socialPostId})가 삭제(보관 처리)되었습니다 (platform: ${post.platform}).`,
+    details: {
+      socialPostId,
+      platform: post.platform,
+      hasWordPressPost: Boolean(post.externalPostId),
+    },
+    articleId,
+    targetType: "article",
+    targetId: articleId,
+  });
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, fallbackUrl, "글을 삭제했습니다.", false);
 }
 
 /** social post 하나에 대해 rule-based quality gate를 실행한다. */

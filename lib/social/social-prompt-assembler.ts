@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { SOCIAL_PLATFORM_PROMPT_FILENAMES } from "./platform-writing-config";
 import { getToneStylePromptFilename } from "./tone-style-config";
 import type { SocialWritingContext } from "./social-writing-context-builder";
+import { classifyWordPressBlogSourceMode, SINGLE_SOURCE_LIMIT_WARNING } from "./wordpress-blog-source-mode";
 
 const PROMPTS_DIR = join(process.cwd(), "prompts");
 
@@ -40,6 +41,32 @@ export interface AssembledSocialPrompt {
   contextSummary: Record<string, unknown>;
 }
 
+/**
+ * wordpress_blog 전용: usable source 개수에 따라 AI에게 작성 모드를
+ * 명시적으로 알려준다. no_source(0개)는 generateSocialDraft()가 이
+ * 함수를 호출하기 전에 이미 차단하므로 여기서는 single_source/
+ * multi_source만 실제로 등장한다.
+ */
+function buildWordPressBlogSourceModeInstruction(usableSourceCount: number): string | null {
+  const mode = classifyWordPressBlogSourceMode(usableSourceCount);
+  if (mode === "single_source") {
+    return (
+      `글쓰기 모드: single_source_mode (usable source ${usableSourceCount}건)\n` +
+      "이 글은 single_source_mode로 작성해야 합니다 — 하나의 출처에서 확인된 사실만 " +
+      "factual basis로 사용하고, 출처에 없는 조건/금액/신청 기간/기관명/절차는 추측하지 " +
+      "않습니다. 비교할 대상이 실제로 출처에 없다면 비교표를 억지로 만들지 말고 체크리스트를 " +
+      "사용하세요. 부족한 정보는 '확인 필요 사항' 섹션으로 분리하세요. " +
+      `platform_metadata에 sourceMode="single_source", singleSourceMode=true, ` +
+      `usableSourceCount=${usableSourceCount}, sourceLimitWarning="${SINGLE_SOURCE_LIMIT_WARNING}"를 포함하세요.`
+    );
+  }
+  if (mode === "multi_source") {
+    return `글쓰기 모드: normal_source_grounded_mode (usable source ${usableSourceCount}건). platform_metadata에 sourceMode="multi_source"를 포함하세요.`;
+  }
+  // no_source는 generateSocialDraft()가 이 함수를 호출하기 전에 이미 차단한다.
+  return null;
+}
+
 function buildUserPrompt(context: SocialWritingContext): string {
   const lines: string[] = [
     `article 제목: ${context.title}`,
@@ -59,6 +86,11 @@ function buildUserPrompt(context: SocialWritingContext): string {
           .map((s) => `- [${s.publisher}] ${s.title}: ${s.summary}`)
           .join("\n")}`
       : `출처: ${context.sourceCount}건`,
+    // wordpress_blog에서만 usable source 개수에 따른 작성 모드를 명시한다
+    // (다른 플랫폼은 이 안내를 받지 않는다 — naver_blog 등 기존 동작 그대로).
+    context.platform === "wordpress_blog"
+      ? buildWordPressBlogSourceModeInstruction(context.usableSourceCount)
+      : null,
     `platform: ${context.platform} (${context.platformConfig.purpose})`,
     `tone_style: ${context.toneStyle} (${context.toneStyleConfig.label})`,
   ].filter((line): line is string => Boolean(line));
@@ -119,6 +151,10 @@ export function assembleSocialWritingPrompt(context: SocialWritingContext): Asse
     toneStyle: context.toneStyle,
     contractName: context.outputContractName,
     sourceCount: context.sourceCount,
+    usableSourceCount: context.usableSourceCount,
+    ...(context.platform === "wordpress_blog"
+      ? { sourceMode: classifyWordPressBlogSourceMode(context.usableSourceCount) }
+      : {}),
     hasTargetKeyword: Boolean(context.targetKeyword),
     keyPointCount: context.keyPoints.length,
     excerptLength: context.excerpt.length,

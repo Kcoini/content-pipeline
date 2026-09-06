@@ -93,8 +93,11 @@ describe("article/blog 역할 분리 (정적 소스 검사)", () => {
     expect(pageSource).toContain("completePlatformExportHandoffAction");
   });
 
-  it("readiness가 차단 상태면 WordPress Draft 생성 버튼을 비활성화한다", () => {
-    expect(pageSource).toContain("disabled={!readiness.ready}");
+  it("readiness가 차단 상태면(개인정보 false positive override도 없는 한) WordPress Draft 생성/업데이트 버튼을 비활성화한다", () => {
+    // effectiveReady = readiness.ready || personalInfoOverrideEligibility.eligible.
+    expect(pageSource).toContain("const effectiveReady = readiness.ready || personalInfoOverrideEligibility.eligible;");
+    expect(pageSource).toContain("disabled={!effectiveReady}");
+    expect(pageSource).toContain("disabled={!effectiveReady || !draft.exists}");
   });
 
   it("naver_blog 카드에서는 네이버 콘텐츠 안전 점검(checkNaverBlogContentSafety)을 사용한다", () => {
@@ -512,8 +515,8 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
     expect(checklistFormCount).toBe(1);
   });
 
-  it("SEO Metadata 업데이트 버튼은 SEO metadata가 누락되면 disabled되고 이유를 표시한다", () => {
-    expect(pageSource).toContain('disabled={!readiness.ready || workflowStatus.seo === "누락"}');
+  it("SEO Metadata 업데이트 버튼은 SEO metadata가 누락되면 disabled되고 이유를 표시한다(개인정보 false positive override 시에는 effectiveReady로 활성화될 수 있음)", () => {
+    expect(pageSource).toContain('disabled={!effectiveReady || workflowStatus.seo === "누락"}');
     expect(pageSource).toContain("SEO metadata가 없습니다. metadata 재생성이 필요합니다.");
   });
 
@@ -1043,5 +1046,12 @@ describe("wordpress_blog 카드 가독성 개선 (정적 소스 검사)", () => 
     const internalStatusIdx = pageSource.indexOf("내부 상태값 보기");
     expect(internalStatusIdx).toBeGreaterThan(wordpressBlockStart);
     expect(internalStatusIdx).toBeLessThan(naverContentSafetyBlockStart);
+  });
+
+  it("블로그 글 목록의 각 항목에 삭제 버튼(archiveSocialPostAction)과 확인 모달이 있다", () => {
+    expect(pageSource).toContain("archiveSocialPostAction");
+    expect(pageSource).toContain("이 WordPress 블로그 글을 삭제하시겠습니까?");
+    expect(pageSource).toContain("앱 내부의 생성 글과 상태만 삭제 또는 숨김 처리됩니다.");
+    expect(pageSource).toContain("ConfirmSubmitButton");
   });
 });

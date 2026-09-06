@@ -44,6 +44,8 @@ export type ThemeRow = {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /** 목록 삭제(보관 처리) 시각. null이면 활성 상태. */
+  archived_at: string | null;
 };
 
 /** Phase 1-12: 트렌드 후보 (네이버/다음/mock) */
@@ -95,6 +97,12 @@ export type ThemeClusterRow = {
   status: "candidate" | "selected" | "dismissed";
   created_at: string;
   updated_at: string;
+  /** Phase 1-16: 정규화 비교 키 — 재수집 시 같은 키는 insert 대신 update된다. */
+  normalized_key: string | null;
+  subtopics: unknown;
+  evidence: unknown;
+  seen_count: number;
+  last_seen_at: string | null;
 };
 
 export type FetchStatus = "pending" | "success" | "failed";
@@ -214,6 +222,8 @@ export type ArticleRow = {
   reviewed_by: string | null;
   created_at: string;
   updated_at: string;
+  /** 목록 삭제(보관 처리) 시각. null이면 활성 상태. */
+  archived_at: string | null;
   /** Phase 2-1: 글쓰기 모드 및 모드별 부가 필드 */
   article_mode: ArticleMode;
   seo_title: string | null;
@@ -506,6 +516,8 @@ export type SocialPostRow = {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  /** 목록 삭제(보관 처리) 시각. null이면 활성 상태. */
+  archived_at: string | null;
   // Phase 3-4: Social Post Review & Editing Workflow
   edited_at: string | null;
   edited_by: string | null;

@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTrendPageData, isTrendEnabled, isNaverKeySet, isDaumKeySet } from "@/lib/trends/trend-service";
+import { groupThemeClustersForDisplay, type DisplayThemeCluster } from "@/lib/trends/theme-cluster-display";
 import { runTrendCollection, selectClusterAsTheme } from "./actions";
 import type { TrendCandidate, ThemeCluster } from "@/lib/types/domain";
 
@@ -31,61 +32,228 @@ function KeyStatus({ label, set }: { label: string; set: boolean }) {
   );
 }
 
+/**
+ * 원자료(raw trend) 후보 한 줄 — compact 표시. 이 화면의 핵심 작업은
+ * "공통 테마 후보 선택"이므로, 원자료는 근거 확인용으로만 쓴다: 배지 +
+ * 제목 + 순위만 기본으로 보여주고, 긴 요약문은 "요약 보기"를 열어야
+ * 확인할 수 있다(raw 데이터 자체는 그대로 두고 표시만 compact하게 한다).
+ */
 function CandidateRow({ candidate }: { candidate: TrendCandidate }) {
   return (
-    <li className="flex items-start gap-3 border-b border-zinc-100 py-2 last:border-0">
-      <PlatformBadge platform={candidate.platform} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-800">
+    <li className="border-b border-zinc-100 py-1.5 last:border-0">
+      <div className="flex items-center gap-2">
+        <PlatformBadge platform={candidate.platform} />
+        <p className="min-w-0 flex-1 truncate break-keep text-sm font-medium text-zinc-800">
           {candidate.title ?? candidate.keyword ?? "(제목 없음)"}
         </p>
-        {candidate.snippet && (
-          <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">{candidate.snippet}</p>
+        {candidate.rankPosition != null && (
+          <span className="shrink-0 text-xs text-zinc-400">#{candidate.rankPosition}</span>
         )}
       </div>
-      {candidate.rankPosition != null && (
-        <span className="shrink-0 text-xs text-zinc-400">#{candidate.rankPosition}</span>
+      {candidate.snippet && (
+        <details className="mt-0.5 pl-[3.25rem]">
+          <summary className="cursor-pointer select-none text-xs text-blue-600 hover:text-blue-800">
+            요약 보기
+          </summary>
+          <p className="mt-0.5 break-keep text-xs leading-relaxed text-zinc-500">{candidate.snippet}</p>
+        </details>
       )}
     </li>
   );
 }
 
-function ClusterCard({ cluster }: { cluster: ThemeCluster }) {
-  const isSelected = cluster.status === "selected";
-  const isDismissed = cluster.status === "dismissed";
+const MAX_VISIBLE_SUBTOPICS = 3;
+
+/** 병합된 후보 하나의 요약 정보 — "이 테마로 기사 작성 시작" 버튼은 표시하지 않는다. */
+function MergedCandidateRow({ candidate }: { candidate: ThemeCluster }) {
+  return (
+    <li className="rounded border border-zinc-200 bg-white px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 break-keep text-sm font-medium text-zinc-700">{candidate.title}</p>
+        <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-600">
+          점수 {candidate.score}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">병합된 후보</span>
+        <span>네이버 {candidate.naverCount}건</span>
+        <span>다음 {candidate.daumCount}건</span>
+        <span>반복 발견 {candidate.seenCount}회</span>
+        <span>마지막 발견: {new Date(candidate.lastSeenAt).toLocaleString("ko-KR")}</span>
+      </div>
+      {candidate.keywords.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {candidate.keywords.map((kw) => (
+            <span key={kw} className="rounded bg-zinc-50 px-1.5 py-0.5 text-xs text-zinc-500">{kw}</span>
+          ))}
+        </div>
+      )}
+      {candidate.subtopics.length > 0 && (
+        <p className="mt-1 w-full break-keep text-xs leading-relaxed text-zinc-500">
+          하위 주제: {candidate.subtopics.join(", ")}
+        </p>
+      )}
+    </li>
+  );
+}
+
+function ClusterCard({ group }: { group: DisplayThemeCluster }) {
+  const {
+    representative,
+    mergedCandidates,
+    aggregatedNaverCount,
+    aggregatedDaumCount,
+    aggregatedSeenCount,
+    aggregatedSubtopics,
+    aggregatedEvidence,
+    latestLastSeenAt,
+    daumEvidenceStrength,
+  } = group;
+  const isSelected = representative.status === "selected";
+  const isDismissed = representative.status === "dismissed";
+  const hasMerged = mergedCandidates.length > 0;
+  const visibleSubtopics = aggregatedSubtopics.slice(0, MAX_VISIBLE_SUBTOPICS);
+  const hiddenSubtopics = aggregatedSubtopics.slice(MAX_VISIBLE_SUBTOPICS);
 
   return (
     <div className={`rounded-lg border p-4 ${isSelected ? "border-green-300 bg-green-50" : isDismissed ? "border-zinc-200 bg-zinc-50 opacity-60" : "border-zinc-200 bg-white"}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-zinc-900">{cluster.title}</h3>
-          <p className="mt-0.5 text-sm text-zinc-600">{cluster.description}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-lg font-bold text-zinc-800">{cluster.score}</p>
+      {/* 헤더: 제목 + 점수만 같은 row에 둔다(부가 정보는 아래 meta line으로
+          분리 — 제목 영역이 좁아져 불필요하게 여러 줄로 쪼개지는 문제
+          수정). 모바일에서는 세로로 쌓고, sm 이상에서만 가로 배치한다. */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <h3 className="min-w-0 flex-1 break-keep font-semibold leading-snug text-zinc-900">
+          {representative.title}
+        </h3>
+        <div className="shrink-0 text-right sm:w-16">
+          <p className="text-lg font-bold text-zinc-800">{representative.score}</p>
           <p className="text-xs text-zinc-500">점수</p>
         </div>
       </div>
 
+      {/* 병합 여부는 아래 배지("유사 후보 N개 병합됨")로 이미 표시하므로
+          별도 문구를 헤더 근처에 중복해서 넣지 않는다(카드 단순화). */}
+
+      {representative.description && (
+        <p className="mt-2 w-full max-w-none break-keep text-sm leading-relaxed text-zinc-600">
+          {representative.description}
+        </p>
+      )}
+
+      {/* badge: 대표 후보 / 기사 작성 가능 / 유사 후보 병합됨 */}
       <div className="mt-2 flex flex-wrap gap-1">
-        {cluster.keywords.map((kw) => (
-          <span key={kw} className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">{kw}</span>
-        ))}
+        <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">대표 후보</span>
+        {!isSelected && !isDismissed && (
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">기사 작성 가능</span>
+        )}
+        {hasMerged && (
+          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+            유사 후보 {mergedCandidates.length}개 병합됨
+          </span>
+        )}
+        {/* daum 근거가 적어도 테마 자체를 숨기지 않는다 — 대신 근거 강도만 표시한다. */}
+        {daumEvidenceStrength === "none" && (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+            네이버 중심 테마 (다음 근거 없음)
+          </span>
+        )}
+        {daumEvidenceStrength === "weak" && (
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
+            다음 근거 약함
+          </span>
+        )}
       </div>
 
-      <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
-        <span>네이버 {cluster.naverCount}건</span>
-        <span>다음 {cluster.daumCount}건</span>
-        <span className="ml-auto capitalize rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
-          {cluster.status}
-        </span>
+      {/* 네이버/다음 근거 수 · 반복 발견 수 · 마지막 발견 시간 — 기본 표시
+          정보(카드 단순화 원칙에 따라 상태 pill 등 중복 정보는 넣지 않는다). */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+        <span>네이버 {aggregatedNaverCount}건</span>
+        <span>다음 {aggregatedDaumCount}건</span>
+        <span>반복 발견 {aggregatedSeenCount}회</span>
+        <span>마지막 발견: {new Date(latestLastSeenAt).toLocaleString("ko-KR")}</span>
       </div>
 
+      {/* 태그/하위 주제 — 기본 화면에서는 숨기고, 열어야 확인할 수 있다(카드 단순화).
+          하위 주제는 그 안에서도 기본 3개까지만 보이고 나머지는 "더 보기"로 접는다. */}
+      {(representative.keywords.length > 0 || aggregatedSubtopics.length > 0) && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer select-none text-blue-600 hover:text-blue-800">
+            하위 주제 보기{aggregatedSubtopics.length > 0 ? ` (${aggregatedSubtopics.length}개)` : ""}
+          </summary>
+          <div className="mt-1.5 space-y-2">
+            {representative.keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {representative.keywords.map((kw) => (
+                  <span key={kw} className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">{kw}</span>
+                ))}
+              </div>
+            )}
+            {aggregatedSubtopics.length > 0 && (
+              <div>
+                <ul className="flex flex-wrap gap-1">
+                  {visibleSubtopics.map((sub) => (
+                    <li key={sub} className="break-keep rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-xs text-zinc-600">
+                      {sub}
+                    </li>
+                  ))}
+                </ul>
+                {hiddenSubtopics.length > 0 && (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer select-none text-xs text-blue-600 hover:text-blue-800">
+                      더 보기 (+{hiddenSubtopics.length})
+                    </summary>
+                    <ul className="mt-1 flex flex-wrap gap-1">
+                      {hiddenSubtopics.map((sub) => (
+                        <li key={sub} className="break-keep rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-xs text-zinc-600">
+                          {sub}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+
+      {/* 병합된 후보 — 기본 접힘, 열어야 개별 후보 상세를 볼 수 있다. 여기에는 기사 작성 버튼을 두지 않는다(secondary link 스타일). */}
+      {hasMerged && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer select-none text-blue-600 hover:text-blue-800">
+            병합된 후보 보기 ({mergedCandidates.length}개)
+          </summary>
+          <ul className="mt-2 space-y-2">
+            {mergedCandidates.map((candidate) => (
+              <MergedCandidateRow key={candidate.id} candidate={candidate} />
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* 원본 근거 — 기본은 숨기고, 열어야 네이버/다음 원본 기사(raw evidence)를 볼 수 있다.
+          대표 후보뿐 아니라 병합된 후보의 evidence도 함께(중복 제거해) 보여준다.
+          "왜 이 테마가 생성되었는지"는 이 안에서 확인한다(secondary link 스타일). */}
+      {aggregatedEvidence.length > 0 && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer select-none text-blue-600 hover:text-blue-800">
+            근거 보기 ({aggregatedEvidence.length}건)
+          </summary>
+          <ul className="mt-1 space-y-1 border-l-2 border-zinc-200 pl-2 text-zinc-500">
+            {aggregatedEvidence.map((item, index) => (
+              <li key={`${item.platform}-${index}`} className="truncate">
+                <PlatformBadge platform={item.platform} /> {item.title}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* 기사 작성 시작은 대표 후보에서만 가능하다 — 병합된 후보에는 이 버튼을 두지 않는다. */}
       {!isSelected && !isDismissed && (
         <form
           action={async () => {
             "use server";
-            const result = await selectClusterAsTheme(cluster.id);
+            const result = await selectClusterAsTheme(representative.id);
             if (result.success && result.data) {
               const { themeId } = result.data as { themeId: string };
               redirect(`/dashboard?themeId=${themeId}`);
@@ -107,6 +275,14 @@ function ClusterCard({ cluster }: { cluster: ThemeCluster }) {
       )}
     </div>
   );
+}
+
+/** "2026.9.5 18:49" 형식으로 마지막 수집 시각을 표시한다. */
+function formatCollectedAt(iso: string | null): string {
+  if (!iso) return "없음";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 type CollectionStatus = "success" | "failed" | "skipped";
@@ -156,7 +332,10 @@ export default async function TrendsPage({
     naverError,
     daumError,
   } = await searchParams;
-  const { candidates, clusters } = await getTrendPageData();
+  const { candidates, clusters, counts, lastCollectedAt } = await getTrendPageData();
+  // 목록에는 대표 후보만 표시한다 — 유사/중복 후보는 대표 후보 카드 안의
+  // "병합된 후보 보기" 접기 영역에서만 확인할 수 있다(lib/trends/theme-cluster-display.ts).
+  const displayGroups = groupThemeClustersForDisplay(clusters);
 
   // 서버 컴포넌트에서 안전하게 key 설정 여부만 확인 (값 자체는 노출하지 않음)
   const mockMode = !isTrendEnabled();
@@ -184,6 +363,14 @@ export default async function TrendsPage({
             ← 대시보드
           </Link>
         </header>
+
+        {/* 수집 결과 요약 — 이 화면의 핵심 작업(공통 테마 후보 선택 → 기사
+            작성 시작)에 집중할 수 있도록, 상세 상태는 아래 배너로 넘기고
+            여기서는 한 줄 요약만 보여준다. */}
+        <p className="mb-4 text-sm text-zinc-600">
+          수집 결과: 네이버 {counts.naver}건 · 다음 {counts.daum}건 · 공통 테마 {displayGroups.length}건 · 마지막
+          수집 {formatCollectedAt(lastCollectedAt)}
+        </p>
 
         {/* 모드 + API key 상태 표시 */}
         <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3">
@@ -264,48 +451,58 @@ export default async function TrendsPage({
           </p>
         </form>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1.5fr]">
-          {/* 수집된 후보 */}
-          <section>
-            <h2 className="mb-3 text-base font-semibold text-zinc-800">
-              수집된 트렌드 후보{" "}
-              <span className="font-normal text-zinc-500">({candidates.length}건)</span>
-            </h2>
-            {candidates.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500">
-                수집된 후보가 없습니다. 위 버튼을 눌러 수집하세요.
-              </p>
-            ) : (
-              <ul className="rounded-lg border border-zinc-200 bg-white px-4 py-2">
-                {candidates.slice(0, 20).map((c) => (
-                  <CandidateRow key={c.id} candidate={c} />
-                ))}
-                {candidates.length > 20 && (
-                  <li className="py-2 text-center text-xs text-zinc-400">
-                    외 {candidates.length - 20}건
-                  </li>
-                )}
-              </ul>
-            )}
-          </section>
-
-          {/* 공통 테마 클러스터 */}
+        {/* 이 화면의 핵심 작업은 "공통 테마 후보 선택 후 기사 작성 시작"이다
+            — 공통 테마 후보를 먼저(DOM 순서상 위/왼쪽) 두고 더 넓은 폭을
+            준다. 원자료(수집된 트렌드 후보)는 근거 확인용 보조 정보라
+            나중에, 더 좁게 배치한다. 모바일(좁은 화면)에서는 flex-col이라
+            DOM 순서 그대로 공통 테마 후보가 먼저 보인다. */}
+        <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[3fr_2fr]">
+          {/* 공통 테마 후보 — 대표 후보만 표시(유사 후보는 카드 안 접기 영역) */}
           <section>
             <h2 className="mb-3 text-base font-semibold text-zinc-800">
               공통 테마 후보{" "}
-              <span className="font-normal text-zinc-500">({clusters.length}건, 점수 높은 순)</span>
+              <span className="font-normal text-zinc-500">({displayGroups.length}건, 점수 높은 순)</span>
             </h2>
-            {clusters.length === 0 ? (
+            {displayGroups.length === 0 ? (
               <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500">
                 추출된 공통 테마가 없습니다. 트렌드를 먼저 수집하세요.
               </p>
             ) : (
               <div className="flex flex-col gap-3">
-                {clusters.map((cluster) => (
-                  <ClusterCard key={cluster.id} cluster={cluster} />
+                {displayGroups.map((group) => (
+                  <ClusterCard key={group.representative.id} group={group} />
                 ))}
               </div>
             )}
+          </section>
+
+          {/* 수집된 트렌드 후보(원자료) — 근거 확인용 보조 정보라 기본
+              접힘 상태로 둔다. 열면 compact list(배지+제목+순위, 요약은
+              details 안)로 확인할 수 있다. raw 데이터는 삭제하지 않고
+              그대로 보여준다 — 표시만 compact하게 할 뿐이다. */}
+          <section>
+            <details>
+              <summary className="mb-3 cursor-pointer select-none text-base font-semibold text-zinc-800 hover:text-zinc-600">
+                수집된 트렌드 후보{" "}
+                <span className="font-normal text-zinc-500">({candidates.length}건, 근거 확인용)</span>
+              </summary>
+              {candidates.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500">
+                  수집된 후보가 없습니다. 위 버튼을 눌러 수집하세요.
+                </p>
+              ) : (
+                <ul className="rounded-lg border border-zinc-200 bg-white px-4 py-2">
+                  {candidates.slice(0, 20).map((c) => (
+                    <CandidateRow key={c.id} candidate={c} />
+                  ))}
+                  {candidates.length > 20 && (
+                    <li className="py-2 text-center text-xs text-zinc-400">
+                      외 {candidates.length - 20}건
+                    </li>
+                  )}
+                </ul>
+              )}
+            </details>
           </section>
         </div>
       </div>

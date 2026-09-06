@@ -7,6 +7,7 @@ import { WordPressFeaturedImageFilePicker } from "@/components/social/wordpress-
 import { CopyUrlButton } from "@/components/social/copy-url-button";
 import { DeepLinkNotice, getHighlightClassName, buildAnchorId } from "@/components/navigation/deep-link-highlight";
 import { TransientNotice } from "@/components/ui/transient-notice";
+import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 import {
   buildArticleBlogUrl,
   buildMetricsDeepLink,
@@ -94,13 +95,35 @@ import {
   generateWordPressBlogFeaturedImagePromptAction,
   generateWordPressBlogFeaturedImageAction,
   prepareWordPressBlogPostForPublishingAction,
+  openWordPressBlogSafetyReviewAction,
+  archiveSocialPostAction,
+  confirmWordPressBlogPersonalInfoFalsePositiveAction,
 } from "../actions";
+import type { PersonalInfoSuspectType } from "@/lib/social/wordpress-blog-personal-info-review";
 
 export const dynamic = "force-dynamic";
 
 const BLOG_PLATFORMS: SocialPlatform[] = ["wordpress_blog", "naver_blog"];
 const ANCHOR_PREFIX = "social-post";
 const PROCESS_LOG_VISIBLE_COUNT = 20;
+
+/** 개인정보 의심 항목의 화면 표시용 라벨. */
+const PERSONAL_INFO_SUSPECT_TYPE_LABELS: Record<PersonalInfoSuspectType, string> = {
+  resident_registration_number_like: "주민등록번호 형식",
+  mobile_phone_like: "휴대전화 형식(010)",
+  phone_like_pattern: "전화번호 형식",
+};
+const PERSONAL_INFO_SUSPECT_LOCATION_LABELS: Record<string, string> = {
+  post_title: "제목",
+  post_body: "본문",
+  seo_title: "SEO title",
+  meta_description: "meta description",
+};
+/** 실제 개인정보 위험(false positive 확인 대상이 될 수 없는 유형). */
+const PERSONAL_INFO_REAL_RISK_TYPES = new Set<PersonalInfoSuspectType>([
+  "resident_registration_number_like",
+  "mobile_phone_like",
+]);
 
 const LOG_FILTER_OPTIONS: { key: WordPressBlogLogFilter; label: string }[] = [
   { key: "all", label: "전체" },
@@ -350,6 +373,25 @@ export default async function ArticleBlogPage({
                       {post.manualPostStatus === "posted" && <InfoBadge label="게시 완료" />}
                       {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="Metrics 필요" />}
                       {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="Low Performance" />}
+                      <form action={archiveSocialPostAction} className="ml-auto">
+                        <input type="hidden" name="articleId" value={article.id} />
+                        <input type="hidden" name="socialPostId" value={post.id} />
+                        <input type="hidden" name="returnTo" value={selfReturnTo} />
+                        <ConfirmSubmitButton
+                          confirmMessage={[
+                            "이 WordPress 블로그 글을 삭제하시겠습니까?",
+                            "",
+                            "앱 내부의 생성 글과 상태만 삭제 또는 숨김 처리됩니다.",
+                            post.postUrl || post.externalPostId
+                              ? "이미 WordPress에 생성된 Draft/Post가 있습니다 — 자동 삭제되지 않습니다."
+                              : "이미 생성된 WordPress 글은 자동 삭제되지 않습니다.",
+                            "이 작업은 앱 내부 데이터만 삭제합니다. WordPress에 생성된 글은 WordPress 관리자 화면에서 별도로 관리하세요.",
+                          ].join("\n")}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          삭제
+                        </ConfirmSubmitButton>
+                      </form>
                     </div>
                     {post.platform === "wordpress_blog" && (
                       <p className="mt-1 rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] text-indigo-800">
@@ -448,7 +490,23 @@ export default async function ArticleBlogPage({
                       (() => {
                         const summary = wordpressBlogSummaries.get(post.id);
                         if (!summary) return null;
-                        const { readiness, draft, seo, featuredImage, guardStatus, blogMetadata } = summary;
+                        const {
+                          readiness,
+                          draft,
+                          seo,
+                          featuredImage,
+                          guardStatus,
+                          blogMetadata,
+                          manualSafetyReview,
+                          personalInfoOverrideEligibility,
+                        } = summary;
+                        // checkWordPressBlogPublishReadiness의 ready 자체는 바꾸지 않는다 — 화면
+                        // 표시와 WordPress Draft 생성/업데이트 버튼만 "개인정보 false positive
+                        // 확인(override)"이 있으면 진행 가능하다고 본다. 실제 위험이 남아
+                        // 있거나 다른 차단 사유가 있으면 여전히 막힌다(personalInfoOverrideEligibility
+                        // 참고). 다른 플랫폼과 공유하는 Publish Guard(Step 6의 상단 배지, "게시
+                        // 가능 상태 확인" 버튼)는 이 override와 무관하게 그대로 동작한다.
+                        const effectiveReady = readiness.ready || personalInfoOverrideEligibility.eligible;
                         const seoPluginProvider =
                           typeof post.platformMetadata.seoPluginProvider === "string"
                             ? post.platformMetadata.seoPluginProvider
@@ -751,6 +809,12 @@ export default async function ArticleBlogPage({
                                 WordPress에 실제로 반영되기 전에 이 wordpress_blog 글이 어떤 모양으로
                                 올라갈지 미리 확인합니다. article 원문이 아니라 이 글 자체의 내용입니다.
                               </p>
+                              <p className="mt-1 text-[10px] text-indigo-500">
+                                아래 본문은 저장된 markdown 원문 그대로입니다(##, 표 등 markdown 문법이
+                                보일 수 있습니다). WordPress Draft 생성/업데이트 시에는 이 markdown이
+                                자동으로 HTML(h2/h3/표/목록 등)로 변환되어 전송되므로, 실제 WordPress
+                                공개 화면에는 markdown 문법이 그대로 노출되지 않습니다.
+                              </p>
                               <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
                                 <div className="sm:col-span-2">
                                   <dt className="font-medium">WordPress 제목</dt>
@@ -1015,6 +1079,13 @@ export default async function ArticleBlogPage({
                                   <dd>{draft.lastUpdatedAt ?? "-"}</dd>
                                 </div>
                               </dl>
+                              {draft.exists && (
+                                <p className="mt-2 text-[10px] text-amber-700">
+                                  기존 WordPress 본문에 markdown(##, 표 등)이 그대로 표시된 경우, 아래
+                                  &ldquo;WordPress Draft 업데이트&rdquo;를 실행하면 HTML로 변환된 본문으로
+                                  교체됩니다(공개 게시는 하지 않습니다 — draft 내용만 갱신됩니다).
+                                </p>
+                              )}
                               <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                                 <form action={createWordPressDraftFromBlogPostAction}>
                                   <input type="hidden" name="articleId" value={article.id} />
@@ -1022,7 +1093,7 @@ export default async function ArticleBlogPage({
                                   <input type="hidden" name="returnTo" value={selfReturnTo} />
                                   <button
                                     type="submit"
-                                    disabled={!readiness.ready}
+                                    disabled={!effectiveReady}
                                     className="rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     WordPress Draft 생성
@@ -1034,7 +1105,7 @@ export default async function ArticleBlogPage({
                                   <input type="hidden" name="returnTo" value={selfReturnTo} />
                                   <button
                                     type="submit"
-                                    disabled={!readiness.ready || !draft.exists}
+                                    disabled={!effectiveReady || !draft.exists}
                                     className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     WordPress Draft 업데이트
@@ -1058,14 +1129,19 @@ export default async function ArticleBlogPage({
                               {!draft.postUrl && (
                                 <p className="mt-1 text-[10px] text-zinc-500">아직 WordPress Draft가 생성되지 않았습니다.</p>
                               )}
-                              {!readiness.ready && (
+                              {!effectiveReady && (
                                 <p className="mt-1 text-[10px] text-red-600">
                                   {workflowStatus.approval !== "승인됨"
                                     ? "승인 후 Draft를 생성할 수 있습니다."
                                     : "게시 준비 조건을 먼저 확인하세요(아래 Step 6 참고)."}
                                 </p>
                               )}
-                              {readiness.ready && !draft.exists && (
+                              {effectiveReady && !readiness.ready && (
+                                <p className="mt-1 text-[10px] text-emerald-700">
+                                  개인정보 false positive override로 진행 가능합니다.
+                                </p>
+                              )}
+                              {effectiveReady && !draft.exists && (
                                 <p className="mt-1 text-[10px] text-amber-600">먼저 Draft를 생성하세요.</p>
                               )}
                             </div>
@@ -1213,6 +1289,141 @@ export default async function ArticleBlogPage({
                               </form>
                             </div>
 
+                            {(!effectiveReady || personalInfoOverrideEligibility.suspects.length > 0) && (
+                              <div
+                                className={`mt-2 rounded border p-2 ${
+                                  !readiness.ready && effectiveReady
+                                    ? "border-emerald-200 bg-emerald-50"
+                                    : "border-red-200 bg-red-50"
+                                }`}
+                              >
+                                <p
+                                  className={`text-[11px] font-semibold ${
+                                    !readiness.ready && effectiveReady ? "text-emerald-800" : "text-red-800"
+                                  }`}
+                                >
+                                  {!readiness.ready && effectiveReady
+                                    ? "SEO Metadata 반영 가능 (개인정보 false positive override 적용됨)"
+                                    : readiness.ready
+                                      ? "확인이 필요한 항목이 있습니다"
+                                      : "SEO Metadata 반영 차단됨"}
+                                </p>
+                                {!effectiveReady && (
+                                  <p className="mt-1 text-[10px] text-red-700">
+                                    SEO Metadata를 WordPress에 반영하려면 먼저 차단 사유를 해결해야 합니다. 본문을
+                                    확인하고 수정한 뒤 품질검사를 다시 실행하거나, 실제 개인정보가 아닌 경우 확인 후
+                                    예외 승인할 수 있습니다.
+                                  </p>
+                                )}
+                                {!readiness.ready && effectiveReady && (
+                                  <p className="mt-1 text-[10px] text-emerald-700">
+                                    개인정보 false positive 확인이 완료되어 &ldquo;SEO Plugin Metadata 반영&rdquo;/
+                                    &ldquo;SEO Metadata 업데이트&rdquo; 버튼을 다시 눌러 진행할 수 있습니다.
+                                  </p>
+                                )}
+                                <details className="mt-2 text-[10px] text-red-800">
+                                  <summary className="cursor-pointer font-medium">차단 사유 상세 보기</summary>
+                                  <ul className="mt-1 list-disc pl-4">
+                                    {readiness.blockers.map((b, i) => {
+                                      const resolvedByOverride = b.includes("개인정보") && personalInfoOverrideEligibility.eligible;
+                                      return (
+                                        <li key={i} className={resolvedByOverride ? "text-zinc-400 line-through" : undefined}>
+                                          {b}
+                                          {resolvedByOverride && (
+                                            <span className="ml-1 font-medium text-emerald-700 no-underline">
+                                              (개인정보 false positive 확인으로 해결됨)
+                                            </span>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                  {!personalInfoOverrideEligibility.eligible &&
+                                    personalInfoOverrideEligibility.reasons.length > 0 && (
+                                      <>
+                                        <p className="mt-2 font-medium">override(예외 승인) 불가 사유</p>
+                                        <ul className="mt-1 list-disc pl-4">
+                                          {personalInfoOverrideEligibility.reasons.map((r, i) => (
+                                            <li key={i}>{r}</li>
+                                          ))}
+                                        </ul>
+                                      </>
+                                    )}
+                                </details>
+
+                                {personalInfoOverrideEligibility.suspects.length > 0 && (
+                                  <details className="mt-2 text-[10px] text-red-800">
+                                    <summary className="cursor-pointer font-medium">
+                                      의심 위치 확인 ({personalInfoOverrideEligibility.suspects.length}건)
+                                    </summary>
+                                    <ul className="mt-1 space-y-1 pl-1">
+                                      {personalInfoOverrideEligibility.suspects.map((s, i) => (
+                                        <li key={i} className="rounded border border-red-200 bg-white p-1">
+                                          <span className="font-medium">
+                                            [{PERSONAL_INFO_SUSPECT_TYPE_LABELS[s.type]}]{" "}
+                                            {PERSONAL_INFO_SUSPECT_LOCATION_LABELS[s.location]}
+                                          </span>
+                                          <span className="ml-1">{s.maskedValue}</span>
+                                          <p className="text-zinc-600">{s.context}</p>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    <form action={openWordPressBlogSafetyReviewAction} className="mt-2">
+                                      <input type="hidden" name="articleId" value={article.id} />
+                                      <input type="hidden" name="socialPostId" value={post.id} />
+                                      <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                      <button
+                                        type="submit"
+                                        className="rounded border border-red-300 bg-white px-2 py-1 font-medium text-red-700 hover:bg-red-100"
+                                      >
+                                        의심 위치 확인(기록 남기기)
+                                      </button>
+                                    </form>
+                                  </details>
+                                )}
+
+                                {manualSafetyReview?.prohibitedExpressionOverride && (
+                                  <p className="mt-2 rounded border border-emerald-200 bg-emerald-50 p-1 text-[10px] text-emerald-800">
+                                    개인정보 아님으로 확인됨 (사유: {manualSafetyReview.prohibitedExpressionOverride.reason}
+                                    , 확인자: {manualSafetyReview.prohibitedExpressionOverride.confirmedBy}, 확인 시각:{" "}
+                                    {manualSafetyReview.prohibitedExpressionOverride.confirmedAt})
+                                  </p>
+                                )}
+
+                                {personalInfoOverrideEligibility.suspects.some(
+                                  (s) => !PERSONAL_INFO_REAL_RISK_TYPES.has(s.type)
+                                ) && (
+                                  <form action={confirmWordPressBlogPersonalInfoFalsePositiveAction} className="mt-2 flex flex-col gap-1">
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                    <textarea
+                                      name="reason"
+                                      required
+                                      placeholder="개인정보가 아닌 이유를 입력하세요 (예: 공공기관 대표번호입니다)"
+                                      className="w-full rounded border border-zinc-300 px-1.5 py-1 text-[10px]"
+                                      rows={2}
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="self-start rounded border border-red-300 bg-white px-2 py-1 font-medium text-red-700 hover:bg-red-100"
+                                    >
+                                      개인정보 아님으로 확인
+                                    </button>
+                                  </form>
+                                )}
+
+                                {/* "품질검사 다시 실행"/"승인 요청" 버튼은 여기서 새로 만들지 않는다 —
+                                    Step 1/Step 2(quality 탭)의 공통 버튼을 그대로 사용한다(중복 배치 금지). */}
+                                <a
+                                  href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "quality" })}
+                                  className="mt-2 inline-block rounded border border-zinc-300 bg-white px-2 py-1 text-[10px] font-medium text-zinc-700 hover:bg-zinc-50"
+                                >
+                                  품질검사 다시 실행 / 승인 요청 → 품질·승인 탭으로 이동
+                                </a>
+                              </div>
+                            )}
+
                             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
                               <form action={updateWordPressSeoMetadataFromBlogPostAction}>
                                 <input type="hidden" name="articleId" value={article.id} />
@@ -1220,7 +1431,7 @@ export default async function ArticleBlogPage({
                                 <input type="hidden" name="returnTo" value={selfReturnTo} />
                                 <button
                                   type="submit"
-                                  disabled={!readiness.ready || workflowStatus.seo === "누락"}
+                                  disabled={!effectiveReady || workflowStatus.seo === "누락"}
                                   className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   SEO Metadata 업데이트
@@ -1517,13 +1728,33 @@ export default async function ArticleBlogPage({
                                 확인합니다.
                               </p>
                               <p className="mt-1 text-[11px] font-medium text-indigo-800">
-                                게시 준비 상태: {readiness.ready ? "준비됨" : "차단됨"}
+                                게시 준비 상태: {effectiveReady ? "준비됨" : "차단됨"}
+                                {effectiveReady && !readiness.ready && " (개인정보 false positive override 적용됨)"}
+                              </p>
+                              <p className="mt-1 text-[10px] text-zinc-500">
+                                위 오른쪽 배지(&ldquo;게시 가능 상태 확인&rdquo; 결과)는 이 카드와는
+                                별도로 다른 플랫폼과 공유하는 공통 Publish Guard 결과입니다 —
+                                개인정보 false positive override는 이 배지에는 적용되지 않으며,
+                                아래 사유를 해결해도 배지는 항상 &ldquo;게시 가능 상태 확인&rdquo;
+                                버튼을 다시 눌러야 갱신됩니다.
                               </p>
                               {readiness.blockers.length > 0 && (
-                                <ul className="mt-1 list-inside list-disc text-[11px] text-red-700">
-                                  {readiness.blockers.map((b, i) => (
-                                    <li key={i}>{b}</li>
-                                  ))}
+                                <ul className="mt-1 list-inside list-disc text-[11px]">
+                                  {readiness.blockers.map((b, i) => {
+                                    const isPersonalInfoBlocker = b.includes("개인정보");
+                                    const resolvedByOverride =
+                                      isPersonalInfoBlocker && effectiveReady && !readiness.ready;
+                                    return (
+                                      <li key={i} className={resolvedByOverride ? "text-zinc-400 line-through" : "text-red-700"}>
+                                        {b}
+                                        {resolvedByOverride && (
+                                          <span className="ml-1 font-medium text-emerald-700 no-underline">
+                                            (개인정보 false positive 확인으로 해결됨)
+                                          </span>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               )}
                               {readiness.warnings.length > 0 && (

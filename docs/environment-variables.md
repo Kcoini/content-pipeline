@@ -36,6 +36,8 @@ cp .env.example .env.local
 | `NAVER_CLIENT_SECRET` | 네이버 검색 API client secret. |
 | `KAKAO_REST_API_KEY` | 카카오 REST API key (다음 뉴스 트렌드). |
 | `TREND_COLLECTION_ENABLED` | `true`이면 실제 네이버/다음 API를 사용하고, `false`(기본값)이면 mock 데이터를 사용한다. |
+| `DAUM_SEARCH_PAGE_SIZE` | (선택) 다음(카카오) 수집 페이지당 결과 수. 기본값 10, Kakao API 상한 50까지 허용. |
+| `DAUM_SEARCH_MAX_PAGES` | (선택) 다음(카카오) 수집 최대 페이지 수. 기본값 1, 과도한 API 호출을 막기 위해 5로 제한된다. 자세한 내용은 `docs/phase-1-17-daum-collection-balance.md` 참고. |
 | `ARTICLE_SEARCH_ENABLED` | `true`이면 실제 네이버/카카오 검색 API로 기사 URL 후보를 수집하고, `false`(기본값)이면 mock 데이터를 사용한다. |
 
 ## WordPress
@@ -73,7 +75,7 @@ cp .env.example .env.local
 |---|---|
 | `SOCIAL_AI_GENERATION_ENABLED` | `true`이면 실제 Claude API로 platform/tone별 social post를 생성하고, `false`(기본값)이면 mock 생성으로 대체한다. 실제 호출 시 `ANTHROPIC_API_KEY`(Phase 1-4와 동일)를 재사용한다. |
 | `SOCIAL_AI_MODEL` | 실제 AI 생성 시 사용할 모델명. 비워두면 안전한 기본값(`claude-sonnet-4-5`)을 사용한다. |
-| `SOCIAL_AI_MAX_TOKENS` | 실제 AI 생성 시 `max_tokens`. 비워두면 기본값(`3000`)을 사용한다. |
+| `SOCIAL_AI_MAX_TOKENS` | 실제 AI 생성 시 `max_tokens`. 비워두면 기본값(`12000`)을 사용한다 — wordpress_blog는 post_body(목표 2,500~4,000자) + 다수 metadata 필드를 한 JSON 응답에 담아야 해서 실측상 6000/8000도 부족했다(응답이 잘려 JSON 파싱 실패). |
 | `SOCIAL_AI_TEMPERATURE` | 실제 AI 생성 시 `temperature`(0~1). 비워두면 기본값(`0.7`)을 사용한다. |
 
 ## 안전 기본값 원칙

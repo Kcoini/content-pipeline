@@ -1,12 +1,16 @@
 import Link from "next/link";
-import { addSource, createTheme, generateArticleDraft } from "./actions";
+import { DashboardTopNav } from "@/components/navigation/dashboard-top-nav";
+import { ThemeSearchList } from "@/components/dashboard/theme-search-list";
+import { addSource, archiveThemeAction, createTheme, generateArticleDraft } from "./actions";
 import { getLogs } from "@/lib/harness/logger";
 import { getLatestContractCheck, type ContractCheckRecord } from "@/lib/repositories/log-repository";
-import { getThemes } from "@/lib/repositories/theme-repository";
+import { getThemes, getThemeRelatedCounts } from "@/lib/repositories/theme-repository";
 import { getSourcesByThemeId } from "@/lib/repositories/source-repository";
 import { getArticleByThemeId } from "@/lib/repositories/article-repository";
+import { extractDomain, summarizeSourceStatus, resolveNextActionState } from "@/lib/dashboard/source-display";
 import type { Article, Source } from "@/lib/types/domain";
 import { ARTICLE_MODE_LIST, DEFAULT_ARTICLE_MODE } from "@/lib/articles/article-modes";
+import { TransientNotice } from "@/components/ui/transient-notice";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +19,16 @@ const MIN_SOURCE_COUNT = 3;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ themeId?: string; sourceError?: string }>;
+  searchParams: Promise<{ themeId?: string; sourceError?: string; deleteMessage?: string; deleteError?: string }>;
 }) {
-  const { themeId, sourceError } = await searchParams;
+  const { themeId, sourceError, deleteMessage, deleteError } = await searchParams;
   const themes = await getThemes();
+  const themeRelatedCounts = await Promise.all(themes.map((theme) => getThemeRelatedCounts(theme.id)));
+  const themeListEntries = themes.map((theme, index) => ({
+    theme,
+    articleCount: themeRelatedCounts[index].articleCount,
+    sourceCount: themeRelatedCounts[index].sourceCount,
+  }));
 
   const selectedTheme =
     (themeId && themes.find((theme) => theme.id === themeId)) ||
@@ -40,73 +50,40 @@ export default async function DashboardPage({
 
   const logs = await getLogs(20);
 
+  const sourceStatus = summarizeSourceStatus(sources, MIN_SOURCE_COUNT);
+  const nextActionState = selectedTheme
+    ? resolveNextActionState(sources.length, MIN_SOURCE_COUNT, Boolean(article))
+    : null;
+
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">content-pipeline 대시보드</h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성(draft)까지의 흐름을 확인합니다.
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              href="/trends"
-              className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
-            >
-              자동 테마 찾기
-            </Link>
-            <Link
-              href="/articles"
-              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              기사 목록 보기
-            </Link>
-            <Link
-              href="/dashboard/social-performance"
-              className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-            >
-              Social Performance Dashboard
-            </Link>
-            <Link
-              href="/dashboard/content"
-              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              Content Dashboard
-            </Link>
-            <Link
-              href="/dashboard/blog"
-              className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
-            >
-              Blog Dashboard
-            </Link>
-            <Link
-              href="/dashboard/rewrite"
-              className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-            >
-              Rewrite Dashboard
-            </Link>
-            <Link
-              href="/dashboard/platform-api"
-              className="rounded border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100"
-            >
-              Platform API Readiness
-            </Link>
-            <Link
-              href="/dashboard/automation-safety"
-              className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
-            >
-              Automation Safety
-            </Link>
-          </div>
+        <header className="flex items-center justify-end gap-4">
+          {/* 항상 보이는 버튼은 "자동 테마 찾기"/"기사 목록" + 대시보드 메뉴
+              뿐이다 — 나머지(콘텐츠/블로그/리라이트/성과/운영 설정)는
+              드롭다운 메뉴 안에서 확인한다(Phase 1-22). */}
+          <DashboardTopNav active={null} />
         </header>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
-          {/* 좌측: 테마 목록 + 생성 폼 */}
+        <TransientNotice message={deleteMessage} variant="success" />
+        <TransientNotice message={deleteError} variant="error" />
+
+        {/*
+          Phase 1-23: "선택한 테마 중심 작업형 대시보드"로 재구성.
+          - 왼쪽: 테마 선택/검색(+ 새 테마 입력은 기본 접힘).
+          - 오른쪽: 선택된 테마 요약 → 다음 작업 → 출처 상태 요약 →
+            출처 추가(compact) → 출처 목록 → (기존) 계약검사/기사초안/로그.
+          모바일에서는 이 grid가 flex-col로 바뀌어 위 순서 그대로 1열로
+          쌓인다 — 왼쪽 사이드바(테마 목록)는 항상 맨 아래로 밀린다.
+        */}
+        <div className="flex flex-col-reverse gap-6 lg:grid lg:grid-cols-[280px_1fr]">
+          {/* 좌측: 테마 검색/선택 + 새 테마 입력(기본 접힘) */}
           <aside className="flex flex-col gap-6">
-            <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-zinc-700">새 테마 입력</h2>
+            <details className="group rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
+                <span className="group-open:hidden">+ 새 테마</span>
+                <span className="hidden group-open:inline">새 테마 입력 접기</span>
+              </summary>
               <form action={createTheme} className="mt-3 flex flex-col gap-2">
                 <label className="flex flex-col gap-1 text-xs text-zinc-600">
                   제목 *
@@ -152,34 +129,21 @@ export default async function DashboardPage({
                   테마 생성
                 </button>
               </form>
-            </section>
+            </details>
 
             <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-zinc-700">테마 목록</h2>
-              {themes.length === 0 ? (
-                <p className="mt-2 text-xs text-zinc-500">아직 등록된 테마가 없습니다.</p>
-              ) : (
-                <ul className="mt-2 flex flex-col gap-1">
-                  {themes.map((theme) => (
-                    <li key={theme.id}>
-                      <a
-                        href={`/dashboard?themeId=${theme.id}`}
-                        className={`block rounded px-2 py-1 text-sm ${
-                          selectedTheme?.id === theme.id
-                            ? "bg-zinc-900 text-white"
-                            : "text-zinc-700 hover:bg-zinc-100"
-                        }`}
-                      >
-                        {theme.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div className="mt-2">
+                <ThemeSearchList
+                  items={themeListEntries}
+                  selectedThemeId={selectedTheme?.id}
+                  archiveAction={archiveThemeAction}
+                />
+              </div>
             </section>
           </aside>
 
-          {/* 우측: 선택된 테마 상세 */}
+          {/* 우측: 선택된 테마 작업 영역 */}
           <main className="flex flex-col gap-6">
             {!selectedTheme ? (
               <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">
@@ -187,12 +151,13 @@ export default async function DashboardPage({
               </section>
             ) : (
               <>
+                {/* 1. 선택된 테마 요약 카드 */}
                 <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <h2 className="text-lg font-semibold">{selectedTheme.title}</h2>
+                      <h2 className="break-keep text-lg font-semibold">{selectedTheme.title}</h2>
                       {selectedTheme.description && (
-                        <p className="mt-1 text-sm text-zinc-600">{selectedTheme.description}</p>
+                        <p className="mt-1 break-keep text-sm text-zinc-600">{selectedTheme.description}</p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
                         {selectedTheme.keywords.map((keyword) => (
@@ -205,6 +170,8 @@ export default async function DashboardPage({
                         </span>
                       </div>
                     </div>
+                    {/* 이 화면의 primary action은 아래 "다음 작업" 카드 하나뿐이다 —
+                        여기서는 secondary action(관련 기사 URL 수집)만 둔다. */}
                     <Link
                       href={`/themes/${selectedTheme.id}`}
                       className="shrink-0 rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
@@ -212,126 +179,258 @@ export default async function DashboardPage({
                       관련 기사 URL 수집
                     </Link>
                   </div>
+                  <p className="mt-3 text-xs text-zinc-500">
+                    출처 {sources.length}개 등록됨 · {sourceStatus.isReady ? "조건 충족" : "출처 부족"} ·{" "}
+                    {nextActionState !== "needs_source" ? "기사 작성 가능" : "기사 작성 불가"}
+                  </p>
                 </section>
 
-                {/* 출처 등록 */}
-                <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-zinc-700">
-                      출처 등록 ({sources.length}개 / 최소 {MIN_SOURCE_COUNT}개)
-                    </h2>
+                {/* 2. 다음 작업 카드 — 상태에 따라 문구/버튼이 달라지는, 이 화면의
+                    유일한 primary action이다. */}
+                <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
+                  <h2 className="text-sm font-semibold text-blue-900">다음 작업</h2>
+                  {nextActionState === "article_exists" && (
+                    <>
+                      <p className="mt-1 break-keep text-sm text-blue-800">이 테마로 생성된 기사가 있습니다.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link
+                          href={`/articles/${article!.id}`}
+                          className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+                        >
+                          기사 보기
+                        </Link>
+                        <a
+                          href="#generate-draft"
+                          className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          새 기사 생성
+                        </a>
+                      </div>
+                    </>
+                  )}
+                  {nextActionState === "ready_to_generate" && (
+                    <>
+                      <p className="mt-1 break-keep text-sm text-blue-800">
+                        출처 조건이 충족되어 기사 초안을 생성할 수 있습니다.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <a
+                          href="#generate-draft"
+                          className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+                        >
+                          기사 초안 생성
+                        </a>
+                      </div>
+                    </>
+                  )}
+                  {nextActionState === "needs_source" && (
+                    <>
+                      <p className="mt-1 break-keep text-sm text-blue-800">
+                        기사 작성을 위해 출처가 {Math.max(MIN_SOURCE_COUNT - sources.length, 0)}개 더 필요합니다.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <a
+                          href="#source-url-input"
+                          className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+                        >
+                          출처 추가
+                        </a>
+                        <Link
+                          href={`/themes/${selectedTheme.id}`}
+                          className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          관련 기사 URL 수집
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                {/* 3. 출처 상태 요약 */}
+                <section className="rounded-lg border border-zinc-200 bg-white p-3 text-xs text-zinc-600 shadow-sm">
+                  <p>
+                    출처 {sourceStatus.total}개 등록됨 · 최소 {sourceStatus.minRequired}개{" "}
+                    {sourceStatus.isReady ? "충족" : "미충족"}
+                  </p>
+                  <p className="mt-0.5">
+                    본문 수집 완료 {sourceStatus.fetchSuccessCount}개 · 요약 완료 {sourceStatus.summarySuccessCount}개
+                    {sourceStatus.fetchFailedCount + sourceStatus.summaryFailedCount > 0 &&
+                      ` · 실패 ${sourceStatus.fetchFailedCount + sourceStatus.summaryFailedCount}개`}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        sources.length >= MIN_SOURCE_COUNT
-                          ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700"
+                      className={`rounded-full px-2 py-0.5 font-medium ${
+                        sourceStatus.isReady ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                       }`}
                     >
-                      {sources.length >= MIN_SOURCE_COUNT ? "조건 충족" : "출처 부족"}
+                      {sourceStatus.isReady ? "조건 충족" : "출처 부족"}
                     </span>
+                    {sourceStatus.fetchSuccessCount > 0 && (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-700">
+                        본문 수집 완료 {sourceStatus.fetchSuccessCount}
+                      </span>
+                    )}
+                    {sourceStatus.summarySuccessCount > 0 && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700">
+                        요약 완료 {sourceStatus.summarySuccessCount}
+                      </span>
+                    )}
+                    {sourceStatus.fetchFailedCount + sourceStatus.summaryFailedCount > 0 && (
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-700">
+                        실패 {sourceStatus.fetchFailedCount + sourceStatus.summaryFailedCount}
+                      </span>
+                    )}
                   </div>
+                </section>
 
+                {/* 4. 출처 추가 — 기본은 "+ 출처 추가"만 보이고, 열면 URL 중심의
+                    compact 폼이 나온다. 제목/출판사/발행일/요약은 "추가 정보
+                    입력(선택)" 안에 접어둔다(URL만 입력해도 서버에서 본문/요약을
+                    자동 수집한다 — lib/dashboard/actions.ts의 기존 로직 그대로). */}
+                <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
                   {sourceError && (
-                    <div className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                       {sourceError}
                     </div>
                   )}
-
-                  <form action={addSource} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input type="hidden" name="themeId" value={selectedTheme.id} />
-                    <label className="flex flex-col gap-1 text-xs text-zinc-600 sm:col-span-2">
-                      URL
-                      <input
-                        name="url"
-                        type="url"
-                        placeholder="https://example.com/article"
-                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-zinc-600">
-                      제목
-                      <input
-                        name="title"
-                        placeholder="출처 제목"
-                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-zinc-600">
-                      출판사 / 기관명
-                      <input
-                        name="publisher"
-                        placeholder="예: OpenAI Blog"
-                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-zinc-600">
-                      발행일
-                      <input
-                        name="publishedAt"
-                        type="date"
-                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-zinc-600 sm:col-span-2">
-                      요약
-                      <textarea
-                        name="summary"
-                        rows={2}
-                        placeholder="출처 내용 요약"
-                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                      />
-                    </label>
-                    <div className="sm:col-span-2">
-                      <button
-                        type="submit"
-                        className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
-                      >
-                        출처 추가
-                      </button>
-                    </div>
-                  </form>
-
-                  {sources.length > 0 && (
-                    <ul className="mt-4 flex flex-col gap-2">
-                      {sources.map((source, index) => (
-                        <li
-                          key={source.id}
-                          className="rounded border border-zinc-200 px-3 py-2 text-sm"
+                  <details className="group" open={Boolean(sourceError)}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
+                      <span className="group-open:hidden">+ 출처 추가</span>
+                      <span className="hidden group-open:inline">출처 추가 폼 접기</span>
+                    </summary>
+                    <form action={addSource} className="mt-3 flex flex-col gap-2">
+                      <input type="hidden" name="themeId" value={selectedTheme.id} />
+                      <label className="flex flex-col gap-1 text-xs text-zinc-600">
+                        URL
+                        <input
+                          id="source-url-input"
+                          name="url"
+                          type="url"
+                          placeholder="https://example.com/article (URL만 입력해도 본문/요약이 자동 수집됩니다)"
+                          className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                        />
+                      </label>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-800">
+                          추가 정보 입력 (선택)
+                        </summary>
+                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <label className="flex flex-col gap-1 text-xs text-zinc-600">
+                            제목
+                            <input
+                              name="title"
+                              placeholder="출처 제목"
+                              className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-zinc-600">
+                            출판사 / 기관명
+                            <input
+                              name="publisher"
+                              placeholder="예: OpenAI Blog"
+                              className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-zinc-600">
+                            발행일
+                            <input
+                              name="publishedAt"
+                              type="date"
+                              className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-zinc-600 sm:col-span-2">
+                            요약
+                            <textarea
+                              name="summary"
+                              rows={2}
+                              placeholder="출처 내용 요약"
+                              className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                            />
+                          </label>
+                        </div>
+                      </details>
+                      <div className="mt-1">
+                        <button
+                          type="submit"
+                          className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
                         >
+                          출처 추가
+                        </button>
+                      </div>
+                    </form>
+                  </details>
+                </section>
+
+                {/* 5. 출처 목록 — 긴 URL 전체는 노출하지 않고 도메인만 보여준다.
+                    요약은 2줄로 제한하고, 전체 요약/본문/삭제는 각각의 상세
+                    영역/버튼으로 분리한다. */}
+                <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+                  <h2 className="text-sm font-semibold text-zinc-700">출처 목록 ({sources.length}개)</h2>
+                  {sources.length === 0 ? (
+                    <p className="mt-2 text-xs text-zinc-500">아직 등록된 출처가 없습니다.</p>
+                  ) : (
+                    <ul className="mt-3 flex flex-col gap-2">
+                      {sources.map((source, index) => (
+                        <li key={source.id} className="rounded border border-zinc-200 px-3 py-2 text-sm">
                           <div className="flex items-start justify-between gap-2">
-                            <div className="font-medium">
+                            <p className="min-w-0 flex-1 break-keep font-medium">
                               {index + 1}. {source.title || "(제목 없음)"}
-                            </div>
+                            </p>
                             <div className="flex shrink-0 gap-1">
-                              <FetchStatusBadge
-                                status={source.fetchStatus}
-                                error={source.fetchError}
-                              />
-                              <SummaryStatusBadge
-                                status={source.summaryStatus}
-                                summarizedAt={source.summarizedAt}
-                              />
+                              <FetchStatusBadge status={source.fetchStatus} error={source.fetchError} />
+                              <SummaryStatusBadge status={source.summaryStatus} summarizedAt={source.summarizedAt} />
                             </div>
                           </div>
-                          <div className="text-xs text-zinc-500">
-                            {source.url || "(URL 없음)"}
-                            {source.publisher && ` · ${source.publisher}`}
+                          <p className="text-xs text-zinc-500">
+                            {extractDomain(source.url)}
                             {source.publishedAt && ` · ${source.publishedAt}`}
-                          </div>
+                          </p>
                           {source.summary && (
-                            <p className="mt-1 text-xs text-zinc-600 line-clamp-2">
+                            <p className="mt-1 line-clamp-2 break-keep text-xs leading-relaxed text-zinc-600">
                               {source.summary}
                             </p>
                           )}
                           {source.fetchStatus === "failed" && source.fetchError && (
-                            <p className="mt-1 text-xs text-red-600">
-                              수집 오류: {source.fetchError}
-                            </p>
+                            <p className="mt-1 text-xs text-red-600">수집 오류: {source.fetchError}</p>
                           )}
                           {source.summaryStatus === "failed" && source.summaryError && (
-                            <p className="mt-0.5 text-xs text-orange-600">
-                              요약 오류: {source.summaryError}
-                            </p>
+                            <p className="mt-0.5 text-xs text-orange-600">요약 오류: {source.summaryError}</p>
+                          )}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                            {source.url && (
+                              <a
+                                href={source.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                원문 열기
+                              </a>
+                            )}
+                            {/* 삭제 기능은 이번 작업에서 추가하지 않았다 — sources 테이블에는
+                                soft delete용 archived_at 컬럼이 없고, 이 작업의 원칙(DB
+                                schema 변경 금지)상 새 컬럼을 추가할 수 없다. hard delete는
+                                이 프로젝트 전반의 soft-delete 우선 원칙과 맞지 않아
+                                의도적으로 보류했다(문서 참고). */}
+                          </div>
+                          {source.summary && (
+                            <details className="mt-1 text-xs">
+                              <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                                요약 전체 보기
+                              </summary>
+                              <p className="mt-1 break-keep leading-relaxed text-zinc-600">{source.summary}</p>
+                            </details>
+                          )}
+                          {source.rawContent && (
+                            <details className="mt-1 text-xs">
+                              <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                                본문 보기
+                              </summary>
+                              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-zinc-50 p-2 text-xs leading-relaxed text-zinc-700">
+                                {source.rawContent}
+                              </pre>
+                            </details>
                           )}
                         </li>
                       ))}
@@ -340,7 +439,7 @@ export default async function DashboardPage({
                 </section>
 
                 {/* 기사 생성 + 계약 검사 결과 */}
-                <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+                <section id="generate-draft" className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
                   <h2 className="text-sm font-semibold text-zinc-700">
                     계약 검사 &amp; 기사 초안 생성
                   </h2>
@@ -372,7 +471,7 @@ export default async function DashboardPage({
                       <button
                         type="submit"
                         disabled={sources.length < MIN_SOURCE_COUNT}
-                        className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                        className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-300"
                       >
                         기사 초안 생성
                       </button>

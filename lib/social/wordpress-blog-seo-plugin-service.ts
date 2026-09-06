@@ -30,6 +30,7 @@ import {
 } from "@/lib/seo/wordpress-seo-custom-endpoint-client";
 import { isSeoPluginWriteEnabled } from "@/lib/seo/seo-plugin-config";
 import { checkWordPressBlogPublishReadiness } from "./wordpress-blog-publish-readiness";
+import { checkWordPressBlogPersonalInfoOverrideEligibility } from "./wordpress-blog-personal-info-review";
 import { logEvent } from "@/lib/harness/logger";
 
 export const WORDPRESS_BLOG_SEO_PLUGIN_TARGET = "wordpress_blog_seo_plugin";
@@ -53,6 +54,10 @@ export interface WriteWordPressBlogSeoPluginMetadataResult {
   message: string;
   /** provider=none 등 의도적으로 건너뛴 경우 true. 실패와 구분한다. */
   skipped?: boolean;
+  /** 차단된 경우, 화면에서 상세를 펼쳐 보여줄 수 있도록 blocker 목록을 그대로 담는다. */
+  blockers?: string[];
+  /** 개인정보 false positive 확인을 거쳐 override로 반영에 성공한 경우 true. */
+  overrideApplied?: boolean;
 }
 
 function readString(record: Record<string, unknown>, key: string): string | null {
@@ -114,8 +119,50 @@ export async function writeWordPressBlogSeoPluginMetadata(
   }
 
   const readiness = checkWordPressBlogPublishReadiness(post);
+  let overrideApplied = false;
+
   if (!readiness.ready) {
-    return { success: false, message: `SEO Plugin metadata 반영이 차단되었습니다: ${readiness.blockers.join(" / ")}` };
+    // public publish는 이 함수의 대상이 아니다 — 여기서 override가 허용해도
+    // 되는 것은 "이미 만들어진 WordPress Draft의 SEO metadata 반영"까지다.
+    await logEvent({
+      type: "wordpress_blog_safety_override_requested",
+      status: "info",
+      message: `wordpress_blog 글(${socialPostId})의 SEO Plugin metadata 반영이 차단되어 override 가능 여부를 확인합니다.`,
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+      details: { socialPostId, blockers: readiness.blockers },
+    });
+
+    const overrideCheck = checkWordPressBlogPersonalInfoOverrideEligibility(post, readiness);
+
+    if (!overrideCheck.eligible) {
+      await logEvent({
+        type: "wordpress_blog_seo_metadata_update_blocked",
+        status: "failed",
+        message: `wordpress_blog 글(${socialPostId})의 SEO Plugin metadata 반영이 차단되었습니다.`,
+        articleId,
+        targetType: "article",
+        targetId: articleId,
+        details: { socialPostId, blockers: readiness.blockers, overrideReasons: overrideCheck.reasons },
+      });
+      return {
+        success: false,
+        message: "SEO Metadata 반영을 진행하려면 먼저 확인이 필요합니다.",
+        blockers: readiness.blockers,
+      };
+    }
+
+    overrideApplied = true;
+    await logEvent({
+      type: "wordpress_blog_safety_override_applied",
+      status: "info",
+      message: `wordpress_blog 글(${socialPostId})의 개인정보 false positive 확인을 근거로 SEO Plugin metadata 반영 차단을 override합니다.`,
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+      details: { socialPostId },
+    });
   }
 
   const platformMetadata = post.platformMetadata ?? {};
@@ -138,9 +185,24 @@ export async function writeWordPressBlogSeoPluginMetadata(
           provider,
           updatedAt: new Date().toISOString(),
           errorMessage: null,
+          overrideApplied,
           ...extra,
         },
       },
+    });
+  }
+
+  /** override로 진행된 성공 케이스만 별도 이벤트로 남긴다(감사 목적). */
+  async function logOverrideSuccessIfApplied(): Promise<void> {
+    if (!overrideApplied) return;
+    await logEvent({
+      type: "wordpress_blog_seo_metadata_update_allowed_with_override",
+      status: "success",
+      message: `wordpress_blog 글(${socialPostId})의 SEO Plugin metadata 반영이 개인정보 false positive override로 허용되었습니다.`,
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+      details: { socialPostId, provider },
     });
   }
 
@@ -221,9 +283,14 @@ export async function writeWordPressBlogSeoPluginMetadata(
       status: "success",
       externalPostId: String(postId),
       postUrl: existingDraft.postUrl ?? undefined,
-      details: { actual: true, socialPostId, provider: "custom_endpoint", postId, verified: result.verified },
+      details: { actual: true, socialPostId, provider: "custom_endpoint", postId, verified: result.verified, overrideApplied },
     });
-    return { success: true, message: "wordpress_blog 글의 SEO metadata를 custom endpoint로 반영했습니다." };
+    await logOverrideSuccessIfApplied();
+    return {
+      success: true,
+      message: "wordpress_blog 글의 SEO metadata를 custom endpoint로 반영했습니다.",
+      overrideApplied,
+    };
   }
 
   // rank_math/yoast/aioseo: 표준 REST posts meta update 경로.
@@ -271,13 +338,16 @@ export async function writeWordPressBlogSeoPluginMetadata(
       postId,
       fieldsAttempted: writeResult.fieldsAttempted,
       verified: verification.verified,
+      overrideApplied,
     },
   });
+  await logOverrideSuccessIfApplied();
 
   return {
     success: true,
     message: verification.verified
       ? "wordpress_blog 글의 SEO plugin metadata를 실제로 반영했습니다."
       : "SEO plugin metadata write 요청은 성공했지만 반영 여부는 확인되지 않았습니다 (custom endpoint가 필요할 수 있습니다).",
+    overrideApplied,
   };
 }

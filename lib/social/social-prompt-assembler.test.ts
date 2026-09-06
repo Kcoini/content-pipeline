@@ -22,6 +22,7 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     excerpt: "장기요양보험 신청 절차를 정리했습니다.",
     keyPoints: ["신청은 국민건강보험공단에서 접수", "등급판정까지 약 30일 소요"],
     sourceCount: 3,
+    usableSourceCount: 3,
     sourceSummaries: [{ title: "출처1", publisher: "출처사", summary: "출처 요약" }],
     platform: "naver_blog",
     toneStyle: "informational",

@@ -16,6 +16,7 @@
 
 import { checkForbiddenPatterns } from "./platform-publishing-rules";
 import { AD_SLOT_MARKERS, adSlotMarkerComment } from "@/lib/articles/article-modes";
+import { findWordPressBlogPersonalInfoSuspects, type PersonalInfoSuspectItem } from "./wordpress-blog-personal-info-review";
 import type { SocialPost } from "./social-platform-types";
 
 export interface WordPressBlogPublishReadiness {
@@ -36,6 +37,19 @@ export interface WordPressBlogPublishReadiness {
     hasMediaId: boolean;
     waived: boolean;
   };
+  /**
+   * post_title/post_body/seoTitle/metaDescription에서 감지한 개인정보 의심
+   * 항목(마스킹된 값만 담는다 — 원문 없음). SEO Metadata 반영 화면에서
+   * "의심 위치 확인"에 사용한다. 비어 있으면 감지된 항목이 없다는 뜻이다.
+   */
+  personalInfoSuspects: PersonalInfoSuspectItem[];
+  /**
+   * blockers 중 금지 표현으로 걸린 사유가 "개인정보(주민등록번호/전화번호
+   * 형식) 의심" 단 하나뿐인지 여부. true면(그리고 다른 blocker가 없다면)
+   * false positive 확인 후 override를 검토할 수 있는 상태라는 뜻이다.
+   * 협박/광고 클릭 유도 등 다른 금지 표현이 함께 있으면 false다.
+   */
+  personalInfoOnlyForbiddenBlocker: boolean;
 }
 
 const DISALLOWED_AD_CODE_PATTERN = /adsbygoogle|googlesyndication|data-ad-client|data-ad-slot|<script\b|<iframe\b/i;
@@ -107,6 +121,9 @@ export function checkWordPressBlogPublishReadiness(
   if (forbidden.blocked) {
     blockers.push(`금지 표현이 발견되었습니다: ${forbidden.found.join(", ")}`);
   }
+  const personalInfoOnlyForbiddenBlocker =
+    forbidden.blocked && forbidden.found.every((f) => f === "개인정보(주민등록번호/전화번호 형식) 의심");
+  const personalInfoSuspects = findWordPressBlogPersonalInfoSuspects(post);
 
   if (DISALLOWED_AD_CODE_PATTERN.test(body)) {
     blockers.push("본문에 실제 광고 스크립트/코드로 보이는 문자열이 포함되어 있습니다.");
@@ -161,5 +178,7 @@ export function checkWordPressBlogPublishReadiness(
     warnings,
     seoSignals: { seoTitle, metaDescription },
     featuredImageSignal: { hasMediaId: hasFeaturedImageMediaId, waived: featuredImageWaived },
+    personalInfoSuspects,
+    personalInfoOnlyForbiddenBlocker,
   };
 }

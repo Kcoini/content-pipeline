@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getArticleById = vi.fn();
 const saveWordPressMetadata = vi.fn();
 const getSocialPostById = vi.fn();
+const updateSocialPostContent = vi.fn();
 const generateWordPressMetadata = vi.fn();
 const logEvent = vi.fn();
 
@@ -12,6 +13,7 @@ vi.mock("@/lib/repositories/article-repository", () => ({
 }));
 vi.mock("@/lib/repositories/social-posts-repository", () => ({
   getSocialPostById: (...args: unknown[]) => getSocialPostById(...args),
+  updateSocialPostContent: (...args: unknown[]) => updateSocialPostContent(...args),
 }));
 vi.mock("@/lib/publish/wordpress-metadata-service", () => ({
   generateWordPressMetadata: (...args: unknown[]) => generateWordPressMetadata(...args),
@@ -57,12 +59,22 @@ beforeEach(() => {
   getArticleById.mockReset();
   saveWordPressMetadata.mockReset();
   getSocialPostById.mockReset();
+  updateSocialPostContent.mockReset();
   generateWordPressMetadata.mockReset();
   logEvent.mockReset();
 
   getArticleById.mockResolvedValue({ id: "article-1", themeId: "theme-1", targetKeyword: "키워드" });
   generateWordPressMetadata.mockResolvedValue({ success: true, metadata: baseMetadata });
   saveWordPressMetadata.mockResolvedValue({});
+});
+
+describe("updateWordPressSeoMetadataFromBlogPost — SEO metadata만 업데이트하고 본문 content는 건드리지 않는다", () => {
+  it("post_body를 HTML로 변환하거나 WordPress Draft content를 갱신하는 코드를 호출하지 않는다(소스 검사)", async () => {
+    const fs = await import("node:fs");
+    const source = fs.readFileSync(new URL("./wordpress-blog-seo-metadata-service.ts", import.meta.url), "utf-8");
+    expect(source).not.toContain("convertMarkdownToWordPressHtml");
+    expect(source).not.toContain("publishArticleToWordPressDraft");
+  });
 });
 
 describe("updateWordPressSeoMetadataFromBlogPost", () => {
@@ -180,5 +192,48 @@ describe("updateWordPressSeoMetadataFromBlogPost", () => {
     expect(saveWordPressMetadata).toHaveBeenCalledWith(
       expect.objectContaining({ slug: "slug", categoryNames: ["카테고리"], tagNames: ["태그"] })
     );
+  });
+
+  describe("개인정보 false positive override", () => {
+    it("개인정보 의심만 유일한 차단 사유이고 confirmed_false_positive 기록이 없으면 여전히 차단한다", async () => {
+      getSocialPostById.mockResolvedValue(
+        makePost({ postBody: "문의처: 제주도청 주택토지과 064-710-4252로 연락하세요. 본문입니다." })
+      );
+
+      const result = await updateWordPressSeoMetadataFromBlogPost("article-1", "post-1");
+
+      expect(result.success).toBe(false);
+      expect(saveWordPressMetadata).not.toHaveBeenCalled();
+    });
+
+    it("confirmed_false_positive 기록이 있고 다른 차단 사유가 없으면 override로 진행된다", async () => {
+      // confirmWordPressBlogPersonalInfoFalsePositive도 같은 getSocialPostById/
+      // updateSocialPostContent mock을 사용하므로, 실제 서비스 함수를 통해
+      // override 레코드를 만든다.
+      const { confirmWordPressBlogPersonalInfoFalsePositive } = await import("./wordpress-blog-personal-info-review");
+
+      const postBeforeConfirm = makePost({
+        postBody: "문의처: 제주도청 주택토지과 064-710-4252로 연락하세요. 본문입니다.",
+      });
+      getSocialPostById.mockResolvedValue(postBeforeConfirm);
+      updateSocialPostContent.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+        ...postBeforeConfirm,
+        ...patch,
+      }));
+
+      const confirmResult = await confirmWordPressBlogPersonalInfoFalsePositive("post-1", {
+        reason: "제주도청 공식 대표번호입니다.",
+        confirmedBy: "tester",
+      });
+      expect(confirmResult.success).toBe(true);
+
+      const savedPatch = updateSocialPostContent.mock.calls.at(-1)?.[1] as { platformMetadata: Record<string, unknown> };
+      getSocialPostById.mockResolvedValue({ ...postBeforeConfirm, platformMetadata: savedPatch.platformMetadata });
+
+      const result = await updateWordPressSeoMetadataFromBlogPost("article-1", "post-1");
+
+      expect(result.success).toBe(true);
+      expect(saveWordPressMetadata).toHaveBeenCalled();
+    });
   });
 });

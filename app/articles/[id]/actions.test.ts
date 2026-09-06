@@ -92,13 +92,21 @@ describe("createWordPressDraftFromBlogPostAction (정적 소스 검사, article/
     actionsSource.indexOf("export async function testWordPressConnectionAction")
   );
 
-  it("wordpress_blog 글 기준 readiness(checkWordPressBlogPublishReadiness)를 먼저 확인한다", () => {
-    expect(fnBody).toContain("checkWordPressBlogPublishReadiness");
-    expect(fnBody).toContain("readiness.ready");
+  it("wordpress_blog 글 기준 readiness(resolveWordPressBlogDraftReadiness → checkWordPressBlogPublishReadiness)를 먼저 확인한다", () => {
+    // resolveWordPressBlogDraftReadiness는 checkWordPressBlogPublishReadiness를 그대로 감싸고,
+    // 개인정보 false positive override 가능 여부만 추가로 판단한다(readiness.ready 자체는 바꾸지 않음).
+    expect(fnBody).toContain("resolveWordPressBlogDraftReadiness");
+    expect(fnBody).toContain("effectiveReadiness.ready");
+    const helperBody = actionsSource.slice(
+      actionsSource.indexOf("async function resolveWordPressBlogDraftReadiness"),
+      actionsSource.indexOf("export async function createWordPressDraftFromBlogPostAction")
+    );
+    expect(helperBody).toContain("checkWordPressBlogPublishReadiness");
+    expect(helperBody).toContain("checkWordPressBlogPersonalInfoOverrideEligibility");
   });
 
-  it("readiness가 ready가 아니면 publishArticleToWordPressDraft를 호출하지 않는다 (early throw)", () => {
-    const guardIndex = fnBody.indexOf("if (!readiness.ready)");
+  it("readiness가 ready가 아니면(override도 불가하면) publishArticleToWordPressDraft를 호출하지 않는다 (early throw)", () => {
+    const guardIndex = fnBody.indexOf("if (!effectiveReadiness.ready)");
     const publishIndex = fnBody.indexOf("await publishArticleToWordPressDraft(articleId,");
     expect(guardIndex).toBeGreaterThan(-1);
     expect(publishIndex).toBeGreaterThan(guardIndex);
@@ -123,17 +131,54 @@ describe("createWordPressDraftFromBlogPostAction (정적 소스 검사, article/
   });
 });
 
-describe("buildWordPressBlogContentOverride (정적 소스 검사)", () => {
+describe("resolveWordPressBlogDraftReadiness (정적 소스 검사, 개인정보 false positive override)", () => {
   const fnBody = actionsSource.slice(
-    actionsSource.indexOf("function buildWordPressBlogContentOverride"),
-    actionsSource.indexOf("function buildWordPressBlogContentOverride") + 500
+    actionsSource.indexOf("async function resolveWordPressBlogDraftReadiness"),
+    actionsSource.indexOf("export async function createWordPressDraftFromBlogPostAction")
+  );
+
+  it("checkWordPressBlogPublishReadiness가 ready=true면 override 판단 없이 바로 통과시킨다", () => {
+    const readyBranchIndex = fnBody.indexOf("if (readiness.ready)");
+    expect(readyBranchIndex).toBeGreaterThan(-1);
+    const overrideCheckIndex = fnBody.indexOf("checkWordPressBlogPersonalInfoOverrideEligibility");
+    expect(overrideCheckIndex).toBeGreaterThan(readyBranchIndex);
+  });
+
+  it("override 요청/적용 이벤트를 pipeline_logs에 기록한다", () => {
+    expect(fnBody).toContain("wordpress_blog_safety_override_requested");
+    expect(fnBody).toContain("wordpress_blog_safety_override_applied");
+  });
+
+  it("createWordPressDraftFromBlogPostAction/updateWordPressDraftFromBlogPostAction 둘 다 이 헬퍼를 재사용한다(중복 로직 없음)", () => {
+    const usageCount = (actionsSource.match(/resolveWordPressBlogDraftReadiness\(/g) ?? []).length;
+    // 정의(async function) 1회 + 두 action에서의 호출 2회 = 3회.
+    expect(usageCount).toBe(3);
+  });
+});
+
+describe("buildWordPressBlogContentOverride (정적 소스 검사, lib/social/wordpress-blog-content-override-builder.ts로 이동)", () => {
+  // markdown→HTML 변환(WordPress 전송 시 노출 문제 개선)을 추가하면서
+  // actions.ts와 오케스트레이터가 공유하는 lib 파일로 옮겼다 — 두 곳이
+  // 서로 다르게 동작하는 일(예: 한쪽만 변환을 잊는 것)을 막기 위해서다.
+  const builderSource = readFileSync(
+    path.join(__dirname, "../../../lib/social/wordpress-blog-content-override-builder.ts"),
+    "utf8"
   );
 
   it("post.postTitle/postBody/excerpt만 사용하고 article 원문 필드를 읽지 않는다", () => {
-    expect(fnBody).toContain("post.postTitle");
-    expect(fnBody).toContain("post.postBody");
-    expect(fnBody).toContain("post.excerpt");
-    expect(fnBody).not.toMatch(/article\.(title|content)/);
+    expect(builderSource).toContain("post.postTitle");
+    expect(builderSource).toContain("post.postBody");
+    expect(builderSource).toContain("post.excerpt");
+    expect(builderSource).not.toMatch(/article\.(title|content)/);
+  });
+
+  it("post_body(markdown)를 WordPress 전송 전에 HTML로 변환한다", () => {
+    expect(builderSource).toContain("convertMarkdownToWordPressHtml");
+  });
+
+  it("actions.ts는 더 이상 자체 buildWordPressBlogContentOverride 정의를 갖지 않는다(공유 lib 재사용)", () => {
+    expect(actionsSource).not.toContain("function buildWordPressBlogContentOverride(post: SocialPost)");
+    expect(actionsSource).toContain('import { buildWordPressBlogContentOverride } from "@/lib/social/wordpress-blog-content-override-builder"');
   });
 });
 
@@ -144,7 +189,7 @@ describe("wordpress_blog 게시 준비 action들 (정적 소스 검사)", () => 
       actionsSource.indexOf("export async function updateWordPressSeoMetadataFromBlogPostAction")
     );
     expect(fnBody).toContain("publishArticleToWordPressDraft(articleId, { force: true, contentOverride })");
-    expect(fnBody).toContain("checkWordPressBlogPublishReadiness");
+    expect(fnBody).toContain("resolveWordPressBlogDraftReadiness");
     expect(fnBody).toContain("buildWordPressBlogContentOverride(post)");
   });
 
@@ -340,5 +385,32 @@ describe("generateWordPressBlogFeaturedImagePromptAction / generateWordPressBlog
     const end = actionsSource.indexOf("export async function attachWordPressFeaturedImageFromBlogPostAction");
     const block = actionsSource.slice(start, end);
     expect(block).not.toContain("generateFeaturedImage(articleId)");
+  });
+});
+
+describe("archiveSocialPostAction (정적 소스 검사, wordpress_blog/naver_blog 등 social post 삭제)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("export async function archiveSocialPostAction"),
+    actionsSource.indexOf("/** social post 하나에 대해 rule-based quality gate를 실행한다. */")
+  );
+
+  it("hard delete가 아니라 archiveSocialPost(soft delete)만 호출한다", () => {
+    expect(fnBody).toContain("archiveSocialPost(socialPostId)");
+    expect(fnBody).not.toMatch(/\.delete\(\)/);
+  });
+
+  it("실제 WordPress 원격 삭제 API를 호출하지 않는다", () => {
+    expect(fnBody).not.toMatch(/deletePost|deleteDraft|wp-json.*DELETE/i);
+  });
+
+  it("이미 보관된 post는 social_post_delete_blocked로, 성공 시 social_post_archived로 기록한다", () => {
+    expect(fnBody).toContain("social_post_delete_blocked");
+    expect(fnBody).toContain("social_post_archived");
+  });
+
+  it("platform group(blog/social)에 맞는 목록 화면으로 돌아간다", () => {
+    expect(fnBody).toContain("getPlatformGroup(post.platform)");
+    expect(fnBody).toContain("buildArticleBlogUrl(articleId)");
+    expect(fnBody).toContain("buildArticleSocialUrl(articleId)");
   });
 });

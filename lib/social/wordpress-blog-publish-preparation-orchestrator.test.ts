@@ -125,9 +125,20 @@ describe("prepareWordPressBlogPostForPublishing", () => {
     expect(publishArticleToWordPressDraft).toHaveBeenCalledWith(
       "article-1",
       expect.objectContaining({
-        contentOverride: expect.objectContaining({ title: "블로그 글 제목", content: "블로그 글 본문" }),
+        contentOverride: expect.objectContaining({ title: "블로그 글 제목" }),
       })
     );
+  });
+
+  it("post_body(markdown)를 WordPress 전송 전에 HTML로 변환한다(WordPress 공개 화면에 markdown 문법이 그대로 노출되지 않도록)", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ postTitle: "제목", postBody: "## 소제목\n\n본문입니다." }));
+    getSuccessfulWordPressDraft.mockResolvedValue(null);
+
+    await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    const call = publishArticleToWordPressDraft.mock.calls[0][1] as { contentOverride: { content: string } };
+    expect(call.contentOverride.content).toContain("<h2>소제목</h2>");
+    expect(call.contentOverride.content).not.toContain("## 소제목");
   });
 
   it("featured image media id가 없고 waived도 아니면 warning으로 표시하고 실패 처리하지 않는다", async () => {

@@ -9,7 +9,7 @@ import { getSocialPostById, updateSocialPostContent } from "@/lib/repositories/s
 import type { SocialPost } from "./social-platform-types";
 import { getSuccessfulWordPressDraft } from "@/lib/repositories/publish-repository";
 import { publishArticleToWordPressDraft } from "@/lib/publish/publish-service";
-import type { PublishArticleOptions } from "@/lib/publish/publish-service";
+import { buildWordPressBlogContentOverride } from "./wordpress-blog-content-override-builder";
 import { attachFeaturedMediaToDraft } from "@/lib/publish/wordpress-featured-media-service";
 import { runPlatformPublishingGuard } from "./platform-publishing-guard-service";
 import { updateWordPressSeoMetadataFromBlogPost } from "./wordpress-blog-seo-metadata-service";
@@ -128,12 +128,11 @@ export async function prepareWordPressBlogPostForPublishing(
 
   // 3) WordPress draft 생성 또는(이미 있으면) 업데이트.
   //    실제 WordPress로 보내는 title/content는 article 원문이 아니라
-  //    이 wordpress_blog 글 자체의 post_title/post_body를 사용한다.
-  const contentOverride: PublishArticleOptions["contentOverride"] = {
-    title: post.postTitle?.trim() || undefined,
-    content: post.postBody?.trim() || undefined,
-    excerpt: post.excerpt?.trim() || undefined,
-  };
+  //    이 wordpress_blog 글 자체의 post_title/post_body를 사용하며,
+  //    post_body(markdown)는 buildWordPressBlogContentOverride 안에서
+  //    WordPress 전송용 HTML로 변환된다(그렇지 않으면 공개 화면에
+  //    `## 소제목` 같은 markdown 문법이 그대로 노출된다).
+  const contentOverride = buildWordPressBlogContentOverride(post);
   const existingDraft = await getSuccessfulWordPressDraft(articleId);
   const draftResult = existingDraft
     ? await publishArticleToWordPressDraft(articleId, { force: true, contentOverride })

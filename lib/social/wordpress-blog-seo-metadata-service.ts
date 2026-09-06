@@ -16,6 +16,7 @@ import { getArticleById, saveWordPressMetadata } from "@/lib/repositories/articl
 import { getSocialPostById } from "@/lib/repositories/social-posts-repository";
 import { generateWordPressMetadata } from "@/lib/publish/wordpress-metadata-service";
 import { checkWordPressBlogPublishReadiness } from "./wordpress-blog-publish-readiness";
+import { checkWordPressBlogPersonalInfoOverrideEligibility } from "./wordpress-blog-personal-info-review";
 import { logEvent } from "@/lib/harness/logger";
 
 export interface UpdateWordPressSeoMetadataFromBlogPostResult {
@@ -54,7 +55,25 @@ export async function updateWordPressSeoMetadataFromBlogPost(
 
   const readiness = checkWordPressBlogPublishReadiness(post);
   if (!readiness.ready) {
-    return { success: false, message: `SEO metadata 업데이트가 차단되었습니다: ${readiness.blockers.join(" / ")}` };
+    // "SEO Plugin Metadata 반영"(writeWordPressBlogSeoPluginMetadata)과 동일한
+    // 개인정보 false positive override 조건을 재사용한다 — approval_status가
+    // approved이고, 개인정보 의심 이외의 다른 차단 사유가 없고, 실제 위험이
+    // 없고, false positive 확인 기록/지문이 일치해야 한다. 이 값을 articles
+    // 테이블에 저장하는 것도 실제 WordPress publish가 아니라 draft metadata
+    // 준비 단계이므로 override 대상에 포함한다.
+    const overrideCheck = checkWordPressBlogPersonalInfoOverrideEligibility(post, readiness);
+    if (!overrideCheck.eligible) {
+      return { success: false, message: "SEO metadata 업데이트를 진행하려면 먼저 확인이 필요합니다." };
+    }
+    await logEvent({
+      type: "wordpress_blog_safety_override_applied",
+      status: "info",
+      message: `wordpress_blog 글(${socialPostId})의 개인정보 false positive 확인을 근거로 SEO metadata 업데이트 차단을 override합니다.`,
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+      details: { socialPostId },
+    });
   }
 
   const article = await getArticleById(articleId);

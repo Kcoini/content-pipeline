@@ -9,7 +9,12 @@
 
 1. **article 생성 또는 선택** — `/dashboard` 또는 `/articles`에서
    테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성, 또는 기존
-   기사를 선택한다. 기본 생성 모드(`source_based_explainer`)는
+   기사를 선택한다. 테마를 직접 입력하는 대신 `/trends`에서 네이버/
+   다음 트렌드로부터 공통 테마 후보를 자동 추출해 선택할 수도 있다 —
+   재수집 시 같은 후보가 중복 저장되지 않도록 정규화/유사도 기반으로
+   병합하는 방식은
+   [`phase-1-16-theme-candidate-deduplication.md`](./phase-1-16-theme-candidate-deduplication.md)
+   참고. 기본 생성 모드(`source_based_explainer`)는
    "출처 기반 해설 기사" 모드이며, 종합할 수 있는 출처(usable
    source)가 3개 미만이면 자동으로 mock 생성으로 전환된다 — 자세한
    내용은 [`article-generation-source-based-explainer.md`](./article-generation-source-based-explainer.md)
@@ -17,6 +22,14 @@
    SEO/AEO/GEO 기준을 반영한 "문제 해결형 수익 블로그")를 선택할
    수 있다 — 자세한 내용은
    [`article-generation-monetized-blog.md`](./article-generation-monetized-blog.md)
+   참고. `/dashboard`는 선택한 테마를 중심으로 "선택된 테마 요약 →
+   다음 작업 → 출처 상태 요약 → 출처 추가 → 출처 목록" 순서로 구성된
+   작업형 화면이다(입력 폼은 기본 접힘, 다음 작업 카드가 화면의 유일한
+   primary action을 안내한다) — 자세한 내용은
+   [`phase-1-23-dashboard-theme-workspace.md`](./phase-1-23-dashboard-theme-workspace.md)
+   참고. 상단 내비게이션(자동 테마 찾기/기사 목록 + 대시보드 드롭다운
+   메뉴)은
+   [`phase-1-22-dashboard-top-nav-simplification.md`](./phase-1-22-dashboard-top-nav-simplification.md)
    참고.
 2. **`/articles/[id]`에서 기사 개요 확인** — 기사 본문, 상태, 하위
    워크플로우(블로그/소셜/rewrite/성과/AB테스트) 진입점을 확인한다.
@@ -106,6 +119,39 @@ Gate의 featured image 판정이 monetized_blog에서도 hard fail이
 (wordpress_blog, naver_blog)의 social post를 생성/검수/승인/export/
 가드/dry-run/handoff/게시결과/metrics까지 관리한다.
 
+**wordpress_blog 글쓰기 원칙**: wordpress_blog로 생성되는 글은 단순
+SEO형 글이 아니라 SEO/AEO/GEO/E-E-A-T를 함께 고려한 문제 해결형
+블로그 글이다(`prompts/social/wordpress-blog.md`,
+`docs/article-generation-monetized-blog.md`의 "wordpress_blog 글쓰기
+원칙" 참고). 이 원칙 위반(상투적 도입부, 초반 결론 부재, 근거 없는
+권위 표현, AI 검색 노출 보장 표현, 공포 조장 표현)은 품질검사
+(`runSocialPostQualityGate`)가 자동으로 걸러낸다.
+
+**wordpress_blog는 article rewrite가 아니라 source-grounded blog
+reconstruction이다**: article은 topic context(주제/맥락 파악용)이고,
+`article_sources`/source summaries가 factual basis(조건/절차/수치/
+기간/기관명/예외/주의점/FAQ의 실제 근거)다. `post_body`의 목표 길이는
+**2,500~4,000자(metadata는 길이에 포함하지 않는다)**이며, 1,200자
+미만은 품질검사가 별도로 `fail` 처리한다(자세한 내용은
+`docs/article-generation-monetized-blog.md` 참고).
+
+**usable source 개수에 따른 3단계 모드**(`lib/social/wordpress-blog-source-mode.ts`):
+usable source(요약 또는 key_points가 있는 출처)가 **0개면 생성 자체를
+차단**하고, **1개면 `single_source_mode`로 생성을 허용**하며, **2개
+이상이면 기존 방식(목표 2,500~4,000자)** 그대로 진행한다.
+`single_source_mode`는 출처가 하나뿐인 한계를 인지하고 정보를
+부풀리지 않는 작성 방식이다 — 목표 길이는 1,800~3,000자(최소
+1,500자)로 완화되고, 본문에 "확인 필요 사항" 섹션이 반드시 포함돼야
+하며(없으면 품질검사가 `fail` 처리), single source라는 사실 자체는
+품질검사에서 항상 `warning`으로만 남아 **혼자서는 게시를 막지
+않는다**. `social_posts.platform_metadata`에는 `sourceMode`
+(`no_source`/`single_source`/`multi_source`), `usableSourceCount`,
+`singleSourceMode`, (single_source일 때만) `sourceLimitWarning`이
+서버에서 직접 계산되어 저장된다 — DB schema 변경 없이 기존 JSON
+필드를 사용한다. WordPress Draft 생성/SEO Metadata 반영 guard는 이
+값의 영향을 받지 않는다(품질검사가 `ready`를 정직하게 반환하는 한
+그대로 통과한다).
+
 **WordPress 게시의 기본(메인) 경로는 이 페이지에서 `wordpress_blog`로
 생성한 글이다** — article 페이지의 "고급 기능"이 아니다.
 `wordpress_blog` 카드에는 article 페이지와 **같은 공통 UI**
@@ -164,11 +210,58 @@ draft 생성/업데이트부터 SEO metadata 업데이트, 대표 이미지 연�
   자신의 seoTitle/metaDescription/targetKeyword만 사용하고 결과도
   `social_posts.platformMetadata.seoPluginWrite`에만 저장해 article
   페이지의 SEO Plugin 표시와 서로 덮어쓰지 않는다.
+- **SEO Metadata 반영 차단과 개인정보 false positive override**:
+  SEO Plugin Metadata 반영은 `quality_status=ready` + `approval_status=
+  approved` + 금지 표현 없음을 요구한다. 개인정보(주민등록번호/전화번호
+  형식) 의심 표현이 감지되면 기본적으로 차단하지만, 실제로는 제주도청
+  대표번호 같은 **공공기관 문의처**가 오탐되는 경우가 있다 — 이런
+  경우 사람이 "개인정보 아님"으로 확인(사유 입력 필수)하면
+  `platformMetadata.manualSafetyReview.prohibitedExpressionOverride`에
+  기록을 남기고, 이후 approval_status가 approved이고 다른 차단 사유가
+  없으면 SEO Plugin Metadata 반영(override)이 허용된다. **주민등록번호나
+  010 휴대전화 형식처럼 실제 개인정보로 보이는 값은 절대 예외 처리할
+  수 없다.** 원문은 로그/metadata 어디에도 남기지 않고 마스킹된 값만
+  남긴다(예: `010-1234-5678` → `010-****-****`). 이 override는 **WordPress
+  Draft의 SEO metadata 반영에만** 적용되며 public publish와는 무관하다
+  (`lib/social/wordpress-blog-personal-info-review.ts`).
 - **실제 WordPress에 전송되는 title/content는 wordpress_blog 글
   자체의 post_title/post_body다** — article 원문이 아니다
   (`publishArticleToWordPressDraft()`의 `contentOverride` 옵션으로
   전달한다. article 페이지 "고급 기능"은 이 옵션을 넘기지 않아
   기존 그대로 article 본문을 전송한다).
+- **wordpress_blog의 post_body(markdown)는 WordPress로 보내기 전에
+  HTML로 변환한다**: 내부 저장/검토 단계(카드 화면의 markdown 미리보기,
+  quality gate 등)에서는 markdown을 그대로 유지하지만,
+  `createWordPressDraftFromBlogPostAction`/
+  `updateWordPressDraftFromBlogPostAction`/"WordPress에 반영하기"(일괄
+  실행)가 실제로 WordPress REST API에 보내는 content는
+  `buildWordPressBlogContentOverride()`
+  (`lib/social/wordpress-blog-content-override-builder.ts`) 안에서
+  `convertMarkdownToWordPressHtml()`
+  (`lib/wordpress/markdown-to-wordpress-html.ts`, markdown-it +
+  sanitize-html 사용)를 거쳐 h2/h3/표/목록/링크 등이 있는 안전한
+  HTML로 변환된다. 그렇지 않으면 WordPress 공개 화면에 `##`, `| 표 |`
+  같은 markdown 문법이 그대로 노출된다. AD_SLOT marker는 변환 전에
+  placeholder로 분리했다가 그대로 복원해 절대 사라지거나 변형되지
+  않는다. **SEO Metadata만 업데이트하는 action은 이 변환을 거치지
+  않는다** — 본문 content 자체를 건드리지 않기 때문이다. 이미
+  markdown 원문으로 반영된 기존 Draft는 "WordPress Draft 업데이트"를
+  다시 실행하면 HTML로 변환된 본문으로 교체할 수 있다(공개 게시는
+  하지 않는다).
+  이 변환은 `naver_blog`(markdown_copy export)나 article 고급 기능
+  (article.content를 그대로 보내는 기존 경로)에는 적용하지 않았다.
+- **WordPress 표(table) 스타일 원칙**: 지원정책 비교표 등 markdown
+  표는 WordPress 공개 화면에서도 읽기 쉬워야 한다 — 변환 시
+  border(1px solid)/padding(12px)/vertical-align:top/
+  word-break:keep-all/overflow-wrap:break-word를 th·td에, 배경색을
+  thead에, zebra 배경을 tbody 짝수 행에 자동으로 적용하고,
+  `table-layout:fixed` + `<colgroup>`으로 열 너비를 지정한다(4열
+  지원정책 비교표는 16%/28%/34%/22% 권장 폭, 그 외에는 균등 폭).
+  표는 `overflow-x:auto` 반응형 래퍼로 감싸 모바일에서 가로
+  스크롤이 가능하게 한다(모바일 카드형 UI로의 전환은 장기 검토
+  과제로 남겨뒀다). 표 셀은 짧은 요약(1~2문장 또는 `<br>` 구분 2~3개
+  항목)만 담고, 긴 설명/예외/주의사항은 표 아래 본문 섹션으로
+  분리하도록 prompt에 명시했다.
 - **대표 이미지 준비**: 같은 카드 안에 별도 하위 섹션으로, media ID를
   준비하는 두 가지 방법을 모두 제공한다 — (A) 이미 WordPress에
   올라간 이미지의 media ID를 직접 입력, (B) 내 컴퓨터의 이미지
@@ -346,6 +439,35 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 전체 워크플로우에 대한 자동화 안전 점검 결과(feature flag, 승인/
 가드 정합성, 로깅 보안, 콘텐츠 안전 규칙)를 보여준다. 점검 전용
 화면이며 데이터를 수정하지 않는다.
+
+## 목록 삭제(보관 처리) 기능
+
+`/dashboard`(테마 목록), `/articles`(기사 목록),
+`/articles/[id]/blog`(wordpress_blog/naver_blog 카드 목록),
+`/articles/[id]/social`(그 외 social post 목록)에 "삭제" 버튼이 있다.
+
+- **soft delete(보관 처리)만 수행한다** — `archived_at` 컬럼(themes/
+  articles/social_posts, `db/migrations/042_soft_delete_archive.sql`)을
+  `now()`로 설정할 뿐, 실제 row를 삭제(hard delete)하지 않는다.
+  themes→articles→social_posts는 `on delete cascade`로 연결되어 있어
+  실제 삭제는 연쇄적으로 위험하기 때문이다.
+- 삭제 버튼을 누르면 **확인 모달**(`window.confirm`)이 뜨고, 연결된
+  기사/출처/social post 개수와 "WordPress에 이미 생성된 Draft/Post는
+  자동 삭제되지 않습니다" 안내를 함께 보여준다.
+- **WordPress 원격 글은 절대 자동 삭제하지 않는다** — 이 기능은 앱
+  내부(Supabase) 데이터만 삭제/숨김 처리하며, 원격 WordPress 삭제
+  기능 자체를 만들지 않았다. public publish된 글은 더더욱 건드리지
+  않는다.
+- 삭제(보관 처리)된 테마/기사/social post는 각 목록 조회에서
+  자동으로 제외된다(`archived_at is null` 조건). 직접 URL로 접근하는
+  상세 페이지(`/articles/[id]`, `/dashboard?themeId=...` 등)는 보관된
+  항목도 그대로 조회할 수 있다(목록에서만 숨겨진다).
+- 삭제/차단 이벤트는 `pipeline_logs`에 기록된다:
+  `theme_archived`/`theme_delete_blocked`,
+  `article_archived`/`article_delete_blocked`,
+  `social_post_archived`/`social_post_delete_blocked`.
+- 복구(un-archive) UI는 아직 없다 — DB에는 기록이 남아 있으므로
+  (hard delete가 아니므로) 나중에 추가할 수 있다.
 
 ## 관련 문서
 

@@ -83,6 +83,39 @@ describe("generateSocialPostWithAI", () => {
     expect(result.error).toBeTruthy();
   });
 
+  it("설명 문구가 code fence 앞뒤에 붙어 있어도 첫 {~마지막 }를 추출해 파싱한다", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    messagesCreate.mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: "다음은 요청하신 wordpress_blog 글입니다:\n\n```json\n" + JSON.stringify({ post_body: "본문" }) + "\n```\n\n이상입니다.",
+        },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+
+    const result = await generateSocialPostWithAI(baseInput());
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toEqual({ post_body: "본문" });
+  });
+
+  it("max_tokens 제한으로 응답이 잘려 JSON 파싱에 실패하면 그 사실을 명시한 오류를 반환한다", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    messagesCreate.mockResolvedValue({
+      content: [{ type: "text", text: '{"post_title": "제목", "post_body": "본문이 중간에 잘림' }],
+      usage: { input_tokens: 10, output_tokens: 6000 },
+      stop_reason: "max_tokens",
+    });
+
+    const result = await generateSocialPostWithAI(baseInput({ maxTokens: 6000 }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("max_tokens");
+    expect(result.error).toContain("SOCIAL_AI_MAX_TOKENS");
+  });
+
   it("예외가 발생해도 Runtime Error로 터지지 않고 안전한 실패를 반환한다", async () => {
     vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
     messagesCreate.mockRejectedValue(new Error("network down"));

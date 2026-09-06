@@ -30,7 +30,7 @@ const BASE_CHECKLIST_KEYS: readonly string[] = [
 export const PLATFORM_WRITING_CONFIGS: Record<SocialPlatform, PlatformWritingConfig> = {
   wordpress_blog: {
     platform: "wordpress_blog",
-    purpose: "SEO long-form blog post",
+    purpose: "SEO/AEO/GEO/E-E-A-T problem-solving long-form blog post",
     supportsTitle: true,
     supportsBody: true,
     supportsCaption: false,
@@ -41,7 +41,14 @@ export const PLATFORM_WRITING_CONFIGS: Record<SocialPlatform, PlatformWritingCon
     preferredLength: "long",
     exportFormat: "html_or_markdown",
     maxLength: 8000,
-    minLength: 800,
+    // post_body 목표 길이는 2,500~4,000자다. 800자는 "목표"가 아니라
+    // 시스템이 허용하는 절대 최소 안전선이었는데, quality gate의
+    // length_check가 이 값 미만만 "너무 짧음"으로 보는 바람에 실제로는
+    // 짧고 얕은 글도 통과되는 문제가 있었다. 1,800자로 올려 quality
+    // gate가 더 이른 단계에서 짧은 글을 잡아내게 한다(1,200자 미만은
+    // social-quality-gate.ts의 wordpress_blog 전용 검사에서 별도로 fail
+    // 처리한다).
+    minLength: 1800,
     recommendedHashtagCount: 0,
     requiresHumanApproval: true,
     allowAutoPublish: false,

@@ -32,6 +32,30 @@ describe("validateSocialOutput", () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it("기관 대표번호(지역번호)가 포함되어도 개인정보 노출로 오탐하지 않는다", () => {
+    const result = validateSocialOutput("wordpress_blog", {
+      platform: "wordpress_blog",
+      tone_style: "informational",
+      post_title: "제목",
+      post_body: "문의처: 제주도청 주택토지과 064-710-4252",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).not.toContain("개인정보 노출로 의심되는 문자열이 포함되어 있습니다.");
+  });
+
+  it("휴대전화 번호(010-)가 포함되면 개인정보 노출 오류를 반환한다", () => {
+    const result = validateSocialOutput("wordpress_blog", {
+      platform: "wordpress_blog",
+      tone_style: "informational",
+      post_title: "제목",
+      post_body: "문의는 010-1234-5678로 연락주세요.",
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("개인정보 노출로 의심되는 문자열이 포함되어 있습니다.");
+  });
+
   it("naver_blog output validation을 통과한다", () => {
     const result = validateSocialOutput("naver_blog", {
       platform: "naver_blog",

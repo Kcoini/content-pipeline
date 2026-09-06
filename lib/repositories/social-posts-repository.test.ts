@@ -13,6 +13,8 @@ const {
   mapSocialPostRow,
   InvalidSocialPlatformError,
   InvalidToneStyleError,
+  SocialPostNotFoundError,
+  archiveSocialPost,
   saveSocialPostRevision,
   requestSocialPostApproval,
   approveSocialPost,
@@ -169,6 +171,7 @@ function makeChain(result: { data: unknown; error: unknown }) {
   chain.eq = vi.fn(self);
   chain.neq = vi.fn(self);
   chain.in = vi.fn(self);
+  chain.is = vi.fn(self);
   chain.order = vi.fn(self);
   chain.limit = vi.fn(self);
   chain.single = vi.fn(() => Promise.resolve(result));
@@ -238,6 +241,47 @@ describe("listSocialPostsByArticle", () => {
     expect(chain.eq).toHaveBeenCalledWith("article_id", "article-1");
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe("sp-1");
+  });
+
+  it("기본적으로 archived_at is null 조건을 사용한다(보관된 post 제외)", async () => {
+    const chain = makeChain({ data: [], error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await listSocialPostsByArticle("article-1");
+
+    expect(chain.is).toHaveBeenCalledWith("archived_at", null);
+  });
+
+  it("includeArchived: true면 archived_at 필터를 사용하지 않는다", async () => {
+    const chain = makeChain({ data: [], error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await listSocialPostsByArticle("article-1", { includeArchived: true });
+
+    expect(chain.is).not.toHaveBeenCalled();
+  });
+});
+
+describe("archiveSocialPost", () => {
+  it("archived_at을 현재 시각으로 설정한다(hard delete/WordPress 원격 삭제 아님)", async () => {
+    const row = makeSocialPostRow({ archived_at: "2026-02-01T00:00:00.000Z" });
+    const chain = makeChain({ data: row, error: null });
+    const from = vi.fn(() => chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await archiveSocialPost("social-post-1");
+
+    expect(from).toHaveBeenCalledWith("social_posts");
+    expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({ archived_at: expect.any(String) }));
+    expect(chain.eq).toHaveBeenCalledWith("id", "social-post-1");
+    expect(result.archivedAt).toBe("2026-02-01T00:00:00.000Z");
+  });
+
+  it("존재하지 않는 social post면 SocialPostNotFoundError를 던진다", async () => {
+    const chain = makeChain({ data: null, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => chain) });
+
+    await expect(archiveSocialPost("missing")).rejects.toThrow(SocialPostNotFoundError);
   });
 });
 

@@ -34,6 +34,27 @@ beforeEach(() => {
 });
 
 describe("buildWordPressBlogPublishPreparationSummary", () => {
+  it("manualSafetyReview가 없으면 null을 담는다", async () => {
+    getArticleById.mockResolvedValue(null);
+    getSuccessfulWordPressDraft.mockResolvedValue(null);
+
+    const summary = await buildWordPressBlogPublishPreparationSummary("article-1", makePost() as never);
+    expect(summary.manualSafetyReview).toBeNull();
+  });
+
+  it("개인정보 의심(기관 대표번호)만 있고 다른 blocker가 없으면 personalInfoOverrideEligibility.suspects에 담기지만 false positive 확인 전이라 eligible=false다", async () => {
+    getArticleById.mockResolvedValue(null);
+    getSuccessfulWordPressDraft.mockResolvedValue(null);
+
+    const summary = await buildWordPressBlogPublishPreparationSummary(
+      "article-1",
+      makePost({ postBody: "문의처: 064-710-4252로 연락하세요." }) as never
+    );
+
+    expect(summary.personalInfoOverrideEligibility.suspects.length).toBeGreaterThan(0);
+    expect(summary.personalInfoOverrideEligibility.eligible).toBe(false);
+  });
+
   it("draft가 있으면 postId/postUrl/lastUpdatedAt을 담는다", async () => {
     getArticleById.mockResolvedValue(null);
     getSuccessfulWordPressDraft.mockResolvedValue({

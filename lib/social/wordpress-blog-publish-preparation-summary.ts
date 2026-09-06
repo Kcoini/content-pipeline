@@ -11,6 +11,12 @@
 import { getArticleById } from "@/lib/repositories/article-repository";
 import { getSuccessfulWordPressDraft } from "@/lib/repositories/publish-repository";
 import { checkWordPressBlogPublishReadiness, type WordPressBlogPublishReadiness } from "./wordpress-blog-publish-readiness";
+import {
+  checkWordPressBlogPersonalInfoOverrideEligibility,
+  getManualSafetyReview,
+  type ManualSafetyReviewRecord,
+  type PersonalInfoOverrideEligibility,
+} from "./wordpress-blog-personal-info-review";
 import type { SocialPost } from "./social-platform-types";
 
 export interface WordPressBlogDraftSummary {
@@ -89,6 +95,14 @@ export interface WordPressBlogPublishPreparationSummary {
   policyRiskScore: number | null;
   /** wordpress_blog 글 자신이 생성한 게시용 metadata 전체(표시 전용). */
   blogMetadata: WordPressBlogOwnMetadataSummary;
+  /** 개인정보 false positive 확인 기록(있으면). */
+  manualSafetyReview: ManualSafetyReviewRecord | null;
+  /**
+   * "SEO Metadata 반영"이 차단된 상태에서 override(예외 허용)가 가능한지.
+   * readiness.ready가 true면 애초에 override가 필요 없으므로 이 값은
+   * 참고용일 뿐이며, 실제 반영 가능 여부는 readiness.ready를 우선 본다.
+   */
+  personalInfoOverrideEligibility: PersonalInfoOverrideEligibility;
 }
 
 /**
@@ -141,9 +155,10 @@ export async function buildWordPressBlogPublishPreparationSummary(
   };
 
   const effectivePolicyRiskScore = blogMetadata.policyRiskScore ?? article?.policyRiskScore ?? null;
+  const readiness = checkWordPressBlogPublishReadiness(post, { policyRiskScore: effectivePolicyRiskScore });
 
   return {
-    readiness: checkWordPressBlogPublishReadiness(post, { policyRiskScore: effectivePolicyRiskScore }),
+    readiness,
     draft: {
       exists: draft !== null,
       postId: draft?.externalPostId ?? null,
@@ -172,6 +187,8 @@ export async function buildWordPressBlogPublishPreparationSummary(
     guardStatus: post.platformPublishGuardStatus,
     policyRiskScore: effectivePolicyRiskScore,
     blogMetadata,
+    manualSafetyReview: getManualSafetyReview(post),
+    personalInfoOverrideEligibility: checkWordPressBlogPersonalInfoOverrideEligibility(post, readiness),
   };
 }
 

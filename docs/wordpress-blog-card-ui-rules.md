@@ -11,6 +11,15 @@
 `naver_blog`/`naver_cafe`/`x`/`threads`/`instagram` 카드나 `/articles/[id]`의
 article 고급 기능에는 적용하지 않는다(각자 다른 규칙을 따를 수 있다).
 
+> 이 문서는 **화면 UI 구조**만 다룬다. wordpress_blog로 생성되는 글
+> **콘텐츠 자체의 작성 원칙**(SEO/AEO/GEO/E-E-A-T 문제 해결형 블로그
+> 기준이자, article rewrite가 아니라 article_sources/source
+> summaries에 근거한 source-grounded blog reconstruction — 목표
+> 길이 2,500~4,000자)은 `prompts/social/wordpress-blog.md`와
+> `docs/article-generation-monetized-blog.md`("wordpress_blog 글쓰기
+> 원칙" 절)에 정의되어 있다 — 이 UI 규칙 문서와는 별개이며, 이번
+> 개선에서도 카드 UI 구조 자체는 변경하지 않았다.
+
 ## 필수 구조 — 고정 영역 + 탭
 
 카드 하나가 너무 길어져 스크롤 부담이 커지는 문제(글 내용/미리보기/
@@ -45,12 +54,22 @@ badge를 붙이지 않는다).
 | 글 내용 | `content` | wordpress_blog 제목, 본문 요약(500~800자, 전체 본문은 접어둠), 이 글 자신이 생성한 SEO/게시용 metadata(seoTitle/metaDescription/targetKeyword/secondaryKeywords/answerSummary/policyRiskScore/monetizationScore 등) |
 | WordPress 미리보기 | `preview` | WordPress 게시 미리보기(제목/대표 이미지/본문/AD_SLOT/FAQ/참고자료) + WordPress 반영 데이터 요약 |
 | 품질·승인 | `quality` | 검사가 많은 이유 안내 + Step 1(품질검사) + Step 2(승인) |
-| WordPress 반영 | `wordpress` | 최근 WordPress 반영 결과 + Step 3(WordPress Draft) + Step 4(SEO Metadata, SEO Plugin Metadata 포함) |
+| WordPress 반영 | `wordpress` | 최근 WordPress 반영 결과 + Step 3(WordPress Draft) + Step 4(SEO Metadata, SEO Plugin Metadata 포함) + SEO Metadata 반영 차단/개인정보 false positive 확인 패널(차단됐거나 의심 항목이 있을 때만 표시) |
 | 대표 이미지 | `image` | Step 5(대표 이미지) 전체 — 파일 선택/업로드/Media ID/연결/이미지 없이 진행 |
 | 체크리스트 | `checklist` | Step 6(게시 가능 상태 확인) + Step 7(체크리스트/Handoff, 확인 필요 항목, 게시 URL 입력) |
 
 ## 추가 규칙
 
+- **WordPress 미리보기(`preview`) 탭의 본문은 저장된 markdown 원문
+  그대로 보여준다**(`##`, `| 표 |` 등 markdown 문법이 그대로 보일 수
+  있다) — 실제 WordPress 전송 시에는 이 markdown이 HTML로 자동
+  변환되므로 공개 화면에는 markdown 문법이 노출되지 않는다는 안내
+  문구를 이 탭에 표시한다(전체 렌더링 미리보기로 UI를 바꾸는 대신,
+  최소 변경으로 "전송 시 HTML로 변환됨"을 명시하는 방식을 택했다).
+- **WordPress 반영(`wordpress`) 탭, Step 3(WordPress Draft)에** 기존
+  Draft가 있을 때 "기존 WordPress 본문에 markdown이 그대로 표시된
+  경우, Draft 업데이트를 실행하면 HTML 형식으로 교체됩니다" 안내를
+  표시한다.
 - primary button의 이름은 **"WordPress에 반영하기"**로 통일한다(기존
   "게시 준비 자동 실행"/"WordPress 게시 준비 일괄 실행"에서 전환).
 - 이 버튼은 **public publish를 하지 않는다** — 어떤 상황에서도 WordPress에
@@ -65,6 +84,22 @@ badge를 붙이지 않는다).
 - **대표 이미지 업로드 / Media ID 저장 / 연결 / 이미지 없음 진행**은 모두
   대표 이미지 탭(`image`) 안에서 처리한다.
 - **게시 URL 기록**도 체크리스트 탭(`checklist`) 안에서 처리한다.
+- **SEO Metadata 반영 차단/개인정보 false positive 확인 패널**(`wordpress`
+  탭, SEO Plugin Metadata 섹션 바로 아래)은 "SEO Metadata 반영을
+  진행하려면 먼저 확인이 필요합니다" 같은 짧은 안내만 기본 노출하고, 긴
+  차단 사유 목록/의심 위치 목록은 `<details>`(접기/펼치기) 안에 둔다.
+  "품질검사 다시 실행"/"승인 요청" 버튼은 이 패널 안에 새로 만들지
+  않는다 — 품질·승인 탭(`quality`)의 기존 Step 1/Step 2 버튼으로
+  이동하는 링크만 둔다(중복 배치 금지 규칙을 그대로 따른다).
+- **개인정보 false positive override의 표시 범위**: `effectiveReady`
+  (`readiness.ready || personalInfoOverrideEligibility.eligible`)는
+  Step 3(WordPress Draft 생성/업데이트 버튼)와 Step 6(게시 가능 상태
+  확인의 "게시 준비 상태" 문구)에서만 `readiness.ready` 대신 사용한다.
+  "WordPress에 반영하기" primary button과 Step 6 상단의 Publish Guard
+  배지(`workflowStatus.publishGuard`, 다른 플랫폼과 공유하는 검사)는
+  override와 무관하게 그대로 `readiness.ready`/기존 로직을 따른다 —
+  이 둘은 결국 공용 Publish Guard(`runPlatformPublishingGuard`)를
+  다시 통과해야 하므로, 미리 풀어주면 오히려 혼동을 준다.
 - **탭 이동 시 상태를 유지한다**: `articleId`/`socialPostId`/`returnTo`/
   `highlight`에 더해 `tab` query param(`?tab=image` 등)을 사용한다.
   action form들의 `returnTo`는 지금 보고 있는 탭을 포함한

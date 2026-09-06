@@ -12,6 +12,8 @@ export interface Theme {
   createdAt: string;
   /** Phase 1-12: 생성 방식 구분 { creation_method: 'manual' | 'trend_cluster', theme_cluster_id? } */
   metadata?: Record<string, unknown>;
+  /** 목록에서 "삭제"(보관 처리)한 시각. null이면 활성 상태. hard delete가 아니다. */
+  archivedAt?: string | null;
 }
 
 /** Phase 1-12: 트렌드 후보 (네이버/다음/mock 수집 결과) */
@@ -30,6 +32,13 @@ export interface TrendCandidate {
 export type ThemeClusterStatus = "candidate" | "selected" | "dismissed";
 
 /** Phase 1-12: 공통 테마 클러스터 (키워드 빈도 기반 자동 추출 결과) */
+/** 공통 테마 후보를 뒷받침하는 원본 근거(네이버/다음 개별 기사) 한 건. */
+export interface ThemeClusterEvidenceItem {
+  platform: string;
+  title: string;
+  url: string | null;
+}
+
 export interface ThemeCluster {
   id: string;
   title: string;
@@ -41,6 +50,20 @@ export interface ThemeCluster {
   status: ThemeClusterStatus;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Phase 1-16: 공백/특수문자/연도/조사 차이를 흡수한 정규화 비교 키
+   * (lib/trends/theme-normalization.ts). 재수집 시 같은 키를 가진 후보는
+   * insert 대신 update(병합)된다.
+   */
+  normalizedKey: string;
+  /** 대표 테마 아래에 딸린 하위 주제(중복 후보가 아니라 병합된 세부 이슈). */
+  subtopics: string[];
+  /** 이 후보를 뒷받침하는 원본 근거(네이버/다음, "근거 보기" UI용). */
+  evidence: ThemeClusterEvidenceItem[];
+  /** 재수집 때마다 같은 후보가 다시 발견된 횟수. */
+  seenCount: number;
+  /** 이 후보가 가장 최근에 발견된 시각. */
+  lastSeenAt: string;
 }
 
 /** Phase 1-13: 기사 URL 후보 상태 */
@@ -195,6 +218,8 @@ export interface Article {
   citedSourceIds: string[];
   createdAt: string;
   updatedAt: string;
+  /** 목록에서 "삭제"(보관 처리)한 시각. null이면 활성 상태. hard delete가 아니다. */
+  archivedAt?: string | null;
   /** 승인(reviewed) 시각. draft 상태이면 null. */
   reviewedAt: string | null;
   /** 승인자. draft 상태이면 null. */
