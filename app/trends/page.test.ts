@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-const pageSource = readFileSync(path.join(__dirname, "page.tsx"), "utf8");
+// 줄바꿈 정규화(CRLF → LF): git core.autocrlf 등 환경 설정에 따라 이
+// 파일이 CRLF로 체크아웃되면, 아래 여러 테스트가 쓰는
+// "함수 시작 ~ 줄 끝(\n)"} 형태의 경계 매칭 정규식이 "}\r\n"의 \r 때문에
+// 깨진다(파일 내용/컴포넌트 구조 자체는 바뀌지 않았는데 테스트만
+// 실패하는 원인이었다). 실제 검증 대상은 항상 LF 기준으로 다루도록
+// 읽는 시점에 한 번 정규화한다.
+const pageSource = readFileSync(path.join(__dirname, "page.tsx"), "utf8").replace(/\r\n/g, "\n");
 
 describe("trends 페이지 - 공통 테마 후보 중복 방지 UI (정적 소스 검사, Phase 1-16)", () => {
   it("groupThemeClustersForDisplay로 대표 후보만 목록에 표시한다", () => {
