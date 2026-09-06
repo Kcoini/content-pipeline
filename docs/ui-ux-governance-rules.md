@@ -310,6 +310,22 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   — 억지로 스키마를 바꾸거나 hard delete로 우회하지 않는다.
 - 실제 사례: `app/dashboard/page.tsx`
   (`docs/phase-1-23-dashboard-theme-workspace.md` 참고).
+- **Server Action 버튼 클릭 후 무반응 상태를 만들지 않는다.** 계약 검사
+  실패 등으로 저장을 진행하지 않을 때도 아무 메시지 없이 같은 화면으로
+  조용히 `redirect`하지 않는다 — 항상 성공/실패/차단 사유 중 하나를
+  화면에 표시한다(`TransientNotice` 등). 이미 생성된 결과물(기사초안 등)이
+  있는 상태에서 다른 옵션으로 재생성하면, 조용히 덮어쓰지 않고 사용자
+  확인을 먼저 거친다. 실제 사례: `app/dashboard/actions.ts`의
+  `generateArticleDraft` (`docs/phase-2-22-article-generation-regeneration-confirmation.md` 참고).
+- **같은 영어 값(예: `"reviewed"`)을 서로 다른 필드에 재사용할 때는
+  화면 라벨을 다르게 붙이지 않는다(또는 명확히 구분되는 문구를 쓴다).**
+  마스터 승인 게이트(`article.status`)와 하위 항목의 선택적 검토 플래그
+  (`wpMetadataStatus`/`seoPluginMetadataStatus`/`featuredImageStatus`)가
+  우연히 같은 값 `"reviewed"`를 쓰면서 한쪽은 "승인됨", 다른 쪽은 "검토
+  완료"로 다르게 번역되어 있으면, 사용자는 이를 서로 다른 승인 단계로
+  오해한다. 실제 사례: `lib/publish/publish-service.ts`/
+  `app/articles/[id]/blog/page.tsx`
+  (`docs/phase-2-23-wordpress-draft-approval-status-clarity.md` 참고).
 
 ## 관련 문서
 
@@ -322,6 +338,8 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - [`docs/phase-1-21-theme-selection-focused-ui.md`](./phase-1-21-theme-selection-focused-ui.md) — 자동 테마 추출 화면을 "대표 테마 선택 중심 UI"로 개편
 - [`docs/phase-1-22-dashboard-top-nav-simplification.md`](./phase-1-22-dashboard-top-nav-simplification.md) — 상단 내비게이션 단순화(드롭다운 메뉴 구조)
 - [`docs/phase-1-23-dashboard-theme-workspace.md`](./phase-1-23-dashboard-theme-workspace.md) — 대시보드를 "선택한 테마 중심 작업형 대시보드"로 개편
+- [`docs/phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md) — 기사초안 재생성 무반응 방지 + article mode 전환 확인 배너
+- [`docs/phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md) — WordPress Draft 반영 승인 조건 명확화(reviewed/승인 용어 혼동 정리)
 - [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md) — article 고급 기능 WordPress 게시 준비 자동화(여러 클릭 → 자동 실행 1회 + 검토/승인)
 
 ## 섹션 12. 준비 단계 자동화 규칙

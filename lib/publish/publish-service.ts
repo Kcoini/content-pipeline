@@ -461,6 +461,15 @@ export async function publishArticleToWordPressDraft(
   }
 
   if (article.status !== "reviewed") {
+    // Phase 2-23: 이 프로젝트에는 article.status(draft/reviewed/published) 외에
+    // 별도의 approval_status 필드가 없다 — "승인하기" 버튼(approveArticleAction)이
+    // status를 draft→reviewed로 바꾸는 것과 동시에 승인을 완료하는 단일 게이트다.
+    // 다만 WordPress Metadata/SEO Plugin Metadata/대표 이미지 등 여러 하위
+    // 상태도 우연히 같은 "reviewed" 값과 "검토 완료" 문구를 쓰기 때문에, 이
+    // 메시지가 그 하위 상태들과 혼동되지 않도록 "원본 기사(article) 자체의
+    // 승인"임을 명시하고, 다음 행동(기사 개요 페이지에서 승인하기)까지 안내한다.
+    // wordpress_blog 카드에서 이 함수를 호출할 때도(contentOverride 유무와
+    // 무관) 동일하게 적용되는 공통 게이트다.
     await logSkippedNotReviewed(
       articleId,
       article,
@@ -469,7 +478,7 @@ export async function publishArticleToWordPressDraft(
     return {
       success: false,
       dryRun: false,
-      message: "승인(reviewed)된 기사만 WordPress에 게시할 수 있습니다.",
+      message: `WordPress Draft에 반영하려면 먼저 원본 기사가 승인되어야 합니다 (현재 상태: ${article.status}). 기사 개요 페이지에서 "승인하기"를 눌러 기사를 승인한 뒤 다시 시도하세요.`,
     };
   }
 

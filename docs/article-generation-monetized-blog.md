@@ -542,9 +542,34 @@ Draft 생성/업데이트 시 다른 article mode와 동일하게 HTML로 변환
 [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
 참고.
 
+## 이미 기사초안이 있을 때 재생성 (Phase 2-22)
+
+`monetized_blog`는 AI가 스스로 `citedSourceIds`를 결정하며, 인용 출처가
+`article.contract.yaml`의 `min-linked-sources`(최소 3개)를 만족하지
+못하면 기사초안이 저장되지 않는다 — 이 경우 화면에 오류 메시지가
+표시된다(과거에는 무반응이었다). 또한 이미 이 테마로 생성된 기사가
+있는 상태에서 다른 mode로 다시 생성하려 하면, 조용히 덮어쓰지 않고
+확인 배너("취소"/"새 초안으로 생성")를 먼저 보여준다. 상세는
+[`phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md)
+참고.
+
+## WordPress Draft 반영 승인 조건 (Phase 2-23)
+
+`monetized_blog`(및 다른 모든 article mode)를 WordPress Draft로
+반영하려면 `article.status`가 `reviewed`여야 한다 — `/articles/[id]`
+개요 페이지에서 "승인하기"를 눌러야 한다. 이 프로젝트에는 별도의
+`approved` 상태가 없다: "검토 완료"와 "승인"은 "승인하기" 버튼 하나로
+동시에 처리되는 단일 게이트다. 자동 게시 준비 흐름(WordPress
+Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절대
+자동으로 바꾸지 않는다 — 사람이 직접 승인해야 한다. 상세는
+[`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
+참고.
+
 ## 관련 문서
 
 - 운영 매뉴얼: [`phase-3-operation-manual.md`](./phase-3-operation-manual.md)
 - `source_based_explainer` 개선: [`article-generation-source-based-explainer.md`](./article-generation-source-based-explainer.md)
 - WordPress 전송 Markdown→HTML 변환: [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
+- 기사초안 재생성 무반응 방지: [`phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md)
+- WordPress Draft 반영 승인 조건 명확화: [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
 - 프롬프트 요약: [`../prompts/articles/monetized-blog.md`](../prompts/articles/monetized-blog.md)

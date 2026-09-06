@@ -242,7 +242,11 @@ describe("publishArticleToWordPressDraft", () => {
     const result = await publishArticleToWordPressDraft("article-1");
 
     expect(result.success).toBe(false);
-    expect(result.message).toContain("reviewed");
+    // Phase 2-23: 메시지가 "승인(reviewed)"이라는 모호한 표현 대신, 현재 상태와
+    // 다음 행동(기사 개요 페이지에서 승인하기)을 명확히 안내해야 한다.
+    expect(result.message).toContain("승인");
+    expect(result.message).toContain("현재 상태: draft");
+    expect(result.message).toContain("승인하기");
     expect(createDraftPost).not.toHaveBeenCalled();
     expect(savePublishLog).not.toHaveBeenCalled();
   });

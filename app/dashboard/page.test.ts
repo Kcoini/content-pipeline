@@ -148,3 +148,73 @@ describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정�
     expect(pageSource).toMatch(/min-w-0 flex-1 break-keep font-medium/);
   });
 });
+
+describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22)", () => {
+  it("mode 값이 없으면 조용히 기본값으로 대체하지 않고 오류를 표시한다", () => {
+    expect(actionsSource).toContain("isArticleMode(rawArticleMode)");
+    expect(actionsSource).toContain("기사 유형을 선택해 주세요.");
+  });
+
+  it("이미 이 테마로 생성된 기사가 있으면 confirmed=true가 아닌 한 재생성을 진행하지 않는다", () => {
+    expect(actionsSource).toContain('formData.get("confirmed") === "true"');
+    expect(actionsSource).toContain("existingArticle && !confirmed");
+    expect(actionsSource).toContain("regenerateConfirm=1");
+  });
+
+  it("mode 변경 여부를 감지해서 별도로 기록한다", () => {
+    expect(actionsSource).toContain("article_generation_mode_change_detected");
+    expect(actionsSource).toContain("existingArticle.articleMode !== articleMode");
+  });
+
+  it("출처 계약 검사 실패 시 더 이상 메시지 없이 조용히 redirect하지 않는다", () => {
+    const fnBody = actionsSource.slice(
+      actionsSource.indexOf("export async function generateArticleDraft"),
+      actionsSource.indexOf("export async function", actionsSource.indexOf("export async function generateArticleDraft") + 1)
+    );
+    expect(fnBody).toContain("article_generation_blocked_insufficient_sources");
+    expect(fnBody.match(/error=\$\{encodeURIComponent/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it("기사 계약 검사(min-linked-sources 등) 실패 시에도 메시지 없이 조용히 redirect하지 않는다 (확인된 무반응 버그의 실제 원인)", () => {
+    expect(actionsSource).toContain("article_generation_blocked_contract_failed");
+    expect(actionsSource).not.toMatch(/if \(!articleResult\.passed\) \{\s*revalidatePath\("\/dashboard"\);\s*redirect\(`\/dashboard\?themeId=\$\{themeId\}`\);\s*\}/);
+  });
+
+  it("계약 검사 실패 시 citedSourceIds를 임의로 채워 넣어 억지로 통과시키지 않는다 (컨텐츠 정합성)", () => {
+    expect(actionsSource).not.toMatch(/citedSourceIds\.push/);
+    expect(actionsSource).not.toMatch(/citedSourceIds\s*=\s*\[.*sources\.map/);
+  });
+
+  it("성공 시 generated=1과 생성된 mode를 query param으로 전달해 화면에 안내한다", () => {
+    expect(actionsSource).toContain("generated=1&generatedMode=${articleMode}");
+    expect(actionsSource).toContain("article_generation_completed");
+  });
+
+  it("article_generation_clicked를 액션 시작 시 항상 기록한다", () => {
+    expect(actionsSource).toContain("article_generation_clicked");
+  });
+
+  it("페이지는 재생성 확인 배너(취소/새 초안으로 생성)를 표시한다", () => {
+    expect(pageSource).toContain("showRegenerateConfirm");
+    expect(pageSource).toContain("새 초안으로 생성");
+    expect(pageSource).toContain("이미 이 테마로 생성된 기사초안이 있습니다.");
+  });
+
+  it("disabled 버튼에는 이유를 표시한다(출처 부족/이미 초안 존재)", () => {
+    const start = pageSource.indexOf('disabled={sources.length < MIN_SOURCE_COUNT}');
+    const end = pageSource.indexOf("</form>", start);
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("출처가 부족합니다");
+    expect(block).toContain("이미 생성된 초안이 있습니다");
+  });
+
+  it("생성 성공/실패 메시지를 TransientNotice로 표시한다", () => {
+    expect(pageSource).toContain("generationSuccessMessage");
+    expect(pageSource).toContain("generationError");
+  });
+
+  it("wordpress_blog 생성 흐름과 article mode monetized_blog를 혼동하지 않는다 (actions.ts는 article 생성 전용)", () => {
+    expect(actionsSource).not.toContain("wordpress_blog");
+    expect(actionsSource).not.toContain("createWordPressDraftFromBlogPostAction");
+  });
+});

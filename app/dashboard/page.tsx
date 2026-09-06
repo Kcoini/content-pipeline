@@ -9,7 +9,7 @@ import { getSourcesByThemeId } from "@/lib/repositories/source-repository";
 import { getArticleByThemeId } from "@/lib/repositories/article-repository";
 import { extractDomain, summarizeSourceStatus, resolveNextActionState } from "@/lib/dashboard/source-display";
 import type { Article, Source } from "@/lib/types/domain";
-import { ARTICLE_MODE_LIST, DEFAULT_ARTICLE_MODE } from "@/lib/articles/article-modes";
+import { ARTICLE_MODE_CONFIGS, ARTICLE_MODE_LIST, DEFAULT_ARTICLE_MODE, isArticleMode } from "@/lib/articles/article-modes";
 import { TransientNotice } from "@/components/ui/transient-notice";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +19,31 @@ const MIN_SOURCE_COUNT = 3;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ themeId?: string; sourceError?: string; deleteMessage?: string; deleteError?: string }>;
+  searchParams: Promise<{
+    themeId?: string;
+    sourceError?: string;
+    deleteMessage?: string;
+    deleteError?: string;
+    error?: string;
+    generated?: string;
+    generatedMode?: string;
+    regenerateConfirm?: string;
+    pendingMode?: string;
+    existingMode?: string;
+  }>;
 }) {
-  const { themeId, sourceError, deleteMessage, deleteError } = await searchParams;
+  const {
+    themeId,
+    sourceError,
+    deleteMessage,
+    deleteError,
+    error: generationError,
+    generated,
+    generatedMode,
+    regenerateConfirm,
+    pendingMode,
+    existingMode,
+  } = await searchParams;
   const themes = await getThemes();
   const themeRelatedCounts = await Promise.all(themes.map((theme) => getThemeRelatedCounts(theme.id)));
   const themeListEntries = themes.map((theme, index) => ({
@@ -55,6 +77,23 @@ export default async function DashboardPage({
     ? resolveNextActionState(sources.length, MIN_SOURCE_COUNT, Boolean(article))
     : null;
 
+  // Phase 2-22: 기사초안 생성 결과(성공/실패)를 항상 눈에 보이는 메시지로
+  // 표시한다 — "버튼을 눌러도 반응이 없다"는 문제의 재발을 막기 위해서다.
+  const generatedModeLabel =
+    generated === "1" && generatedMode && isArticleMode(generatedMode)
+      ? ARTICLE_MODE_CONFIGS[generatedMode].label
+      : null;
+  const generationSuccessMessage = generatedModeLabel
+    ? `${generatedModeLabel} 기사초안이 생성되었습니다.`
+    : null;
+
+  // 재생성 확인 배너에 쓸 라벨. mode 값이 올바르지 않으면(과거 링크 등)
+  // 배너를 표시하지 않는다 — 잘못된 값으로 안내하는 것보다 안전하다.
+  const pendingModeLabel = pendingMode && isArticleMode(pendingMode) ? ARTICLE_MODE_CONFIGS[pendingMode].label : null;
+  const existingModeLabel =
+    existingMode && isArticleMode(existingMode) ? ARTICLE_MODE_CONFIGS[existingMode].label : existingMode ?? null;
+  const showRegenerateConfirm = regenerateConfirm === "1" && Boolean(pendingModeLabel) && Boolean(selectedTheme);
+
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -67,6 +106,8 @@ export default async function DashboardPage({
 
         <TransientNotice message={deleteMessage} variant="success" />
         <TransientNotice message={deleteError} variant="error" />
+        <TransientNotice message={generationSuccessMessage} variant="success" />
+        <TransientNotice message={generationError} variant="error" />
 
         {/*
           Phase 1-23: "선택한 테마 중심 작업형 대시보드"로 재구성.
@@ -444,6 +485,43 @@ export default async function DashboardPage({
                     계약 검사 &amp; 기사 초안 생성
                   </h2>
 
+                  {/* Phase 2-22: 이미 이 테마로 생성된 기사가 있는 상태에서 기사초안
+                      생성을 누르면, 조용히 덮어쓰거나 무반응으로 끝나지 않고 항상
+                      이 확인 배너를 먼저 보여준다. */}
+                  {showRegenerateConfirm && (
+                    <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                      <p className="font-medium">이미 이 테마로 생성된 기사초안이 있습니다.</p>
+                      <p className="mt-1 break-keep">
+                        현재 초안: <span className="font-medium">{existingModeLabel ?? "알 수 없음"}</span> · 선택한
+                        유형: <span className="font-medium">{pendingModeLabel}</span>
+                      </p>
+                      <p className="mt-1 break-keep text-xs text-amber-700">
+                        {existingModeLabel === pendingModeLabel
+                          ? "같은 유형으로 다시 생성하면 기존 미승인 초안(draft)은 새 초안으로 교체됩니다(이미 검토·승인된 기사는 유지됩니다)."
+                          : `기존 초안을 유지하고 ${pendingModeLabel} 초안을 새로 생성하시겠습니까? 기존 미승인 초안(draft)은 새 초안으로 교체됩니다(이미 검토·승인된 기사는 유지됩니다).`}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link
+                          href={`/dashboard?themeId=${selectedTheme.id}`}
+                          className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          취소
+                        </Link>
+                        <form action={generateArticleDraft}>
+                          <input type="hidden" name="themeId" value={selectedTheme.id} />
+                          <input type="hidden" name="articleMode" value={pendingMode} />
+                          <input type="hidden" name="confirmed" value="true" />
+                          <button
+                            type="submit"
+                            className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500"
+                          >
+                            새 초안으로 생성
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+
                   <form action={generateArticleDraft} className="mt-3 flex flex-col gap-3">
                     <input type="hidden" name="themeId" value={selectedTheme.id} />
                     <fieldset className="flex flex-col gap-2">
@@ -457,7 +535,7 @@ export default async function DashboardPage({
                             type="radio"
                             name="articleMode"
                             value={modeConfig.id}
-                            defaultChecked={modeConfig.id === DEFAULT_ARTICLE_MODE}
+                            defaultChecked={modeConfig.id === (article?.articleMode ?? DEFAULT_ARTICLE_MODE)}
                             className="mt-0.5"
                           />
                           <span>
@@ -471,10 +549,31 @@ export default async function DashboardPage({
                       <button
                         type="submit"
                         disabled={sources.length < MIN_SOURCE_COUNT}
+                        title={
+                          sources.length < MIN_SOURCE_COUNT
+                            ? `출처가 부족합니다 (${sources.length}/${MIN_SOURCE_COUNT}개 등록됨).`
+                            : article
+                              ? "이미 생성된 초안이 있습니다. 다시 누르면 재생성 여부를 먼저 확인합니다."
+                              : undefined
+                        }
                         className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-300"
                       >
                         기사 초안 생성
                       </button>
+                      {/* Phase 2-22: disabled 버튼에 이유 없이 회색으로만 표시되던
+                          문제를 고친다 — title(hover) 뿐 아니라 항상 보이는 텍스트로도
+                          알려준다. */}
+                      {sources.length < MIN_SOURCE_COUNT ? (
+                        <p className="mt-1 text-xs text-amber-600">
+                          출처가 부족합니다 ({sources.length}/{MIN_SOURCE_COUNT}개 등록됨) — 출처를 더 등록해야
+                          기사초안을 생성할 수 있습니다.
+                        </p>
+                      ) : article ? (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          이미 생성된 초안이 있습니다. 다시 누르면 재생성 여부를 먼저 확인합니다(조용히 덮어쓰지
+                          않습니다).
+                        </p>
+                      ) : null}
                     </div>
                   </form>
 

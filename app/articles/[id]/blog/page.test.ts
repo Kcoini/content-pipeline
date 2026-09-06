@@ -96,8 +96,15 @@ describe("article/blog 역할 분리 (정적 소스 검사)", () => {
   it("readiness가 차단 상태면(개인정보 false positive override도 없는 한) WordPress Draft 생성/업데이트 버튼을 비활성화한다", () => {
     // effectiveReady = readiness.ready || personalInfoOverrideEligibility.eligible.
     expect(pageSource).toContain("const effectiveReady = readiness.ready || personalInfoOverrideEligibility.eligible;");
-    expect(pageSource).toContain("disabled={!effectiveReady}");
-    expect(pageSource).toContain("disabled={!effectiveReady || !draft.exists}");
+    expect(pageSource).toContain("disabled={!effectiveReady || !isArticleApprovedForWordPress}");
+    expect(pageSource).toContain("disabled={!effectiveReady || !draft.exists || !isArticleApprovedForWordPress}");
+  });
+
+  it("Phase 2-23: 원본 article이 승인(status=reviewed)되지 않았으면 WordPress Draft 관련 버튼을 비활성화하고 사유를 안내한다", () => {
+    expect(pageSource).toContain('const isArticleApprovedForWordPress = article.status === "reviewed";');
+    expect(pageSource).toContain("disabled={!readiness.ready || !isArticleApprovedForWordPress}");
+    expect(pageSource).toContain("원본 기사가 아직 승인되지 않았습니다");
+    expect(pageSource).toContain("기사 개요 페이지");
   });
 
   it("naver_blog 카드에서는 네이버 콘텐츠 안전 점검(checkNaverBlogContentSafety)을 사용한다", () => {

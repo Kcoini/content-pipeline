@@ -14,7 +14,7 @@ import {
 import { summarizeSourcesMock, summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
 import { evaluateArticleForMode } from "@/lib/ai/eval-article";
 import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
-import { getArticleModeConfig, resolveArticleMode } from "@/lib/articles/article-modes";
+import { getArticleModeConfig, isArticleMode } from "@/lib/articles/article-modes";
 import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import {
@@ -26,7 +26,7 @@ import {
 import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, updateSourceSummary, skipSourceSummary, DuplicateSourceError } from "@/lib/repositories/source-repository";
 import { fetchUrlContent } from "@/lib/services/url-fetcher";
 import { generateSourceSummaryWithAi, generateSourceSummaryMock } from "@/lib/ai/source-auto-summarizer";
-import { saveDraftArticle } from "@/lib/repositories/article-repository";
+import { saveDraftArticle, getArticleByThemeId } from "@/lib/repositories/article-repository";
 import { saveEvalRun } from "@/lib/repositories/eval-repository";
 import type { Language } from "@/lib/types/domain";
 
@@ -222,7 +222,96 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     redirect("/dashboard");
   }
 
-  const articleMode = resolveArticleMode(formData.get("articleMode"));
+  // Phase 2-22: "이미 기사초안이 있는데 다른/같은 article mode로 재생성"을
+  // 누르면 아무 반응 없이 조용히 처리되던 문제를 고친다. mode 선택값을
+  // 조용히 기본값으로 대체하지 않고, 선택되지 않았으면 명확한 오류를
+  // 표시한다(요청 6).
+  const rawArticleMode = formData.get("articleMode");
+  if (!isArticleMode(rawArticleMode)) {
+    await logEvent({
+      type: "article_generation_blocked_no_mode_selected",
+      status: "failed",
+      message: "기사 유형(article mode)이 선택되지 않아 기사초안 생성을 시작하지 않았습니다.",
+      details: { themeId },
+      themeId,
+    });
+    revalidatePath("/dashboard");
+    redirect(`/dashboard?themeId=${themeId}&error=${encodeURIComponent("기사 유형을 선택해 주세요.")}`);
+  }
+  const articleMode = rawArticleMode;
+
+  await logEvent({
+    type: "article_generation_clicked",
+    status: "info",
+    message: `기사초안 생성 버튼을 눌렀습니다 (선택한 유형: ${getArticleModeConfig(articleMode).label}).`,
+    details: { themeId, selectedMode: articleMode },
+    themeId,
+  });
+
+  // Phase 2-22: 이미 이 테마로 생성된 기사(초안이든 승인된 기사든)가 있으면,
+  // 사용자가 명시적으로 확인(confirmed=true)하기 전에는 절대 재생성을
+  // 진행하지 않는다 — 기존 초안을 조용히 덮어쓰지 않기 위해서다. 확인
+  // 화면을 보여주기 위한 redirect도 항상 사용자가 알아볼 수 있는 안내와
+  // 함께 이뤄진다(무반응 금지).
+  const confirmed = formData.get("confirmed") === "true";
+  const existingArticle = await getArticleByThemeId(themeId);
+
+  if (existingArticle && !confirmed) {
+    const modeChanged = existingArticle.articleMode !== articleMode;
+    await logEvent({
+      type: "article_generation_blocked_existing_article",
+      status: "info",
+      message: `이 테마로 이미 생성된 기사(${existingArticle.id}, mode=${existingArticle.articleMode})가 있어 사용자 확인 없이 재생성을 진행하지 않습니다.`,
+      details: {
+        themeId,
+        existingArticleId: existingArticle.id,
+        existingMode: existingArticle.articleMode,
+        selectedMode: articleMode,
+        modeChanged,
+      },
+      themeId,
+      articleId: existingArticle.id,
+      targetType: "article",
+      targetId: existingArticle.id,
+    });
+    if (modeChanged) {
+      await logEvent({
+        type: "article_generation_mode_change_detected",
+        status: "info",
+        message: `기존 초안(${existingArticle.articleMode})과 다른 유형(${articleMode})으로 재생성이 요청되었습니다.`,
+        details: { themeId, existingMode: existingArticle.articleMode, selectedMode: articleMode },
+        themeId,
+        articleId: existingArticle.id,
+        targetType: "article",
+        targetId: existingArticle.id,
+      });
+    }
+    revalidatePath("/dashboard");
+    redirect(
+      `/dashboard?themeId=${themeId}&regenerateConfirm=1&pendingMode=${articleMode}&existingMode=${existingArticle.articleMode}`
+    );
+  }
+
+  if (existingArticle && confirmed) {
+    await logEvent({
+      type: "article_generation_regeneration_requested",
+      status: "info",
+      message: `사용자가 기존 초안(${existingArticle.id})을 대체하는 재생성을 확인했습니다 (선택한 유형: ${articleMode}).`,
+      details: { themeId, existingArticleId: existingArticle.id, existingMode: existingArticle.articleMode, selectedMode: articleMode },
+      themeId,
+      articleId: existingArticle.id,
+      targetType: "article",
+      targetId: existingArticle.id,
+    });
+    await logEvent({
+      type: "article_generation_regeneration_started",
+      status: "info",
+      message: `기사초안 재생성을 시작합니다 (${articleMode}).`,
+      details: { themeId, selectedMode: articleMode },
+      themeId,
+    });
+  }
+
   const sources = await getSourcesByThemeId(themeId);
 
   // 1) source.contract.yaml 검사 (FR-6, FR-7)
@@ -258,8 +347,21 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
 
   if (!sourceResult.passed) {
     // 출처가 3개 미만이거나 url/중복 등의 문제가 있으면 기사 생성 단계로 진행하지 않는다.
+    // Phase 2-22: 예전에는 여기서 안내 없이 같은 화면으로 돌아가 "눌러도
+    // 반응 없음"처럼 보였다 — 이제 error 메시지를 함께 표시한다.
+    await logEvent({
+      type: "article_generation_blocked_insufficient_sources",
+      status: "failed",
+      message: "출처 계약 검사를 통과하지 못해 기사초안을 생성하지 않았습니다.",
+      details: { themeId, violations: sourceResult.violations },
+      themeId,
+    });
     revalidatePath("/dashboard");
-    redirect(`/dashboard?themeId=${themeId}`);
+    redirect(
+      `/dashboard?themeId=${themeId}&error=${encodeURIComponent(
+        `출처 조건을 만족하지 못해 기사초안을 생성하지 못했습니다 (${sourceResult.violations.length}건). 아래 출처 계약 검사 결과를 확인하세요.`
+      )}`
+    );
   }
 
   // 2) AI mode 여부 확인 후 출처 요약 + 기사 초안 생성 (FR-4, FR-5)
@@ -385,8 +487,42 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
   });
 
   if (!articleResult.passed) {
+    // Phase 2-22: 확인된 "무반응" 버그의 실제 원인. AI가 생성한
+    // citedSourceIds가 min-linked-sources(최소 3개 인용) 등 article
+    // 계약을 만족하지 못하면 여기서 아무 메시지 없이 같은 화면으로
+    // 돌아갔다 — 사용자에게는 "버튼을 눌러도 반응이 없다"로 보였다.
+    // general_news/monetized_blog는 source_based_explainer와 달리 AI가
+    // 스스로 citedSourceIds를 결정하고 별도의 안전장치(mock fallback 등)가
+    // 없어 이 문제가 특히 잘 드러난다. 여기서는 citedSourceIds를 임의로
+    // 채워 넣어 계약을 억지로 통과시키지 않는다(실제로 인용하지 않은
+    // 출처를 인용한 것처럼 조작하는 것은 컨텐츠 정합성 문제다) — 대신
+    // 실패 사유를 명확히 안내하고, 아래 계약 검사 결과 박스에서 상세를
+    // 확인할 수 있게 한다.
+    await logEvent({
+      type: "article_generation_blocked_contract_failed",
+      status: "failed",
+      message: `생성된 기사초안(${articleMode})이 기사 계약 검사를 통과하지 못해 저장되지 않았습니다.`,
+      details: {
+        themeId,
+        articleMode,
+        citedSourceCount: citedSources.length,
+        violations: articleResult.violations,
+      },
+      themeId,
+    });
+    await logEvent({
+      type: "article_generation_failed",
+      status: "failed",
+      message: `기사초안 생성이 계약 검사 실패로 중단되었습니다 (${articleMode}).`,
+      details: { themeId, articleMode, violationCount: articleResult.violations.length },
+      themeId,
+    });
     revalidatePath("/dashboard");
-    redirect(`/dashboard?themeId=${themeId}`);
+    redirect(
+      `/dashboard?themeId=${themeId}&error=${encodeURIComponent(
+        `생성된 기사초안이 계약 검사를 통과하지 못해 저장되지 않았습니다 (인용 출처 ${citedSources.length}개 · ${articleResult.violations.length}건 위반). 아래 기사 계약 검사 결과를 확인하세요.`
+      )}`
+    );
   }
 
   // 4) draft 상태로 저장 (이전 초안은 새 초안으로 교체)
@@ -506,8 +642,21 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     });
   }
 
+  await logEvent({
+    type: "article_generation_completed",
+    status: "success",
+    message: `기사초안 생성이 완료되었습니다 (${getArticleModeConfig(articleMode).label}).`,
+    details: { themeId, articleId: article.id, articleMode },
+    themeId,
+    articleId: article.id,
+    targetType: "article",
+    targetId: article.id,
+  });
+
   revalidatePath("/dashboard");
-  redirect(`/dashboard?themeId=${themeId}`);
+  redirect(
+    `/dashboard?themeId=${themeId}&generated=1&generatedMode=${articleMode}`
+  );
 }
 
 /**

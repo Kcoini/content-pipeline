@@ -408,7 +408,17 @@ export type LogEventType =
   | "article_archived"
   | "article_delete_blocked"
   | "social_post_archived"
-  | "social_post_delete_blocked";
+  | "social_post_delete_blocked"
+  // Phase 2-22: article mode 재생성 시 무반응 방지 (버튼 클릭 ~ 기존 초안/모드 변경 확인)
+  | "article_generation_clicked"
+  | "article_generation_blocked_no_mode_selected"
+  | "article_generation_blocked_insufficient_sources"
+  | "article_generation_blocked_contract_failed"
+  | "article_generation_blocked_existing_article"
+  | "article_generation_mode_change_detected"
+  | "article_generation_regeneration_requested"
+  | "article_generation_regeneration_started"
+  | "article_generation_failed";
 
 export type LogStatus = "success" | "failed" | "info";
 

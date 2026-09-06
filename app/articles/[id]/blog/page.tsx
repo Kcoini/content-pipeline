@@ -507,6 +507,15 @@ export default async function ArticleBlogPage({
                         // 참고). 다른 플랫폼과 공유하는 Publish Guard(Step 6의 상단 배지, "게시
                         // 가능 상태 확인" 버튼)는 이 override와 무관하게 그대로 동작한다.
                         const effectiveReady = readiness.ready || personalInfoOverrideEligibility.eligible;
+                        // Phase 2-23: WordPress Draft 생성/업데이트는 wordpress_blog 글
+                        // 자체의 준비 상태(readiness)와는 별개로, 원본 article이
+                        // 승인(article.status === "reviewed")되어 있어야 한다
+                        // (lib/publish/publish-service.ts의 publishArticleToWordPressDraft가
+                        // article/wordpress_blog 공통으로 강제하는 조건). 이 조건은
+                        // checkWordPressBlogPublishReadiness()의 blockers에 포함되어 있지
+                        // 않아, 버튼이 활성화된 채로 있다가 실행 후에야 실패 메시지로
+                        // 드러났다 — 이제 버튼 자체를 비활성화하고 사유를 미리 안내한다.
+                        const isArticleApprovedForWordPress = article.status === "reviewed";
                         const seoPluginProvider =
                           typeof post.platformMetadata.seoPluginProvider === "string"
                             ? post.platformMetadata.seoPluginProvider
@@ -698,13 +707,31 @@ export default async function ArticleBlogPage({
                             {/* WordPress에 반영하기 — primary button. Draft/SEO/대표 이미지/게시 가능
                                 확인을 순서대로 실행한다(prepareWordPressBlogPostForPublishingAction 재사용,
                                 공개 게시 아님). 탭과 무관하게 항상 보인다. */}
+                            {/* Phase 2-23: 원본 article이 아직 승인되지 않았으면 실행 전에
+                                먼저 안내한다 — "실패 단계: WordPress Draft"로 실행 후에야
+                                알게 되던 문제를 고친다. */}
+                            {!isArticleApprovedForWordPress && (
+                              <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[10px] text-amber-800">
+                                ⚠ 원본 기사가 아직 승인되지 않았습니다(article status: {article.status}). WordPress
+                                Draft에 반영하려면 먼저{" "}
+                                <a href={`/articles/${article.id}`} className="underline">
+                                  기사 개요 페이지
+                                </a>
+                                에서 &quot;승인하기&quot;를 눌러 기사를 승인하세요.
+                              </div>
+                            )}
                             <form action={prepareWordPressBlogPostForPublishingAction} className="mt-2">
                               <input type="hidden" name="articleId" value={article.id} />
                               <input type="hidden" name="socialPostId" value={post.id} />
                               <input type="hidden" name="returnTo" value={selfReturnTo} />
                               <button
                                 type="submit"
-                                disabled={!readiness.ready}
+                                disabled={!readiness.ready || !isArticleApprovedForWordPress}
+                                title={
+                                  !isArticleApprovedForWordPress
+                                    ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
+                                    : undefined
+                                }
                                 className="w-full rounded bg-indigo-800 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 WordPress에 반영하기
@@ -1079,6 +1106,16 @@ export default async function ArticleBlogPage({
                                   <dd>{draft.lastUpdatedAt ?? "-"}</dd>
                                 </div>
                               </dl>
+                              {!isArticleApprovedForWordPress && (
+                                <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                                  ⚠ 원본 기사가 아직 승인되지 않았습니다(article status: {article.status}). WordPress
+                                  Draft를 생성/업데이트하려면 먼저{" "}
+                                  <a href={`/articles/${article.id}`} className="underline">
+                                    기사 개요 페이지
+                                  </a>
+                                  에서 &ldquo;승인하기&rdquo;를 눌러 기사를 승인하세요.
+                                </p>
+                              )}
                               {draft.exists && (
                                 <p className="mt-2 text-[10px] text-amber-700">
                                   기존 WordPress 본문에 markdown(##, 표 등)이 그대로 표시된 경우, 아래
@@ -1093,7 +1130,12 @@ export default async function ArticleBlogPage({
                                   <input type="hidden" name="returnTo" value={selfReturnTo} />
                                   <button
                                     type="submit"
-                                    disabled={!effectiveReady}
+                                    disabled={!effectiveReady || !isArticleApprovedForWordPress}
+                                    title={
+                                      !isArticleApprovedForWordPress
+                                        ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
+                                        : undefined
+                                    }
                                     className="rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     WordPress Draft 생성
@@ -1105,7 +1147,12 @@ export default async function ArticleBlogPage({
                                   <input type="hidden" name="returnTo" value={selfReturnTo} />
                                   <button
                                     type="submit"
-                                    disabled={!effectiveReady || !draft.exists}
+                                    disabled={!effectiveReady || !draft.exists || !isArticleApprovedForWordPress}
+                                    title={
+                                      !isArticleApprovedForWordPress
+                                        ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
+                                        : undefined
+                                    }
                                     className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     WordPress Draft 업데이트
