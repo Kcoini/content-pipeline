@@ -534,8 +534,17 @@ evaluator**이므로, `general_news`/`source_based_explainer`의 yaml에는
   판단이 필요한 항목은 eval 기준(`keyword-naturalness` 등)과
   qualityWarnings로 다뤘다(중복 방지).
 
+## WordPress 전송 시 본문 형식 (Phase 2-21)
+
+`monetized_blog`도 `content`가 Markdown으로 생성되므로, WordPress
+Draft 생성/업데이트 시 다른 article mode와 동일하게 HTML로 변환되어
+전송된다(mode별 분기 없이 공통 처리). 상세는
+[`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
+참고.
+
 ## 관련 문서
 
 - 운영 매뉴얼: [`phase-3-operation-manual.md`](./phase-3-operation-manual.md)
 - `source_based_explainer` 개선: [`article-generation-source-based-explainer.md`](./article-generation-source-based-explainer.md)
+- WordPress 전송 Markdown→HTML 변환: [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
 - 프롬프트 요약: [`../prompts/articles/monetized-blog.md`](../prompts/articles/monetized-blog.md)

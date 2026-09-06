@@ -261,6 +261,124 @@ export async function updateDraftFeaturedMedia(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Phase 2-21: 기존 WordPress draft post의 title/content/excerpt 갱신
+//
+// POST /wp-json/wp/v2/posts/{postId}에 { status: "draft", ... }만 전송한다.
+// updateDraftFeaturedMedia와 동일한 원칙: status는 입력값과 무관하게 항상
+// "draft"로 고정한다 — 기존에 공개(publish) 상태였던 글이라도 이 함수
+// 호출만으로 공개 상태가 바뀌지 않게 하기 위해서다(공개 상태 변경은
+// 반드시 WordPress 관리자 화면에서 사용자가 직접 확인/결정한다).
+// ─────────────────────────────────────────────────────────────
+
+export interface UpdateDraftPostContentInput {
+  title?: string;
+  content?: string;
+  excerpt?: string;
+}
+
+export interface UpdateDraftPostContentSuccess {
+  success: true;
+  postId: number;
+  link: string;
+  status: string;
+}
+
+export interface UpdateDraftPostContentFailure {
+  success: false;
+  statusCode?: number;
+  errorMessage: string;
+  reasonCandidate: string[];
+}
+
+export type UpdateDraftPostContentResult = UpdateDraftPostContentSuccess | UpdateDraftPostContentFailure;
+
+/**
+ * 기존 WordPress post의 title/content/excerpt를 갱신한다 (Phase 2-21).
+ * markdown 원문이 그대로 전송되어 있던 기존 post를 HTML 변환본으로
+ * 교체하는 용도 — status는 항상 "draft"로 고정 전송하므로, 이 post가
+ * 이미 공개(publish) 상태였더라도 이 호출로는 공개 상태가 바뀌지 않는다
+ * (WordPress REST API는 status를 명시한 값으로만 덮어쓴다).
+ */
+export async function updateDraftPostContent(
+  postId: number,
+  input: UpdateDraftPostContentInput
+): Promise<UpdateDraftPostContentResult> {
+  const config = getWordPressConfig();
+  if (!config) {
+    return {
+      success: false,
+      errorMessage: "WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD가 설정되지 않았습니다.",
+      reasonCandidate: ["Application Password가 설정되지 않았습니다."],
+    };
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/wp-json/wp/v2/posts/${postId}`;
+
+  const body: Record<string, unknown> = { status: "draft" };
+  if (input.title !== undefined) body.title = input.title;
+  if (input.content !== undefined) body.content = input.content;
+  if (input.excerpt !== undefined) body.excerpt = input.excerpt;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Authorization header는 절대 로그로 출력하지 않는다.
+        Authorization: buildAuthHeader(config),
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const errorMessage = `WordPress API 네트워크 오류: ${message}`;
+    return {
+      success: false,
+      errorMessage,
+      reasonCandidate: ["사이트 접근 불가", "SSL 문제", "방화벽 또는 보안 플러그인 문제"],
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      statusCode: response.status,
+      errorMessage: `WordPress content 갱신 실패 (HTTP ${response.status} ${response.statusText})`,
+      reasonCandidate: getLikelyCausesForStatus(response.status),
+    };
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      errorMessage: `WordPress 응답 파싱 실패: ${message}`,
+      reasonCandidate: ["원인을 특정할 수 없는 오류입니다."],
+    };
+  }
+
+  const resultPostId = typeof data.id === "number" ? data.id : Number(data.id);
+  if (!resultPostId || Number.isNaN(resultPostId)) {
+    return {
+      success: false,
+      errorMessage: "WordPress 응답에 post id가 없습니다.",
+      reasonCandidate: ["원인을 특정할 수 없는 오류입니다."],
+    };
+  }
+
+  const link = typeof data.link === "string" ? data.link : "";
+  const status = typeof data.status === "string" ? data.status : "draft";
+
+  return { success: true, postId: resultPostId, link, status };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Phase 2-17: WordPress draft post를 실제 public publish 상태로 변경
 //
 // POST /wp-json/wp/v2/posts/{postId}에 { status: "publish" }만 전송한다.

@@ -7,6 +7,7 @@ import {
   uploadMediaToWordPress,
   testWordPressConnection,
   updateDraftFeaturedMedia,
+  updateDraftPostContent,
   getMediaItem,
   updateSeoPluginMetadata,
   verifySeoPluginMetadata,
@@ -659,6 +660,140 @@ describe("updateDraftFeaturedMedia", () => {
     );
 
     const result = await updateDraftFeaturedMedia(1, 1);
+
+    const serialized = JSON.stringify(result).toLowerCase();
+    expect(serialized).not.toContain("authorization");
+    expect(serialized).not.toContain("dummy-app-password-for-tests");
+    expect(serialized).not.toContain("basic ");
+  });
+});
+
+describe("updateDraftPostContent (Phase 2-21: 기존 draft/post의 title/content/excerpt 갱신)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearWordPressEnv();
+  });
+
+  it("환경변수가 없으면 실제 fetch 호출 없이 실패를 반환한다", async () => {
+    clearWordPressEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateDraftPostContent(42, { content: "<p>본문</p>" });
+
+    expect(result.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("status='draft'를 항상 고정 전송한다 (공개 게시 금지, 기존 공개 상태와 무관)", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 42, link: "https://example-blog.test/?p=42", status: "draft" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateDraftPostContent(42, {
+      title: "제목",
+      content: "<h2>제목</h2><p>본문</p>",
+      excerpt: "요약",
+    });
+
+    expect(result.success).toBe(true);
+    const [endpoint, init] = fetchMock.mock.calls[0];
+    expect(String(endpoint)).toContain("/wp-json/wp/v2/posts/42");
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({
+      status: "draft",
+      title: "제목",
+      content: "<h2>제목</h2><p>본문</p>",
+      excerpt: "요약",
+    });
+  });
+
+  it("Authorization header를 사용하고 password를 평문으로 보내지 않는다", async () => {
+    setWordPressEnv();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, link: "https://example-blog.test/?p=1", status: "draft" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateDraftPostContent(1, { content: "본문" });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toMatch(/^Basic /);
+    expect(headers.Authorization).not.toContain("dummy-app-password-for-tests");
+  });
+
+  it("성공 시 postId/link/status를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: 99, link: "https://example-blog.test/?p=99", status: "draft" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const result = await updateDraftPostContent(99, { content: "본문" });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.postId).toBe(99);
+      expect(result.link).toBe("https://example-blog.test/?p=99");
+      expect(result.status).toBe("draft");
+    }
+  });
+
+  it("HTTP 오류 응답이면 statusCode/reasonCandidate를 포함한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("forbidden", { status: 403, statusText: "Forbidden" }))
+    );
+
+    const result = await updateDraftPostContent(1, { content: "본문" });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.statusCode).toBe(403);
+      expect(result.reasonCandidate.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("네트워크 오류 시 예외를 던지지 않고 안전한 실패를 반환한다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await updateDraftPostContent(1, { content: "본문" });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errorMessage).toContain("network down");
+    }
+  });
+
+  it("반환값에 Authorization header/password가 포함되지 않는다", async () => {
+    setWordPressEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: 1, link: "https://example-blog.test/?p=1", status: "draft" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const result = await updateDraftPostContent(1, { content: "본문" });
 
     const serialized = JSON.stringify(result).toLowerCase();
     expect(serialized).not.toContain("authorization");

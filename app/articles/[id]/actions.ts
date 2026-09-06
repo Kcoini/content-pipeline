@@ -14,7 +14,11 @@ import {
   EmptyContentError,
 } from "@/lib/repositories/article-repository";
 import { logEvent } from "@/lib/harness/logger";
-import { publishArticleToWordPressDraft, runWordPressConnectionTest } from "@/lib/publish/publish-service";
+import {
+  publishArticleToWordPressDraft,
+  runWordPressConnectionTest,
+  updateArticleWordPressDraftContent,
+} from "@/lib/publish/publish-service";
 import { getSocialPostById, archiveSocialPost } from "@/lib/repositories/social-posts-repository";
 import { checkWordPressBlogPublishReadiness } from "@/lib/social/wordpress-blog-publish-readiness";
 import { updateWordPressSeoMetadataFromBlogPost } from "@/lib/social/wordpress-blog-seo-metadata-service";
@@ -243,6 +247,38 @@ export async function publishToWordPressDraftAction(formData: FormData): Promise
 
   try {
     const result = await publishArticleToWordPressDraft(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Phase 2-21: 이미 WordPress에 전송된 원본 article draft/post의 content를
+ * 현재 article.content 기준으로 다시 Markdown→HTML 변환해서 갱신한다.
+ * 이번 수정 이전에 raw Markdown이 그대로 전송되어 있던 글(예:
+ * source_based_explainer)을 새 post를 만들지 않고 같은 post의 content만
+ * 교체할 때 사용한다. status는 항상 draft로 고정 전송되므로 이미 공개된
+ * 글이라도 이 action만으로는 공개 상태가 바뀌지 않는다 — 공개 여부는
+ * WordPress 관리자 화면에서 사용자가 직접 확인해야 한다.
+ */
+export async function updateArticleWordPressDraftContentAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await updateArticleWordPressDraftContent(articleId);
     message = result.message;
     isError = !result.success;
   } catch (error) {

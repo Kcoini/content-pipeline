@@ -484,3 +484,4 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 라우트 맵: [`phase-3-route-map.md`](./phase-3-route-map.md)
 - 안전 체크리스트: [`phase-3-safety-checklist.md`](./phase-3-safety-checklist.md)
 - Article ↔ Blog ↔ WordPress 워크플로우: [`article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md)
+- 원본 article WordPress 전송 시 Markdown→HTML 변환(Phase 2-21): [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)

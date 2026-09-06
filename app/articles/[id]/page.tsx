@@ -12,6 +12,7 @@ import {
   approveArticleAction,
   updateArticleAction,
   publishToWordPressDraftAction,
+  updateArticleWordPressDraftContentAction,
   prepareArticleWordPressPublishingAction,
   generateWordPressMetadataAction,
   reviewWordPressMetadataAction,
@@ -1431,22 +1432,39 @@ export default async function ArticleDetailPage({
               기사가 승인(reviewed)되어야 WordPress 초안 생성 버튼이 활성화됩니다.
             </p>
           ) : hasWordPressSuccess ? (
-            <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-              ✓ 이미 WordPress 초안이 생성되어 있어 중복 생성을 건너뜁니다 (duplicate skip)
-              {latestWordPressLog?.postUrl && (
-                <>
-                  {" — "}
-                  <a
-                    href={latestWordPressLog.postUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    {latestWordPressLog.postUrl}
-                  </a>
-                </>
-              )}
-            </div>
+            <>
+              <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+                ✓ 이미 WordPress 초안이 생성되어 있어 중복 생성을 건너뜁니다 (duplicate skip)
+                {latestWordPressLog?.postUrl && (
+                  <>
+                    {" — "}
+                    <a
+                      href={latestWordPressLog.postUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {latestWordPressLog.postUrl}
+                    </a>
+                  </>
+                )}
+              </div>
+              <form action={updateArticleWordPressDraftContentAction} className="mt-2">
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Draft 내용 업데이트 (Markdown→HTML 재변환)
+                </button>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  WordPress 전송 시 Markdown은 HTML로 변환됩니다. 이 버튼은 새 post를 만들지
+                  않고 기존 post의 title/content/excerpt만 최신 변환본으로 교체합니다 — 공개
+                  상태는 바뀌지 않으며, 실제 공개 여부는 WordPress 관리자 화면에서 직접
+                  확인하세요.
+                </p>
+              </form>
+            </>
           ) : (
             <form action={publishToWordPressDraftAction} className="mt-3">
               <input type="hidden" name="articleId" value={article.id} />
@@ -1456,6 +1474,9 @@ export default async function ArticleDetailPage({
               >
                 원본 article Draft 생성
               </button>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                WordPress 전송 시 Markdown은 HTML로 변환됩니다.
+              </p>
             </form>
           )}
 

@@ -174,3 +174,26 @@ describe("고급 기능: WordPress 게시 준비 자동 실행 (정적 소스 �
     expect(individualSectionsIndex).toBeGreaterThan(autoRunIndex);
   });
 });
+
+describe("원본 article WordPress 전송: Markdown→HTML 안내/재변환 (정적 소스 검사, Phase 2-21)", () => {
+  it("updateArticleWordPressDraftContentAction을 import한다", () => {
+    expect(pageSource).toContain("updateArticleWordPressDraftContentAction");
+  });
+
+  it("WordPress 전송 시 Markdown이 HTML로 변환된다는 안내 문구를 표시한다", () => {
+    expect(pageSource).toContain("WordPress 전송 시 Markdown은 HTML로 변환됩니다.");
+  });
+
+  it("이미 Draft가 생성된 경우 새 post를 만들지 않고 기존 post의 content만 갱신하는 버튼을 제공한다", () => {
+    expect(pageSource).toContain("Draft 내용 업데이트");
+    expect(pageSource).toContain("<form action={updateArticleWordPressDraftContentAction}");
+  });
+
+  it("Draft 내용 업데이트 버튼은 공개 상태를 바꾸지 않는다는 안내를 포함한다", () => {
+    const start = pageSource.indexOf("<form action={updateArticleWordPressDraftContentAction}");
+    const end = pageSource.indexOf("</form>", start);
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("공개");
+    expect(block).toContain("WordPress 관리자 화면");
+  });
+});

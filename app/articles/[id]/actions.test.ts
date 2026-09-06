@@ -340,6 +340,33 @@ describe("prepareArticleWordPressPublishingAction (정적 소스 검사, Phase 2
   });
 });
 
+describe("updateArticleWordPressDraftContentAction (정적 소스 검사, Phase 2-21)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("export async function updateArticleWordPressDraftContentAction"),
+    actionsSource.indexOf(
+      "export async function waiveArticleWordPressFeaturedImageAction",
+      actionsSource.indexOf("export async function updateArticleWordPressDraftContentAction")
+    )
+  );
+
+  it("publish-service의 updateArticleWordPressDraftContent를 사용한다", () => {
+    expect(actionsSource).toContain(
+      "updateArticleWordPressDraftContent,"
+    );
+    expect(fnBody).toContain("updateArticleWordPressDraftContent(articleId)");
+  });
+
+  it("articleId를 formData에서 읽는다", () => {
+    expect(fnBody).toContain('formData.get("articleId")');
+  });
+
+  it("성공/실패 메시지를 publishMessage 또는 error query로 redirect한다(실제 공개 게시 API 호출 없음)", () => {
+    expect(fnBody).toContain("redirect(`/articles/${articleId}");
+    expect(fnBody).not.toContain("publishApprovedArticleToWordPress");
+    expect(fnBody).not.toContain("publishWordPressPost");
+  });
+});
+
 describe("대표 이미지가 새로 준비되면 article waiver를 자동 해제한다 (정적 소스 검사)", () => {
   it("saveLocalFeaturedImageAction/saveExistingWordPressMediaSourceAction/uploadFeaturedImageToWordPressAction 성공 시 clearArticleWordPressFeaturedImageWaiver를 호출한다", () => {
     const matches = actionsSource.match(/clearArticleWordPressFeaturedImageWaiver\(articleId\)/g) ?? [];

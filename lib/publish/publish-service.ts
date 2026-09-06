@@ -18,9 +18,11 @@ import {
   findOrCreateCategory,
   findOrCreateTag,
   testWordPressConnection,
+  updateDraftPostContent,
   type WordPressConnectionTestResult,
 } from "./wordpress-client";
 import { resolveExistingFeaturedMediaId } from "@/lib/images/featured-image-uploader";
+import { ensureWordPressHtmlContent } from "@/lib/wordpress/markdown-to-wordpress-html";
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
 import type { Article } from "@/lib/types/domain";
@@ -627,9 +629,20 @@ export async function publishArticleToWordPressDraft(
   const { categoryIds, tagIds } = await resolveWordPressTerms(articleId, article);
   const featuredMedia = await resolveFeaturedMediaForPublish(articleId, article);
 
+  // Phase 2-21: WordPress 전송용 content는 항상 HTML이어야 한다.
+  // - contentOverride가 있는 경우(wordpress_blog): 이미
+  //   wordpress-blog-content-override-builder.ts에서 markdown→HTML 변환과
+  //   표 스타일링까지 끝난 값이므로, 여기서 다시 변환/재-sanitize하면
+  //   applyWordPressTableStyling()이 만든 <div style="..."> 래퍼가
+  //   sanitize에 의해 벗겨질 수 있다 — 절대 다시 건드리지 않는다.
+  // - contentOverride가 없는 경우(원본 article 고급 기능 전송): article.content는
+  //   항상 markdown으로 생성되므로, ensureWordPressHtmlContent()로 변환한다
+  //   (이미 HTML이면 내부적으로 재변환 없이 sanitize만 적용한다).
+  const wordPressContent = options.contentOverride ? effectiveContent : ensureWordPressHtmlContent(effectiveContent);
+
   const result = await createDraftPost({
     title,
-    content: effectiveContent,
+    content: wordPressContent,
     excerpt,
     slug: article.slug ?? undefined,
     categories: categoryIds.length > 0 ? categoryIds : undefined,
@@ -725,5 +738,131 @@ export async function publishArticleToWordPressDraft(
     message: "WordPress 초안이 생성되었습니다.",
     postUrl: result.postUrl,
     externalPostId: String(result.externalPostId),
+  };
+}
+
+/**
+ * Phase 2-21: 이미 WordPress에 성공적으로 전송된(publish_logs에 성공 기록이
+ * 있는) 원본 article draft/post의 content를 현재 article.content 기준으로
+ * 다시 HTML 변환해서 갱신한다.
+ *
+ * - markdown 원문이 그대로 전송되어 있던 기존 post를 HTML 변환본으로
+ *   교체하는 용도다 (source_based_explainer 등 이번 수정 이전에 전송된 글).
+ * - 새 post를 만들지 않는다 — updateDraftPostContent()로 기존 post만 갱신한다.
+ * - status는 항상 "draft"로 고정 전송한다 — 이 post가 이미 공개(publish)
+ *   상태였더라도 이 호출로는 공개 상태가 바뀌지 않는다. 공개 상태를 바꾸는
+ *   것은 이 함수의 책임이 아니며, 사용자가 WordPress 관리자 화면에서
+ *   직접 확인/결정해야 한다.
+ * - wordpress_blog(contentOverride 경로)에는 영향이 없다 — 이 함수는 원본
+ *   article 전송 기록(publish_logs, target=wordpress)만 대상으로 한다.
+ */
+export async function updateArticleWordPressDraftContent(articleId: string): Promise<PublishResult> {
+  const article = await getArticleById(articleId);
+  if (!article) {
+    return { success: false, dryRun: false, message: `기사를 찾을 수 없습니다: ${articleId}` };
+  }
+
+  const existingDraft = await getSuccessfulWordPressDraft(articleId);
+  if (!existingDraft) {
+    return {
+      success: false,
+      dryRun: false,
+      message: "이미 생성된 WordPress 초안이 없어 내용을 갱신할 수 없습니다. 먼저 WordPress 초안을 생성하세요.",
+    };
+  }
+
+  const postId = Number(existingDraft.externalPostId);
+  if (!postId || Number.isNaN(postId)) {
+    return { success: false, dryRun: false, message: "기존 WordPress post id를 확인할 수 없습니다." };
+  }
+
+  if (!article.content.trim()) {
+    return { success: false, dryRun: false, message: "기사 본문이 비어 있어 갱신할 수 없습니다." };
+  }
+
+  if (!isWordPressPublishEnabled()) {
+    await logEvent({
+      type: "wordpress_publish_dry_run",
+      status: "success",
+      message: `dry-run 모드이므로 기사(${articleId})의 WordPress draft content 갱신을 건너뜁니다 (post id: ${postId}).`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+    return {
+      success: true,
+      dryRun: true,
+      message: "dry-run 완료: 실제 WordPress content는 갱신되지 않음",
+      postUrl: existingDraft.postUrl ?? undefined,
+      externalPostId: existingDraft.externalPostId,
+    };
+  }
+
+  const title = resolveWordPressTitle(article);
+  const wordPressContent = ensureWordPressHtmlContent(article.content);
+  const excerpt = resolveExcerptFromContent(article.content, article.metaDescription);
+
+  const result = await updateDraftPostContent(postId, { title, content: wordPressContent, excerpt });
+
+  if (!result.success) {
+    await savePublishLog({
+      articleId,
+      target: WORDPRESS_TARGET,
+      status: "failed",
+      errorMessage: result.errorMessage,
+      details: {
+        actual: true,
+        dryRun: false,
+        mode: "update_draft_content",
+        statusCode: result.statusCode ?? null,
+        externalPostId: postId,
+        reasonCandidate: result.reasonCandidate,
+      },
+    });
+    await logEvent({
+      type: "wordpress_publish_failed",
+      status: "failed",
+      message: `WordPress draft content 갱신 실패(post id: ${postId}): ${result.errorMessage}`,
+      articleId,
+      themeId: article.themeId,
+      targetType: "article",
+      targetId: articleId,
+    });
+    return { success: false, dryRun: false, message: result.errorMessage };
+  }
+
+  await savePublishLog({
+    articleId,
+    target: WORDPRESS_TARGET,
+    status: "success",
+    externalPostId: String(result.postId),
+    postUrl: result.link,
+    details: {
+      actual: true,
+      dryRun: false,
+      mode: "update_draft_content",
+      wordpressPostId: result.postId,
+      wordpressStatus: result.status,
+      title,
+    },
+  });
+
+  await logEvent({
+    type: "wordpress_publish_completed",
+    status: "success",
+    message: `WordPress draft content 갱신 완료(Markdown→HTML 재변환): ${result.link}`,
+    articleId,
+    themeId: article.themeId,
+    targetType: "article",
+    targetId: articleId,
+  });
+
+  return {
+    success: true,
+    dryRun: false,
+    message: "WordPress 초안 content를 Markdown→HTML 변환본으로 갱신했습니다. 공개 상태는 변경되지 않았으며, 실제 공개 여부는 WordPress 관리자 화면에서 직접 확인하세요.",
+    postUrl: result.link,
+    externalPostId: String(result.postId),
   };
 }

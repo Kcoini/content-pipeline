@@ -186,7 +186,19 @@ content는 아래 **7가지 기능**을 포함해야 하지만, 실제 heading�
 출처 개수, 전체 출처 개수, `articleMode`만 기록하며, 기사 본문/
 프롬프트 전문/API key/토큰은 로그에 남기지 않는다.
 
+## WordPress 전송 시 본문 형식 (Phase 2-21)
+
+`content`는 내부적으로 Markdown 형식(`#`/`##`/`###`, 표, 목록 등)으로
+생성/저장/검토된다 — 이 문서의 위 규칙들은 여전히 Markdown 기준이다.
+다만 WordPress로 전송(Draft 생성/업데이트)할 때는 반드시 HTML로 변환된
+값만 전송한다. 공개 화면에서 Markdown 문법이 그대로 노출되던 문제와
+변환 상세는 [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
+참고. 이미 Markdown 원문이 그대로 전송된 기존 Draft/Post는 "Draft 내용
+업데이트" 버튼으로 새 post를 만들지 않고 content만 HTML 변환본으로 교체할
+수 있다.
+
 ## 관련 문서
 
 - 운영 매뉴얼: [`phase-3-operation-manual.md`](./phase-3-operation-manual.md)
 - 요구사항: [`requirements.md`](./requirements.md)
+- WordPress 전송 Markdown→HTML 변환: [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)

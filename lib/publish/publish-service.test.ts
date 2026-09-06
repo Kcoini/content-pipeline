@@ -9,6 +9,7 @@ const getApprovalLogsByArticleId = vi.fn();
 const savePublishLog = vi.fn();
 const getSuccessfulWordPressDraft = vi.fn();
 const createDraftPost = vi.fn();
+const updateDraftPostContent = vi.fn();
 const findOrCreateCategory = vi.fn();
 const findOrCreateTag = vi.fn();
 const uploadMediaToWordPress = vi.fn();
@@ -31,6 +32,7 @@ vi.mock("@/lib/repositories/publish-repository", () => ({
 }));
 vi.mock("./wordpress-client", () => ({
   createDraftPost: (...args: unknown[]) => createDraftPost(...args),
+  updateDraftPostContent: (...args: unknown[]) => updateDraftPostContent(...args),
   findOrCreateCategory: (...args: unknown[]) => findOrCreateCategory(...args),
   findOrCreateTag: (...args: unknown[]) => findOrCreateTag(...args),
   uploadMediaToWordPress: (...args: unknown[]) => uploadMediaToWordPress(...args),
@@ -43,8 +45,13 @@ vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
 }));
 
-const { publishArticleToWordPressDraft, resolveWordPressTitle, resolveWordPressExcerpt, runWordPressConnectionTest } =
-  await import("./publish-service");
+const {
+  publishArticleToWordPressDraft,
+  resolveWordPressTitle,
+  resolveWordPressExcerpt,
+  runWordPressConnectionTest,
+  updateArticleWordPressDraftContent,
+} = await import("./publish-service");
 
 function makeArticle(overrides: Partial<Article> = {}): Article {
   return {
@@ -174,6 +181,7 @@ beforeEach(() => {
   savePublishLog.mockReset();
   getSuccessfulWordPressDraft.mockReset();
   createDraftPost.mockReset();
+  updateDraftPostContent.mockReset();
   findOrCreateCategory.mockReset();
   findOrCreateTag.mockReset();
   uploadMediaToWordPress.mockReset();
@@ -374,7 +382,7 @@ describe("publishArticleToWordPressDraft", () => {
     );
   });
 
-  it("contentOverride를 넘기지 않으면 기존 그대로 article.title/article.content를 사용한다 (article 고급 기능 동작 불변)", async () => {
+  it("contentOverride를 넘기지 않으면 article.title은 그대로 사용하지만 article.content는 Markdown→HTML로 변환해서 전송한다 (Phase 2-21)", async () => {
     getArticleById.mockResolvedValue(
       makeArticle({ status: "reviewed", title: "article 원문 제목", content: "article 원문 본문입니다." })
     );
@@ -389,8 +397,86 @@ describe("publishArticleToWordPressDraft", () => {
     await publishArticleToWordPressDraft("article-1");
 
     expect(createDraftPost).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "article 원문 제목", content: "article 원문 본문입니다." })
+      expect.objectContaining({ title: "article 원문 제목", content: "<p>article 원문 본문입니다.</p>\n" })
     );
+  });
+
+  it("article.content가 Markdown(#/##/###/표/목록/링크)이면 WordPress 전송 content는 HTML로 변환된다 (source_based_explainer 등 공통, Phase 2-21)", async () => {
+    const markdown = [
+      "# 제목",
+      "",
+      "## 소제목",
+      "",
+      "### 하위 소제목",
+      "",
+      "- 목록 항목 1",
+      "- 목록 항목 2",
+      "",
+      "| 항목 | 설명 |",
+      "|---|---|",
+      "| A | B |",
+      "",
+      "[출처 링크](https://example.com/source)",
+    ].join("\n");
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", content: markdown }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    const sentContent = createDraftPost.mock.calls[0][0].content as string;
+    // 본문 h1은 post_title과 중복되지 않도록 h2로 낮춘다.
+    expect(sentContent).toContain("<h2>제목</h2>");
+    expect(sentContent).toContain("<h2>소제목</h2>");
+    expect(sentContent).toContain("<h3>하위 소제목</h3>");
+    expect(sentContent).toContain("<ul>");
+    expect(sentContent).toContain("<li>목록 항목 1</li>");
+    expect(sentContent).toContain("<table");
+    expect(sentContent).toMatch(/<a href="https:\/\/example\.com\/source"[^>]*>출처 링크<\/a>/);
+    // markdown 원문 문법이 그대로 남아있으면 안 된다.
+    expect(sentContent).not.toMatch(/^#{1,6} /m);
+    expect(sentContent).not.toContain("|---|");
+  });
+
+  it("article.content가 이미 HTML(<h2>/<p> 등)이면 다시 markdown 렌더러를 거치지 않고 sanitize만 적용한다 (이중 변환 방지, Phase 2-21)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", content: "<h2>이미 HTML</h2><p>본문입니다.</p>" })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    const sentContent = createDraftPost.mock.calls[0][0].content as string;
+    expect(sentContent).toBe("<h2>이미 HTML</h2><p>본문입니다.</p>");
+  });
+
+  it("contentOverride가 있으면(wordpress_blog 카드) content를 다시 변환/재-sanitize하지 않고 override 값 그대로 전송한다 (wordpress_blog 영향 없음)", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", content: "article 원문 본문입니다." }));
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    const alreadyConvertedHtml = '<div style="overflow-x:auto;"><table style="width:100%;"><tr><td>표</td></tr></table></div>';
+    await publishArticleToWordPressDraft("article-1", {
+      contentOverride: { title: "wordpress_blog 글 제목", content: alreadyConvertedHtml },
+    });
+
+    expect(createDraftPost).toHaveBeenCalledWith(expect.objectContaining({ content: alreadyConvertedHtml }));
   });
 
   it("contentOverride.content가 비어 있으면 (article.content와 무관하게) 게시를 막는다", async () => {
@@ -1041,5 +1127,87 @@ describe("runWordPressConnectionTest", () => {
     const result = await runWordPressConnectionTest();
 
     expect(result.connected).toBe(true);
+  });
+});
+
+describe("updateArticleWordPressDraftContent (Phase 2-21: 기존 WordPress draft content Markdown→HTML 재변환 갱신)", () => {
+  it("이미 성공한 WordPress draft 기록이 없으면 갱신을 시도하지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
+    getSuccessfulWordPressDraft.mockResolvedValue(null);
+
+    const result = await updateArticleWordPressDraftContent("article-1");
+
+    expect(result.success).toBe(false);
+    expect(updateDraftPostContent).not.toHaveBeenCalled();
+  });
+
+  it("WORDPRESS_PUBLISH_ENABLED=false이면 dry-run으로 처리되고 실제 client는 호출되지 않는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", content: "# 제목\n\n본문" }));
+    getSuccessfulWordPressDraft.mockResolvedValue({
+      externalPostId: "42",
+      postUrl: "https://example-blog.test/?p=42",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "false");
+
+    const result = await updateArticleWordPressDraftContent("article-1");
+
+    expect(result.success).toBe(true);
+    expect(result.dryRun).toBe(true);
+    expect(updateDraftPostContent).not.toHaveBeenCalled();
+  });
+
+  it("기존 post의 content만 Markdown→HTML 변환본으로 갱신하고, status는 항상 draft로 고정 전송한다(공개 상태 불변)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", title: "기사 제목", content: "# 제목\n\n본문 내용" })
+    );
+    getSuccessfulWordPressDraft.mockResolvedValue({
+      externalPostId: "42",
+      postUrl: "https://example-blog.test/?p=42",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    updateDraftPostContent.mockResolvedValue({
+      success: true,
+      postId: 42,
+      link: "https://example-blog.test/?p=42",
+      status: "draft",
+    });
+
+    const result = await updateArticleWordPressDraftContent("article-1");
+
+    expect(result.success).toBe(true);
+    expect(updateDraftPostContent).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ content: expect.stringContaining("<h2>제목</h2>") })
+    );
+    // updateDraftPostContent 호출 자체가 client 계층에서 status="draft"를 항상 강제한다 —
+    // 여기서는 서비스가 status를 별도로 넘기지 않는지(=client의 강제 로직에 위임하는지) 확인한다.
+    const callArgs = updateDraftPostContent.mock.calls[0][1] as Record<string, unknown>;
+    expect(callArgs).not.toHaveProperty("status");
+    expect(savePublishLog).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "success", externalPostId: "42" })
+    );
+  });
+
+  it("갱신 실패 시 publish_logs에 failed로 저장된다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", content: "본문" }));
+    getSuccessfulWordPressDraft.mockResolvedValue({
+      externalPostId: "42",
+      postUrl: "https://example-blog.test/?p=42",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    updateDraftPostContent.mockResolvedValue({
+      success: false,
+      statusCode: 500,
+      errorMessage: "WordPress 서버 오류",
+      reasonCandidate: ["WordPress 서버 오류"],
+    });
+
+    const result = await updateArticleWordPressDraftContent("article-1");
+
+    expect(result.success).toBe(false);
+    expect(savePublishLog).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
   });
 });

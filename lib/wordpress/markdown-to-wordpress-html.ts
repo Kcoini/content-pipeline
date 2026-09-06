@@ -1,13 +1,18 @@
-// wordpress_blog 전용: post_body(markdown)를 실제 WordPress REST API
-// content로 보내기 전에 HTML로 변환한다.
+// Markdown → WordPress 전송용 HTML 변환 공통 유틸.
+// 실제 WordPress REST API content로 보내기 전에 Markdown을 안전한 HTML로
+// 변환한다. 원래 wordpress_blog 전용으로 만들어졌지만(post_body 변환),
+// Phase 2-21부터 article 고급 기능(원본 article WordPress 전송,
+// source_based_explainer/monetized_blog/general_news 공통)도 이 파일의
+// `ensureWordPressHtmlContent()`를 통해 재사용한다 — 변환 로직 자체를
+// 중복 구현하지 않는다.
 //
 // 중요 원칙(반드시 지킨다):
-// - platform='wordpress_blog'의 WordPress 전송 로직에만 사용한다.
-//   naver_blog(markdown_copy export)나 article 고급 기능(article.content를
-//   그대로 보내는 기존 경로)에는 이 변환을 적용하지 않는다 — 이 파일 자체는
-//   순수 변환 유틸이라 아무 곳에서나 import할 수 있지만, "언제 호출하느냐"는
-//   wordpress_blog 전용 호출부(lib/social/wordpress-blog-content-override-builder.ts)
-//   에서만 결정한다.
+// - naver_blog(markdown_copy export)에는 이 변환을 적용하지 않는다 —
+//   naver_blog는 markdown 원문을 그대로 사용자가 복사해 붙여넣는
+//   워크플로우라 HTML 변환이 필요 없다(오히려 방해가 된다).
+// - "언제 호출하느냐"는 이 파일이 아니라 각 호출부가 결정한다 —
+//   wordpress_blog는 `lib/social/wordpress-blog-content-override-builder.ts`,
+//   article 고급 기능은 `lib/publish/publish-service.ts`에서 호출한다.
 // - 변환 후 결과는 반드시 sanitize한다 — script/iframe/on* 이벤트 속성은
 //   모두 제거한다. style 속성은 표(table) 요소에 한해서만, 우리가 직접
 //   생성한 값(가독성 CSS)과 markdown 표 정렬(text-align)만 허용한다 —
@@ -267,4 +272,42 @@ export function convertMarkdownToWordPressHtml(markdown: string | null | undefin
   const styledHtml = applyWordPressTableStyling(safeHtml);
   const withBrRestored = brCount > 0 ? restoreBrTags(styledHtml) : styledHtml;
   return restoreAdSlotMarkers(withBrRestored, markers);
+}
+
+// 이미 HTML로 렌더링된 본문인지 판단할 때 쓰는 블록 태그 패턴.
+// 여는 태그(`<h2 ...>`, `<p>` 등) 형태만 인식한다 — markdown 원문에
+// 우연히 `<h2>` 같은 문자열이 섞여 있을 가능성은 거의 없고, 있더라도
+// html:false 렌더러가 escape하므로 오탐 시 최악의 경우도 "변환을 한 번 더
+// 건너뛴다" 정도로 안전한 방향이다.
+const HTML_BLOCK_TAG_PATTERN = /<(h1|h2|h3|h4|p|ul|ol|table|blockquote|pre)[\s>]/i;
+
+/**
+ * content가 이미 HTML로 렌더링된 것으로 보이면 true를 반환한다.
+ * article 고급 기능처럼 "본문이 markdown인지 이미 HTML인지 확신할 수
+ * 없는" 호출부에서, 이미 HTML인 값을 markdown 렌더러에 다시 통과시켜
+ * 이중 변환(예: `<p>` 태그가 markdown-it에 의해 escape되어 화면에 그대로
+ * 노출)하는 사고를 막기 위해 사용한다.
+ */
+export function looksLikeHtmlContent(content: string | null | undefined): boolean {
+  if (!content) return false;
+  return HTML_BLOCK_TAG_PATTERN.test(content);
+}
+
+/**
+ * WordPress로 전송할 content를 안전하게 확정한다.
+ * - 이미 HTML로 보이면 그대로 반환한다(이중 변환 방지) — 단, 이 경우도
+ *   sanitize는 항상 통과시켜 위험한 태그/속성이 섞여 들어오지 않게 한다.
+ * - markdown으로 보이면 convertMarkdownToWordPressHtml()로 변환한다.
+ * source_based_explainer/monetized_blog/general_news 등 article 본문
+ * format을 상세히 구분하지 않고, "지금 이 문자열이 HTML인가 아닌가"만으로
+ * 판단한다 — article 본문은 현재 항상 markdown으로 생성되므로 실무적으로는
+ * 거의 항상 변환 분기를 탄다.
+ */
+export function ensureWordPressHtmlContent(content: string | null | undefined): string {
+  const trimmed = (content ?? "").trim();
+  if (!trimmed) return "";
+  if (looksLikeHtmlContent(trimmed)) {
+    return sanitizeWordPressHtml(trimmed);
+  }
+  return convertMarkdownToWordPressHtml(trimmed);
 }

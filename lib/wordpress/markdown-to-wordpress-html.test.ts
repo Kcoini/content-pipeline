@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertMarkdownToWordPressHtml } from "./markdown-to-wordpress-html";
+import { convertMarkdownToWordPressHtml, ensureWordPressHtmlContent, looksLikeHtmlContent } from "./markdown-to-wordpress-html";
 import { adSlotMarkerComment } from "@/lib/articles/article-modes";
 
 describe("convertMarkdownToWordPressHtml", () => {
@@ -203,5 +203,70 @@ describe("convertMarkdownToWordPressHtml", () => {
       const html = convertMarkdownToWordPressHtml("## 소제목\n\n일반 문단입니다.");
       expect(html).not.toContain("border:1px solid");
     });
+  });
+});
+
+describe("looksLikeHtmlContent (Phase 2-21: article 고급 기능 공통 재사용)", () => {
+  it("markdown 원문(#, ##, 표, 목록)은 HTML로 보지 않는다", () => {
+    expect(looksLikeHtmlContent("# 제목\n\n본문")).toBe(false);
+    expect(looksLikeHtmlContent("## 소제목\n\n- 목록1\n- 목록2")).toBe(false);
+    expect(looksLikeHtmlContent("| A | B |\n|---|---|\n| 1 | 2 |")).toBe(false);
+  });
+
+  it("빈 값/공백은 HTML로 보지 않는다", () => {
+    expect(looksLikeHtmlContent(null)).toBe(false);
+    expect(looksLikeHtmlContent(undefined)).toBe(false);
+    expect(looksLikeHtmlContent("")).toBe(false);
+    expect(looksLikeHtmlContent("   ")).toBe(false);
+  });
+
+  it("<h2>/<p>/<table> 등 블록 태그가 있으면 HTML로 인식한다", () => {
+    expect(looksLikeHtmlContent("<h2>제목</h2><p>본문</p>")).toBe(true);
+    expect(looksLikeHtmlContent("<table><tr><td>표</td></tr></table>")).toBe(true);
+    expect(looksLikeHtmlContent("<ul><li>목록</li></ul>")).toBe(true);
+  });
+});
+
+describe("ensureWordPressHtmlContent (Phase 2-21: article 고급 기능 WordPress 전송용 content 확정)", () => {
+  it("markdown이면 convertMarkdownToWordPressHtml과 동일하게 변환한다", () => {
+    const markdown = "# 제목\n\n## 소제목\n\n본문 내용";
+    expect(ensureWordPressHtmlContent(markdown)).toBe(convertMarkdownToWordPressHtml(markdown));
+  });
+
+  it("markdown 표/목록/링크가 모두 올바른 HTML로 변환된다", () => {
+    const markdown = [
+      "### 하위 소제목",
+      "",
+      "- 목록 항목",
+      "",
+      "| 항목 | 설명 |",
+      "|---|---|",
+      "| A | B |",
+      "",
+      "[링크](https://example.com)",
+    ].join("\n");
+    const html = ensureWordPressHtmlContent(markdown);
+    expect(html).toContain("<h3>하위 소제목</h3>");
+    expect(html).toContain("<li>목록 항목</li>");
+    expect(html).toContain("<table");
+    expect(html).toMatch(/<a href="https:\/\/example\.com"[^>]*>링크<\/a>/);
+  });
+
+  it("이미 HTML이면 markdown 렌더러를 다시 거치지 않고 그대로(sanitize만 적용) 반환한다", () => {
+    const html = "<h2>이미 변환된 제목</h2><p>본문입니다.</p>";
+    expect(ensureWordPressHtmlContent(html)).toBe(html);
+  });
+
+  it("이미 HTML이어도 script/on* 이벤트 등 위험한 내용은 sanitize로 제거된다", () => {
+    const dangerousHtml = '<h2>제목</h2><p onclick="alert(1)">본문</p><script>alert(1)</script>';
+    const result = ensureWordPressHtmlContent(dangerousHtml);
+    expect(result).not.toContain("<script>");
+    expect(result).not.toContain("onclick");
+  });
+
+  it("빈 값/공백은 빈 문자열을 반환한다", () => {
+    expect(ensureWordPressHtmlContent(null)).toBe("");
+    expect(ensureWordPressHtmlContent(undefined)).toBe("");
+    expect(ensureWordPressHtmlContent("   ")).toBe("");
   });
 });
