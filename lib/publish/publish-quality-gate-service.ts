@@ -9,6 +9,7 @@ import { savePublishLog, getSuccessfulWordPressDraft } from "@/lib/repositories/
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
 import { AD_SLOT_MARKERS, adSlotMarkerComment } from "@/lib/articles/article-modes";
+import { getArticleWordPressFeaturedImageWaiverState } from "@/lib/publish/article-wordpress-featured-image-waiver-service";
 import type { Article } from "@/lib/types/domain";
 
 export const PUBLISH_QUALITY_GATE_TARGET = "publish_quality_gate";
@@ -383,6 +384,22 @@ function checkFeaturedImagePresent(article: Article): ChecklistItem {
       "Featured image 존재",
       "warning",
       "이미지 source는 준비되었지만 아직 WordPress에 업로드/연결되지 않았습니다.",
+      "medium"
+    );
+  }
+
+  // "원본 article을 WordPress Draft로 전송"할 때 대표 이미지 없이
+  // 진행하도록 사용자가 명시적으로 선택(waive)했는지 확인한다. 이 waiver는
+  // wordpress_blog 카드의 waive와는 완전히 별개다(article.formatMetadata
+  // 전용 키만 읽는다). waived=true면 monetized_blog에서도 hard fail로
+  // 취급하지 않고 warning으로 대체한다.
+  const waiver = getArticleWordPressFeaturedImageWaiverState(article);
+  if (waiver.waived) {
+    return item(
+      "featured_image_present",
+      "Featured image 존재",
+      "warning",
+      "대표 이미지가 없습니다. 사용자가 원본 article을 이미지 없이 전송하도록 선택했습니다.",
       "medium"
     );
   }

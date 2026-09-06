@@ -9,10 +9,27 @@
 
 1. **article 생성 또는 선택** — `/dashboard` 또는 `/articles`에서
    테마 입력 → 출처 등록 → 계약 검사 → 기사 초안 생성, 또는 기존
-   기사를 선택한다. 기본 생성 모드(`source_based_explainer`)는
+   기사를 선택한다. 테마를 직접 입력하는 대신 `/trends`에서 네이버/
+   다음 트렌드로부터 공통 테마 후보를 자동 추출해 선택할 수도 있다 —
+   재수집 시 같은 후보가 중복 저장되지 않도록 정규화/유사도 기반으로
+   병합하는 방식은
+   [`phase-1-16-theme-candidate-deduplication.md`](./phase-1-16-theme-candidate-deduplication.md)
+   참고. 기본 생성 모드(`source_based_explainer`)는
    "출처 기반 해설 기사" 모드이며, 종합할 수 있는 출처(usable
    source)가 3개 미만이면 자동으로 mock 생성으로 전환된다 — 자세한
    내용은 [`article-generation-source-based-explainer.md`](./article-generation-source-based-explainer.md)
+   참고. 수익형 콘텐츠가 필요하면 `monetized_blog` 모드(E-E-A-T/
+   SEO/AEO/GEO 기준을 반영한 "문제 해결형 수익 블로그")를 선택할
+   수 있다 — 자세한 내용은
+   [`article-generation-monetized-blog.md`](./article-generation-monetized-blog.md)
+   참고. `/dashboard`는 선택한 테마를 중심으로 "선택된 테마 요약 →
+   다음 작업 → 출처 상태 요약 → 출처 추가 → 출처 목록" 순서로 구성된
+   작업형 화면이다(입력 폼은 기본 접힘, 다음 작업 카드가 화면의 유일한
+   primary action을 안내한다) — 자세한 내용은
+   [`phase-1-23-dashboard-theme-workspace.md`](./phase-1-23-dashboard-theme-workspace.md)
+   참고. 상단 내비게이션(자동 테마 찾기/기사 목록 + 대시보드 드롭다운
+   메뉴)은
+   [`phase-1-22-dashboard-top-nav-simplification.md`](./phase-1-22-dashboard-top-nav-simplification.md)
    참고.
 2. **`/articles/[id]`에서 기사 개요 확인** — 기사 본문, 상태, 하위
    워크플로우(블로그/소셜/rewrite/성과/AB테스트) 진입점을 확인한다.
@@ -64,13 +81,322 @@
 ## 화면별 설명
 
 ### `/articles/[id]`
-기사 본문, 메타데이터, 상태를 확인하고 blog/social/rewrite/
-performance/ab-tests 하위 페이지로 이동하는 진입점.
+**원본 article 관리 화면.** 기사 본문, 메타데이터, 상태를 확인하고
+blog/social/rewrite/performance/ab-tests 하위 페이지로 이동하는
+진입점이다. WordPress Metadata/SEO Plugin/Featured Image/Connection
+Test/WordPress Draft/Public Publish 등 Phase 2의 WordPress 관련
+기능은 "고급 기능: 원본 article WordPress 전송"이라는 접이식
+섹션에 모여 있다 — 이 경로는 article 본문을 **그대로** WordPress로
+보내는 보조 기능이다.
+
+이 섹션 맨 위에는 `/articles/[id]/blog`와 **같은 구조의 공통 UI**
+(`WordPressPublishingPanel`, "대상: 원본 article" + "보조 기능"/
+"고급 기능" 배지)로 품질/승인/Draft/SEO/대표 이미지/Publish Guard
+상태를 한눈에 요약해 보여준다. 그 아래에는 기존 개별 기능(WordPress
+Metadata/SEO Plugin/Featured Image/Connection Test/Draft/Public
+Publish) 섹션이 그대로 남아 있다 — 삭제하거나 통합하지 않았다.
+버튼 이름도 "원본 article Draft 생성"/"원본 article SEO Metadata
+업데이트"/"원본 article 대표 이미지 연결"처럼 항상 "원본 article"
+접두어를 붙여, wordpress_blog 카드의 동일 기능 버튼과 헷갈리지
+않게 했다. SEO 필드가 비어 있으면 "설정되지 않음"으로 표시하며,
+wordpress_blog의 추천값으로 자동 대체되지 않는다.
+
+이 섹션 안에는 **"대표 이미지 없이 진행"** 버튼이 있다. 대표
+이미지가 없어도 사유(내부 검토용 Draft/나중에 WordPress에서 수동
+추가 예정/텍스트 중심 기사/적절한 이미지 없음/기타)를 선택하고
+확인 문구("검색 결과 클릭률이나 공유 미리보기에 영향을 줄 수
+있습니다. 계속 진행하시겠습니까?")를 확인하면, Publish Quality
+Gate의 featured image 판정이 monetized_blog에서도 hard fail이
+아니라 warning으로 처리된다. media ID를 입력하거나 이미지를
+업로드하면 이 선택은 자동으로 해제된다. **이 waive는 원본 article
+전송 전용이며, `/articles/[id]/blog`의 wordpress_blog 카드에 있는
+같은 이름의 기능과는 완전히 독립적이다** — 한쪽에서 waive해도
+다른 쪽에는 전혀 반영되지 않는다. 두 기능 모두 warning 처리일
+뿐이며 실제 공개(publish) 게시를 의미하지 않는다.
 
 ### `/articles/[id]/blog`
-블로그형 플랫폼(wordpress_blog, naver_blog)의 social post를
-생성/검수/승인/export/가드/dry-run/handoff/게시결과/metrics까지
-관리한다.
+**플랫폼별 블로그 게시용 글 관리 화면.** 블로그형 플랫폼
+(wordpress_blog, naver_blog)의 social post를 생성/검수/승인/export/
+가드/dry-run/handoff/게시결과/metrics까지 관리한다.
+
+**wordpress_blog 글쓰기 원칙**: wordpress_blog로 생성되는 글은 단순
+SEO형 글이 아니라 SEO/AEO/GEO/E-E-A-T를 함께 고려한 문제 해결형
+블로그 글이다(`prompts/social/wordpress-blog.md`,
+`docs/article-generation-monetized-blog.md`의 "wordpress_blog 글쓰기
+원칙" 참고). 이 원칙 위반(상투적 도입부, 초반 결론 부재, 근거 없는
+권위 표현, AI 검색 노출 보장 표현, 공포 조장 표현)은 품질검사
+(`runSocialPostQualityGate`)가 자동으로 걸러낸다.
+
+**wordpress_blog는 article rewrite가 아니라 source-grounded blog
+reconstruction이다**: article은 topic context(주제/맥락 파악용)이고,
+`article_sources`/source summaries가 factual basis(조건/절차/수치/
+기간/기관명/예외/주의점/FAQ의 실제 근거)다. `post_body`의 목표 길이는
+**2,500~4,000자(metadata는 길이에 포함하지 않는다)**이며, 1,200자
+미만은 품질검사가 별도로 `fail` 처리한다(자세한 내용은
+`docs/article-generation-monetized-blog.md` 참고).
+
+**usable source 개수에 따른 3단계 모드**(`lib/social/wordpress-blog-source-mode.ts`):
+usable source(요약 또는 key_points가 있는 출처)가 **0개면 생성 자체를
+차단**하고, **1개면 `single_source_mode`로 생성을 허용**하며, **2개
+이상이면 기존 방식(목표 2,500~4,000자)** 그대로 진행한다.
+`single_source_mode`는 출처가 하나뿐인 한계를 인지하고 정보를
+부풀리지 않는 작성 방식이다 — 목표 길이는 1,800~3,000자(최소
+1,500자)로 완화되고, 본문에 "확인 필요 사항" 섹션이 반드시 포함돼야
+하며(없으면 품질검사가 `fail` 처리), single source라는 사실 자체는
+품질검사에서 항상 `warning`으로만 남아 **혼자서는 게시를 막지
+않는다**. `social_posts.platform_metadata`에는 `sourceMode`
+(`no_source`/`single_source`/`multi_source`), `usableSourceCount`,
+`singleSourceMode`, (single_source일 때만) `sourceLimitWarning`이
+서버에서 직접 계산되어 저장된다 — DB schema 변경 없이 기존 JSON
+필드를 사용한다. WordPress Draft 생성/SEO Metadata 반영 guard는 이
+값의 영향을 받지 않는다(품질검사가 `ready`를 정직하게 반환하는 한
+그대로 통과한다).
+
+**WordPress 게시의 기본(메인) 경로는 이 페이지에서 `wordpress_blog`로
+생성한 글이다** — article 페이지의 "고급 기능"이 아니다.
+`wordpress_blog` 카드에는 article 페이지와 **같은 공통 UI**
+(`WordPressPublishingPanel`, "대상: wordpress_blog" + "기본 게시
+흐름" 배지)로 **"WordPress 게시 준비" 섹션**이 표시되며, 여기서
+draft 생성/업데이트부터 SEO metadata 업데이트, 대표 이미지 연결까지
+**article 페이지로 이동하지 않고 전부 끝낼 수 있다**:
+
+- 상태 표시: WordPress Draft 상태/post ID/URL, SEO metadata 상태/
+  seoTitle/metaDescription/targetKeyword/secondaryKeywords, featured
+  image 상태/media ID/URL/attach status/waived 여부(사유 포함), publish
+  guard 상태, `quality_status`/`approval_status`/`policyRiskScore`.
+  seoTitle 등이 비어 있으면 "WordPress 블로그 metadata 재생성이
+  필요합니다"로 표시하며, article의 SEO metadata로 자동 대체되지
+  않는다. 버튼 이름은 "WordPress Draft 생성"/"SEO Metadata 업데이트"
+  처럼 접두어 없이 표기해 article 쪽("원본 article ...")과 구분한다.
+- **SEO/게시용 metadata 섹션**: article에는 없을 수 있는 WordPress
+  게시용 정보(seoTitle/metaDescription/targetKeyword/secondaryKeywords/
+  searchIntent/answerSummary/eeatNotes/geoSummary/
+  structuredDataSuggestions/adSlots/monetizationScore/policyRiskScore)를
+  wordpress_blog 글 생성 시 자신이 직접 만들어 표시한다 — article
+  값으로 대체하지 않는다. "SEO Metadata 재생성" 버튼으로 본문은
+  그대로 두고 metadata만 다시 만들 수 있다.
+- **단계형 workflow UI**: 버튼을 단순 나열하지 않고 "단계별 상태
+  요약"(품질검사/승인/Draft/SEO/대표 이미지/게시 준비/체크리스트
+  badge) → "다음 추천 작업"(다음에 뭘 눌러야 하는지 한 줄 안내) →
+  **게시 준비 자동 실행**(상단 강조 버튼, 예전 "WordPress 게시 준비
+  일괄 실행") → Step 1(품질검사)~Step 7(체크리스트/Handoff)로
+  구성한다. Step 1/2/7의 품질검사·승인·체크리스트 버튼은 카드
+  상단의 공통 버튼(naver_blog와 공유)을 그대로 쓰고 중복 배치하지
+  않는다.
+- 버튼 이름 일부 변경(표시 label만, action 함수명은 그대로): "게시
+  가능 상태 확인"(예전 WordPress 게시 준비 확인), "게시 전 미리보기
+  생성"(예전 Dry-run 생성), "수동 게시 완료 표시"(예전 Handoff
+  완료), "수동 게시용 Draft 내보내기"(예전 WordPress Draft Export,
+  wordpress_blog에서만 — naver_blog는 그대로 "Naver Blog Export").
+- 모든 버튼은 `quality_status='ready'` + `approval_status='approved'`일
+  때만 활성화되며, disabled 상태에는 이유가 함께 표시된다(예: "SEO
+  metadata가 없습니다. metadata 재생성이 필요합니다.", "승인 후
+  Draft를 생성할 수 있습니다.").
+- SEO Metadata 업데이트는 wordpress_blog 자신의 metadata가 없으면
+  article 추천값으로 대체하지 않고 차단하며, "SEO Metadata 재생성"
+  사용을 안내한다. WordPress Draft에 실제로 전송되는 title/content도
+  wordpress_blog 자신의 post_title/post_body다(article 원문 아님).
+- "대표 이미지 준비" 안에 실제로 동작하는 "AI 대표 이미지 생성"
+  섹션이 있다 — article 이미지 생성과 같은 provider client를
+  재사용하지만, 결과는 article 컬럼이 아니라 wordpress_blog
+  자신의 `platformMetadata.imageGeneration`에만 저장한다(두
+  targetType의 이미지 상태가 섞이지 않는다). 알려진 한계: 생성된
+  이미지를 WordPress Media Library에 자동 업로드하는 연결은 아직
+  없다.
+- "SEO Plugin Metadata" 섹션에서 Rank Math/Yoast/AIOSEO/Custom
+  Endpoint/사용 안 함 provider를 선택하고 실제 반영을 실행할 수
+  있다. article과 같은 WordPress post를 대상으로 하지만(이 프로젝트는
+  article 1개당 WordPress post 1개만 만드는 구조), wordpress_blog
+  자신의 seoTitle/metaDescription/targetKeyword만 사용하고 결과도
+  `social_posts.platformMetadata.seoPluginWrite`에만 저장해 article
+  페이지의 SEO Plugin 표시와 서로 덮어쓰지 않는다.
+- **SEO Metadata 반영 차단과 개인정보 false positive override**:
+  SEO Plugin Metadata 반영은 `quality_status=ready` + `approval_status=
+  approved` + 금지 표현 없음을 요구한다. 개인정보(주민등록번호/전화번호
+  형식) 의심 표현이 감지되면 기본적으로 차단하지만, 실제로는 제주도청
+  대표번호 같은 **공공기관 문의처**가 오탐되는 경우가 있다 — 이런
+  경우 사람이 "개인정보 아님"으로 확인(사유 입력 필수)하면
+  `platformMetadata.manualSafetyReview.prohibitedExpressionOverride`에
+  기록을 남기고, 이후 approval_status가 approved이고 다른 차단 사유가
+  없으면 SEO Plugin Metadata 반영(override)이 허용된다. **주민등록번호나
+  010 휴대전화 형식처럼 실제 개인정보로 보이는 값은 절대 예외 처리할
+  수 없다.** 원문은 로그/metadata 어디에도 남기지 않고 마스킹된 값만
+  남긴다(예: `010-1234-5678` → `010-****-****`). 이 override는 **WordPress
+  Draft의 SEO metadata 반영에만** 적용되며 public publish와는 무관하다
+  (`lib/social/wordpress-blog-personal-info-review.ts`).
+- **실제 WordPress에 전송되는 title/content는 wordpress_blog 글
+  자체의 post_title/post_body다** — article 원문이 아니다
+  (`publishArticleToWordPressDraft()`의 `contentOverride` 옵션으로
+  전달한다. article 페이지 "고급 기능"은 이 옵션을 넘기지 않아
+  기존 그대로 article 본문을 전송한다).
+- **wordpress_blog의 post_body(markdown)는 WordPress로 보내기 전에
+  HTML로 변환한다**: 내부 저장/검토 단계(카드 화면의 markdown 미리보기,
+  quality gate 등)에서는 markdown을 그대로 유지하지만,
+  `createWordPressDraftFromBlogPostAction`/
+  `updateWordPressDraftFromBlogPostAction`/"WordPress에 반영하기"(일괄
+  실행)가 실제로 WordPress REST API에 보내는 content는
+  `buildWordPressBlogContentOverride()`
+  (`lib/social/wordpress-blog-content-override-builder.ts`) 안에서
+  `convertMarkdownToWordPressHtml()`
+  (`lib/wordpress/markdown-to-wordpress-html.ts`, markdown-it +
+  sanitize-html 사용)를 거쳐 h2/h3/표/목록/링크 등이 있는 안전한
+  HTML로 변환된다. 그렇지 않으면 WordPress 공개 화면에 `##`, `| 표 |`
+  같은 markdown 문법이 그대로 노출된다. AD_SLOT marker는 변환 전에
+  placeholder로 분리했다가 그대로 복원해 절대 사라지거나 변형되지
+  않는다. **SEO Metadata만 업데이트하는 action은 이 변환을 거치지
+  않는다** — 본문 content 자체를 건드리지 않기 때문이다. 이미
+  markdown 원문으로 반영된 기존 Draft는 "WordPress Draft 업데이트"를
+  다시 실행하면 HTML로 변환된 본문으로 교체할 수 있다(공개 게시는
+  하지 않는다).
+  이 변환은 `naver_blog`(markdown_copy export)나 article 고급 기능
+  (article.content를 그대로 보내는 기존 경로)에는 적용하지 않았다.
+- **WordPress 표(table) 스타일 원칙**: 지원정책 비교표 등 markdown
+  표는 WordPress 공개 화면에서도 읽기 쉬워야 한다 — 변환 시
+  border(1px solid)/padding(12px)/vertical-align:top/
+  word-break:keep-all/overflow-wrap:break-word를 th·td에, 배경색을
+  thead에, zebra 배경을 tbody 짝수 행에 자동으로 적용하고,
+  `table-layout:fixed` + `<colgroup>`으로 열 너비를 지정한다(4열
+  지원정책 비교표는 16%/28%/34%/22% 권장 폭, 그 외에는 균등 폭).
+  표는 `overflow-x:auto` 반응형 래퍼로 감싸 모바일에서 가로
+  스크롤이 가능하게 한다(모바일 카드형 UI로의 전환은 장기 검토
+  과제로 남겨뒀다). 표 셀은 짧은 요약(1~2문장 또는 `<br>` 구분 2~3개
+  항목)만 담고, 긴 설명/예외/주의사항은 표 아래 본문 섹션으로
+  분리하도록 prompt에 명시했다.
+- **대표 이미지 준비**: 같은 카드 안에 별도 하위 섹션으로, media ID를
+  준비하는 두 가지 방법을 모두 제공한다 — (A) 이미 WordPress에
+  올라간 이미지의 media ID를 직접 입력, (B) 내 컴퓨터의 이미지
+  파일(JPEG/PNG/WEBP, 최대 5MB)을 선택해 WordPress Media Library에
+  업로드(성공 시 media ID 자동 저장). "대표 이미지 연결" 버튼은
+  WordPress Draft와 media ID가 모두 준비되고 quality/approval
+  조건도 만족해야 활성화되며, 아니면 구체적인 이유(예: "대표 이미지
+  media ID를 먼저 입력하세요.")를 보여준다. media ID가 없어도 "대표
+  이미지 없이 진행"을 선택하면(사유 선택 필수) 게시 준비를 계속할
+  수 있다 — media ID 미준비는 blocker가 아니라 warning으로
+  바뀐다(다만 "대표 이미지 연결" 버튼 자체는 여전히 media ID를
+  요구한다). 이후 media ID를 저장/업로드하면 이 선택은 자동으로
+  해제된다.
+- **이미지 파일 선택 시 업로드 전 미리보기(카드 이탈 없음)**: 파일
+  선택 input은 `components/social/wordpress-featured-image-file-picker.tsx`
+  (`"use client"`)가 담당한다. 파일을 고르면 다른 페이지로 이동하지
+  않고 같은 카드 안에서 파일명/파일 크기/파일 형식과(허용 형식이면)
+  썸네일을 바로 보여준다. 허용되지 않는 형식이거나 5MB를 넘으면
+  "WordPress Media로 업로드" 버튼이 비활성화되고 이유가 표시된다.
+  업로드 action 자체는 기존 그대로 `returnTo`(하이라이트 파라미터
+  포함)를 유지하므로, 업로드 후에도 같은 wordpress_blog 카드
+  위치로 돌아온다.
+- **"게시 준비 자동 실행"의 대표 이미지 단계**: media ID가 있으면
+  연결을 시도하고, media ID가 없고 "이미지 없이 진행"이 선택돼
+  있으면 skipped로, 둘 다 아니면 warning으로 표시한다(중단하지
+  않음). 실제 공개 publish는 이 버튼으로도 수행하지 않는다.
+- **Step 7 체크리스트 상태는 저장된 pending을 그대로 보여주지
+  않고, 화면에 그릴 때마다 지금 social_post 상태 기준으로 다시
+  계산한다**(`lib/social/manual-posting-checklist-status.ts`). 상태는
+  완료/확인 필요/대기중/차단됨/실패/생략 6가지다. Quality
+  Gate/Approval/Manual Export/Publishing Guard/Dry-run/Handoff
+  completed 확인 항목은 DB 상태로 자동 계산되고, "게시 후 URL 기록
+  필요"류 항목은 `manual_post_url`/`post_url` 존재 여부로 계산된다.
+  최종 내용 확인/이미지·링크 확인/SEO 확인처럼 사람이 직접 봐야
+  하는 항목은 handoff가 완료됐어도 자동으로 완료 처리하지 않고
+  기본은 "확인 필요"로 남는다. handoff가 완료됐는데 확인 필요/대기중
+  항목이 남아 있으면 "일부 체크리스트 항목은 확인 필요 상태입니다."
+  안내 문구가 배지 아래에 함께 표시되어, 상단 "handoff 완료"와
+  아래 체크리스트 상태가 서로 모순돼 보이지 않게 한다. 체크리스트
+  아코디언 요약줄에는 완료/확인 필요/대기중/실패 개수가 항상
+  표시된다.
+- **"확인 필요" 항목은 오류가 아니라 수동 검토임을 안내하고, 사용자가
+  바로 처리할 수 있게 한다**: 체크리스트가 있으면 항상 "확인 필요
+  항목은 오류가 아닙니다..." 안내 박스를 보여주고, needs_review
+  항목만 먼저 카드로 모아("지금 확인이 필요한 항목") 각각 설명/할
+  일 안내와 함께 보여준다(완료/대기중 항목은 "전체 체크리스트
+  보기"에 접혀 있다). 사람이 직접 확인해야 하는 7개 항목(최종 내용/
+  이미지·링크/정책 위반/WordPress workflow 중복/제목·본문·대표
+  이미지/SEO/공개 상태 확인)에는 "확인 완료 표시" 버튼이 있다 —
+  누르면 `social_posts.platformMetadata.manualChecklistConfirmations`
+  (기존 JSON 필드, **DB schema 변경 없음**)에 confirmed 기록을
+  남긴다(`markManualChecklistItemConfirmedAction`). Quality Gate 등
+  시스템 자동 항목에는 이 버튼이 없다 — 실제 상태를 사람이 임의로
+  덮어쓸 수 없다. "게시 후 URL 기록 필요" 항목에는 URL 입력 필드 +
+  "게시 URL 저장" 버튼이 있는데, **새 action 없이 기존
+  `recordManualPostingResultAction`(Phase 3-8)을 재사용**한다(http(s)만
+  허용, 기존 검증 그대로 적용). URL이 기록되면 "게시 URL 복사"
+  버튼(클라이언트 전용, 서버 저장 없음)이 나타난다. 다음 추천 작업도
+  체크리스트 상태를 반영해 "확인 필요 항목 검토" → "게시 URL 기록"
+  → "완료됨" 순으로 좁혀진다.
+- **WordPress 게시 미리보기/반영 데이터**(맨 위): "검사가 많은 이유"
+  안내 박스 다음에 WordPress에 올라갈 제목/SEO/대표 이미지/본문
+  일부(700자, "전체 미리보기 보기"로 펼침)/FAQ/광고 위치(AD_SLOT,
+  실제 광고 코드 아님)/참고자료 영역을 미리 보여준다(wordpress_blog
+  자신의 값만 사용, article 원문 아님). 그 아래 "WordPress 반영
+  데이터"에 실제 전송 값을 요약한다.
+- **"WordPress에 반영하기"**(예전 "게시 준비 자동 실행"): action은
+  그대로 `prepareWordPressBlogPostForPublishingAction`이다. 버튼
+  아래에 "이 버튼은 WordPress Draft 생성/업데이트까지만 실행합니다.
+  공개 게시 버튼은 누르지 않습니다. 최종 공개는 WordPress 관리자
+  화면에서 확인 후 진행하세요."를 항상 표시한다. 이 프로젝트에는
+  실제 public publish 버튼 자체가 없다.
+- **최근 WordPress 반영 결과**: "WordPress에 반영하기" 실행 결과가
+  `social_posts.platformMetadata.lastPublishPreparationRun`(JSON, DB
+  schema 변경 없음)에 저장되어, 페이지를 새로고침해도 마지막 실행의
+  단계별 성공/건너뜀/경고/실패와 실행 시간을 계속 볼 수 있다.
+- **Draft/대표 이미지에 마지막 실행 시간 표시**: Step 3(WordPress
+  Draft)에 "마지막 업데이트" 시각과 "WordPress에서 Draft 보기"
+  버튼(URL 없으면 비활성화 + "아직 WordPress Draft가 생성되지
+  않았습니다." 안내)을, Step 5(대표 이미지)에 "마지막 연결" 시각을
+  추가로 보여준다.
+- **카드 내부 탭 구조**: 카드가 너무 길어져 스크롤 부담이 커지는 문제를
+  줄이기 위해, 카드 상단에는 항상 보이는 고정 영역(단계별 상태 요약 +
+  다음 추천 작업 + WordPress에 반영하기 버튼)만 두고, 나머지 내용은
+  6개 탭(글 내용/WordPress 미리보기/품질·승인/WordPress 반영/대표
+  이미지/체크리스트, `lib/social/wordpress-blog-card-tabs.ts`)으로
+  나눈다. 탭 이름 옆에는 완료/필요/확인 필요 badge가 붙어 어느 탭에
+  할 일이 남았는지 바로 알 수 있다. 탭 내비게이션은 카드 안에서
+  `sticky top-0`로 고정된 것처럼 보인다(새 라이브러리 없이 기존
+  Tailwind만 사용). 탭 이동은 `?tab=image`처럼 query param을 쓰고,
+  action 실행 후에도 `returnTo`에 포함된 `tab` 값 덕분에 같은 카드·
+  같은 탭으로 돌아온다.
+- **프로세스 로그 / 실행 이력은 페이지 하단으로 분리**: wordpress_blog
+  카드 안에는 pipeline_logs 원본/raw JSON details 같은 디버그성 정보를
+  두지 않는다. 카드 안 "최근 WordPress 반영 결과"에는 짧은 요약(마지막
+  실행 성공/실패, 실행 시간)과 "상세 로그 보기" 링크만 남기고, 실제
+  로그 목록은 `/articles/[id]/blog` 페이지 최하단 `#process-logs`
+  섹션에 모은다(`lib/social/wordpress-blog-process-log-view.ts`가
+  `getLogsByArticleId()` 결과에서 wordpress_blog 관련 로그만 골라
+  카테고리(WordPress/SEO/대표 이미지/게시 준비/Handoff/기타)로
+  분류한다). 하단 섹션은 기본 `<details>` 접힘 상태이고, 카드별로
+  로그를 나눠 보여주며(카드의 링크는 해당 post의 로그 그룹 anchor로
+  바로 스크롤), 필터(전체/카테고리별/실패만 보기)와 최근 20개 +
+  "더 보기"로 페이지 성능을 보호한다. raw JSON은 항목마다 "상세 JSON
+  보기"로 따로 접어둔다.
+- **action 결과 메시지는 toast(TransientNotice)로 표시**: 본문 중간에
+  계속 남아 있던 성공/실패 alert box(`?publishMessage=...`/`?error=...`)를
+  `components/ui/transient-notice.tsx`로 교체했다 — 화면 오른쪽 위에
+  기본 4초만 떴다 자동으로 사라지고, 닫기 버튼도 있다(레이아웃을 밀지
+  않는 `position: fixed`). "선택한 항목을 강조 표시했습니다." 같은
+  확인 메시지는 아예 표시하지 않는다(카드 하이라이트만 유지). 이
+  변경은 페이지 전체(naver_blog 포함)에 적용되지만, action 자체나
+  query param 전달 방식(`appendMessageQuery`)은 그대로다 — 이 페이지의
+  렌더링 방식만 바꿨다.
+- **카드 가독성 개선(요약 → 상세 접기)**: SEO/게시용 metadata
+  박스는 상태 badge와 짧은 설명만 기본으로 보이고, seoTitle/
+  metaDescription/targetKeyword/secondaryKeywords 등 전체 값은
+  "SEO Metadata 상세 보기"(`<details>`)로 접어둔다. 대표 이미지
+  박스도 현재 상태/media ID만 기본으로 보이고, media URL/업로드
+  상태/마지막 연결 시각은 "대표 이미지 상세 보기"로 접는다. quality_status/
+  approval_status/publish_status/export_status/manual_post_status 같은
+  raw DB 상태값은 상단에 노출하지 않고 "내부 상태값 보기"에만 둔다.
+  "WordPress에 반영하기" 버튼 설명도 한 줄 요약 + "자세히 보기"로
+  나눴다. 설명 문장은 파란색(indigo) 대신 muted(zinc) 색상을 쓰고,
+  파란색은 링크에만 남긴다. 대표 이미지가 "이미지 없이 진행"으로
+  waived 처리된 상태에서 예전 Media 연결 실패 기록이 있으면, 그
+  오류를 지금 문제인 것처럼 크게 보여주지 않고 "참고: 이전 Media ID
+  연결 시도 실패 기록 있음"처럼 참고 이력으로만 짧게 보여준다(원문은
+  상세 보기 안에).
+
+`naver_blog` 카드에는 WordPress 관련 버튼이 전혀 표시되지 않고,
+기존과 동일하게 Manual Export/복사/수동 게시 결과 기록 흐름만
+사용한다. 두 흐름의 차이와 알려진 한계는
+[`article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md)에
+자세히 정리했다.
 
 ### `/articles/[id]/social`
 SNS/커뮤니티형 플랫폼(naver_cafe, x, threads, instagram)의 social
@@ -114,9 +440,39 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 가드 정합성, 로깅 보안, 콘텐츠 안전 규칙)를 보여준다. 점검 전용
 화면이며 데이터를 수정하지 않는다.
 
+## 목록 삭제(보관 처리) 기능
+
+`/dashboard`(테마 목록), `/articles`(기사 목록),
+`/articles/[id]/blog`(wordpress_blog/naver_blog 카드 목록),
+`/articles/[id]/social`(그 외 social post 목록)에 "삭제" 버튼이 있다.
+
+- **soft delete(보관 처리)만 수행한다** — `archived_at` 컬럼(themes/
+  articles/social_posts, `db/migrations/042_soft_delete_archive.sql`)을
+  `now()`로 설정할 뿐, 실제 row를 삭제(hard delete)하지 않는다.
+  themes→articles→social_posts는 `on delete cascade`로 연결되어 있어
+  실제 삭제는 연쇄적으로 위험하기 때문이다.
+- 삭제 버튼을 누르면 **확인 모달**(`window.confirm`)이 뜨고, 연결된
+  기사/출처/social post 개수와 "WordPress에 이미 생성된 Draft/Post는
+  자동 삭제되지 않습니다" 안내를 함께 보여준다.
+- **WordPress 원격 글은 절대 자동 삭제하지 않는다** — 이 기능은 앱
+  내부(Supabase) 데이터만 삭제/숨김 처리하며, 원격 WordPress 삭제
+  기능 자체를 만들지 않았다. public publish된 글은 더더욱 건드리지
+  않는다.
+- 삭제(보관 처리)된 테마/기사/social post는 각 목록 조회에서
+  자동으로 제외된다(`archived_at is null` 조건). 직접 URL로 접근하는
+  상세 페이지(`/articles/[id]`, `/dashboard?themeId=...` 등)는 보관된
+  항목도 그대로 조회할 수 있다(목록에서만 숨겨진다).
+- 삭제/차단 이벤트는 `pipeline_logs`에 기록된다:
+  `theme_archived`/`theme_delete_blocked`,
+  `article_archived`/`article_delete_blocked`,
+  `social_post_archived`/`social_post_delete_blocked`.
+- 복구(un-archive) UI는 아직 없다 — DB에는 기록이 남아 있으므로
+  (hard delete가 아니므로) 나중에 추가할 수 있다.
+
 ## 관련 문서
 
 - 전체 개요: [`phase-3-final-overview.md`](./phase-3-final-overview.md)
 - 아키텍처: [`phase-3-architecture.md`](./phase-3-architecture.md)
 - 라우트 맵: [`phase-3-route-map.md`](./phase-3-route-map.md)
 - 안전 체크리스트: [`phase-3-safety-checklist.md`](./phase-3-safety-checklist.md)
+- Article ↔ Blog ↔ WordPress 워크플로우: [`article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md)

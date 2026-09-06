@@ -167,9 +167,22 @@ describe("buildSocialWritingContext", () => {
     expect(context.title).toBe("장기요양보험 신청 방법");
     expect(context.targetKeyword).toBe("장기요양보험");
     expect(context.sourceCount).toBe(1);
+    expect(context.usableSourceCount).toBe(1);
     expect(context.sourceSummaries[0].summary).toBe("출처 요약입니다.");
     expect(context.platformConfig.platform).toBe("naver_blog");
     expect(context.toneStyleConfig.toneStyle).toBe("informational");
+  });
+
+  it("summary/key_points가 모두 없는 출처는 usableSourceCount에 세지 않는다", async () => {
+    getSourcesByArticleId.mockResolvedValue([
+      makeSource({ id: "source-1", summary: "요약 있음", keyPoints: [] }),
+      makeSource({ id: "source-2", summary: "", keyPoints: [] }),
+    ]);
+
+    const context = await buildSocialWritingContext("article-1", { platform: "wordpress_blog", toneStyle: "informational" });
+
+    expect(context.sourceCount).toBe(2);
+    expect(context.usableSourceCount).toBe(1);
   });
 
   it("출처 원문(raw HTML)을 포함하지 않는다", async () => {

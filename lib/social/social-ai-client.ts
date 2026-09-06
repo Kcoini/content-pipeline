@@ -47,6 +47,20 @@ function stripCodeFence(text: string): string {
 }
 
 /**
+ * 모델이 JSON 앞뒤로 설명 문구를 덧붙이거나(예: "다음은 요청하신 글입니다:\n```json...")
+ * code fence를 닫지 않은 채(응답이 중간에 잘린 경우) 응답할 때를 대비해,
+ * 첫 `{`부터 마지막 `}`까지를 다시 한 번 추출해본다. wordpress_blog처럼
+ * post_body가 길고 metadata 필드가 많은 응답은 code fence 하나로 깔끔하게
+ * 감싸지지 않는 경우가 있어 stripCodeFence만으로는 부족할 수 있다.
+ */
+function extractJsonObjectSubstring(text: string): string | null {
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
+  return text.slice(firstBrace, lastBrace + 1);
+}
+
+/**
  * 실제 Claude API를 호출해 social post 출력을 생성한다.
  * SOCIAL_AI_GENERATION_ENABLED=false이면 API를 호출하지 않고 즉시
  * 실패를 반환한다. 응답은 JSON만 파싱하며, 파싱에 실패하거나 JSON
@@ -85,7 +99,28 @@ export async function generateSocialPostWithAI(
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return { ok: false, error: "AI 응답을 JSON으로 파싱하지 못했습니다." };
+      // code fence가 온전히 감싸지 못했거나(설명 문구가 앞뒤에 붙음) 응답이
+      // 중간에 잘렸을 수 있으니, 첫 { ~ 마지막 }를 다시 추출해 한 번 더 시도한다.
+      const fallback = extractJsonObjectSubstring(cleaned);
+      if (fallback) {
+        try {
+          parsed = JSON.parse(fallback);
+        } catch {
+          parsed = undefined;
+        }
+      }
+
+      if (parsed === undefined) {
+        // max_tokens에 도달해 응답이 중간에 잘린 경우(stop_reason: "max_tokens")를
+        // 구분해서 알려준다 — 이 경우는 SOCIAL_AI_MAX_TOKENS를 늘려야 해결된다.
+        const truncated = response.stop_reason === "max_tokens";
+        return {
+          ok: false,
+          error: truncated
+            ? `AI 응답이 max_tokens(${input.maxTokens}) 제한에 도달해 중간에 잘렸습니다 — SOCIAL_AI_MAX_TOKENS를 늘려야 합니다.`
+            : "AI 응답을 JSON으로 파싱하지 못했습니다.",
+        };
+      }
     }
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {

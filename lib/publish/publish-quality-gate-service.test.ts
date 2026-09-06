@@ -248,6 +248,52 @@ describe("runPublishQualityGate", () => {
     expect(item?.status).toBe("fail");
   });
 
+  it("monetized_blog에서 featured image가 없어도 waived=true면 fail이 아니라 warning으로 기록된다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        articleMode: "monetized_blog",
+        featuredImageWordpressMediaId: null,
+        featuredImageWordpressUrl: null,
+        featuredImageSourceType: "none",
+        featuredImageUploadStatus: "not_ready",
+        wordpressFeaturedMediaAttachStatus: "not_attached",
+        content: makeFullAdSlotContent() + makeLongContent(700),
+        formatMetadata: {
+          article_wordpress_featured_image_waiver: {
+            targetType: "article",
+            featuredImageWaived: true,
+            featuredImageWaiverReason: "text_focused",
+            featuredImageWaiverMemoPresent: false,
+          },
+        },
+      })
+    );
+
+    const result = await runPublishQualityGate("article-1");
+
+    const item = result.checklist?.find((entry) => entry.key === "featured_image_present");
+    expect(item?.status).toBe("warning");
+    expect(item?.message).toContain("사용자가 원본 article을 이미지 없이 전송하도록 선택했습니다");
+  });
+
+  it("waived=true여도 다른 critical 항목이 blocked면 여전히 blocked 상태다", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({
+        articleMode: "monetized_blog",
+        title: "",
+        featuredImageWordpressMediaId: null,
+        featuredImageWordpressUrl: null,
+        formatMetadata: {
+          article_wordpress_featured_image_waiver: { featuredImageWaived: true, featuredImageWaiverReason: "other" },
+        },
+      })
+    );
+
+    const result = await runPublishQualityGate("article-1");
+
+    expect(result.status).toBe("blocked");
+  });
+
   it("이미지 source가 prepared 상태(업로드 전)이면 featured_image_present가 warning으로 기록된다", async () => {
     getArticleById.mockResolvedValue(
       makeArticle({

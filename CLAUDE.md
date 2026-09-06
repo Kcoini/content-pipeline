@@ -48,6 +48,14 @@ Next.js + TypeScript + Supabase + GitHub 기반의 블로그/홈페이지용 기
 - `db/`: DB 스키마 (`schema.sql`)
 - `docs/`: 요구사항, 성공 기준, 구현 계획
 
+## UI/UX Governance Rules
+- UI 작업 전 `docs/ui-ux-governance-rules.md`를 확인한다.
+- wordpress_blog 카드 UI 작업 전 `docs/wordpress-blog-card-ui-rules.md`를 확인한다.
+- UI 변경 후 `docs/ui-review-agent-checklist.md` 기준으로 자체 점검한다.
+- 버튼 나열 방식은 피하고 단계형 workflow를 우선한다.
+- WordPress 게시 관련 UI에서는 Draft/SEO/대표 이미지/게시 준비/공개 게시를 구분한다.
+- public publish는 명시 승인 없이는 추가하지 않는다.
+
 ## 작업 시 주의사항
 - 출처가 3개 미만이면 기사 생성을 시작하지 않는다
   (`contracts/source.contract.yaml`의 `min-source-count` 규칙).

@@ -40,9 +40,16 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     secondaryKeywords: [],
     seoTitle: null,
     metaDescription: null,
+    searchIntent: null,
+    readerPersona: null,
+    adSlots: [],
+    monetizationScore: null,
+    policyRiskScore: null,
+    citedSourceIds: [],
     excerpt: "장기요양보험 신청 절차를 정리했습니다. ".repeat(3),
     keyPoints: ["신청은 공단에서 접수", "등급판정까지 30일"],
     sourceCount: 3,
+    usableSourceCount: 3,
     sourceSummaries: [{ title: "출처1", publisher: "출처사", summary: "요약" }],
     platform: "naver_blog",
     toneStyle: "informational",
@@ -187,6 +194,49 @@ describe("generateSocialDraft", () => {
     );
   });
 
+  it("wordpress_blog draft 생성 시 seoTitle/metaDescription/targetKeyword/answerSummary 등 게시용 metadata를 함께 생성해 platformMetadata에 저장한다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog") })
+    );
+
+    await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.platformMetadata.seoTitle).toEqual(expect.any(String));
+    expect(call.platformMetadata.metaDescription).toEqual(expect.any(String));
+    expect(call.platformMetadata.targetKeyword).toEqual(expect.any(String));
+    expect(call.platformMetadata.answerSummary).toEqual(expect.any(String));
+    expect(call.platformMetadata.eeatNotes === null || typeof call.platformMetadata.eeatNotes === "object").toBe(true);
+    expect(call.platformMetadata.geoSummary).toEqual(expect.objectContaining({ keyFacts: [], caveats: [] }));
+    expect(call.platformMetadata.monetizationScore).toEqual(expect.any(Number));
+    expect(call.platformMetadata.policyRiskScore).toEqual(expect.any(Number));
+  });
+
+  it("article에 이미 seoTitle/targetKeyword가 있으면(monetized_blog) wordpress_blog 생성 시 참고용으로 재사용한다", async () => {
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({
+        platform: "wordpress_blog",
+        platformConfig: getPlatformWritingConfig("wordpress_blog"),
+        seoTitle: "article SEO 제목",
+        targetKeyword: "article 키워드",
+      })
+    );
+
+    await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.platformMetadata.seoTitle).toBe("article SEO 제목");
+    expect(call.platformMetadata.targetKeyword).toBe("article 키워드");
+  });
+
+  it("wordpress_blog가 아닌 platform은 게시용 metadata를 만들지 않는다 (naver_blog는 영향 없음)", async () => {
+    await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.platformMetadata.seoTitle).toBeUndefined();
+    expect(call.platformMetadata.answerSummary).toBeUndefined();
+  });
+
   it("naver_cafe draft를 생성할 수 있다", async () => {
     buildSocialWritingContext.mockResolvedValue(
       makeContext({ platform: "naver_cafe", platformConfig: getPlatformWritingConfig("naver_cafe") })
@@ -263,5 +313,79 @@ describe("generateSocialDraft", () => {
     const serialized = JSON.stringify(logEvent.mock.calls);
     expect(serialized).not.toContain(fullBody);
     vi.unstubAllEnvs();
+  });
+
+  describe("wordpress_blog single_source_mode(usable source 1개 허용)", () => {
+    it("usable source가 0개면 wordpress_blog 생성을 차단한다", async () => {
+      buildSocialWritingContext.mockResolvedValue(
+        makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog"), usableSourceCount: 0 })
+      );
+
+      const result = await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+      expect(result.success).toBe(false);
+      expect(createSocialPostDraft).not.toHaveBeenCalled();
+      expect(logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "social_draft_generation_blocked_no_source" })
+      );
+    });
+
+    it("usable source가 1개면 wordpress_blog 생성을 허용한다", async () => {
+      buildSocialWritingContext.mockResolvedValue(
+        makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog"), usableSourceCount: 1 })
+      );
+
+      const result = await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+      expect(result.success).toBe(true);
+      expect(createSocialPostDraft).toHaveBeenCalled();
+    });
+
+    it("usable source가 1개면 platformMetadata에 sourceMode=single_source/singleSourceMode=true/sourceLimitWarning을 저장한다", async () => {
+      buildSocialWritingContext.mockResolvedValue(
+        makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog"), usableSourceCount: 1 })
+      );
+
+      await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+      const call = createSocialPostDraft.mock.calls[0][0];
+      expect(call.platformMetadata.sourceMode).toBe("single_source");
+      expect(call.platformMetadata.usableSourceCount).toBe(1);
+      expect(call.platformMetadata.singleSourceMode).toBe(true);
+      expect(call.platformMetadata.sourceLimitWarning).toEqual(expect.any(String));
+    });
+
+    it("single_source_mode 본문에는 확인 필요 사항 섹션이 최소 1,500자 이상으로 포함된다", async () => {
+      buildSocialWritingContext.mockResolvedValue(
+        makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog"), usableSourceCount: 1 })
+      );
+
+      await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+      const call = createSocialPostDraft.mock.calls[0][0];
+      expect(call.postBody).toContain("확인 필요 사항");
+    });
+
+    it("usable source가 2개 이상이면 sourceMode=multi_source로 저장한다 (기존 normal 모드)", async () => {
+      buildSocialWritingContext.mockResolvedValue(
+        makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog"), usableSourceCount: 2 })
+      );
+
+      await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+      const call = createSocialPostDraft.mock.calls[0][0];
+      expect(call.platformMetadata.sourceMode).toBe("multi_source");
+      expect(call.platformMetadata.singleSourceMode).toBe(false);
+      expect(call.platformMetadata.sourceLimitWarning).toBeUndefined();
+    });
+
+    it("naver_blog는 usable source가 0개여도 차단되지 않는다 (wordpress_blog 전용 제한)", async () => {
+      buildSocialWritingContext.mockResolvedValue(makeContext({ platform: "naver_blog", usableSourceCount: 0 }));
+
+      const result = await generateSocialDraft("article-1", "naver_blog", "informational");
+
+      expect(result.success).toBe(true);
+      expect(createSocialPostDraft).toHaveBeenCalled();
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import { searchDaumNews, stripDaumHtml } from "./daum-client";
+import { searchDaumNews, searchDaumNewsMultiPage, stripDaumHtml } from "./daum-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -138,5 +138,80 @@ describe("searchDaumNews", () => {
     const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = options.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("KakaoAK test-kakao-key");
+  });
+
+  it("page 파라미터가 요청 URL에 반영된다", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(makeDaumResponse([]));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await searchDaumNews("AI", 10, 2);
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("page=2");
+  });
+
+  it("page를 지정하지 않으면 기본값 1을 사용한다", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(makeDaumResponse([]));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await searchDaumNews("AI");
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("page=1");
+  });
+});
+
+describe("searchDaumNewsMultiPage", () => {
+  beforeEach(() => {
+    vi.stubEnv("KAKAO_REST_API_KEY", "test-kakao-key");
+  });
+
+  it("페이지가 가득 차 있으면(size만큼 왔으면) 다음 페이지까지 호출한다", async () => {
+    const page1 = Array.from({ length: 10 }, (_, i) => ({ ...SAMPLE_DOCS[0], url: `https://news.daum.net/p1-${i}` }));
+    const page2 = Array.from({ length: 3 }, (_, i) => ({ ...SAMPLE_DOCS[0], url: `https://news.daum.net/p2-${i}` }));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(makeDaumResponse(page1))
+      .mockResolvedValueOnce(makeDaumResponse(page2));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await searchDaumNewsMultiPage("AI", { pageSize: 10, maxPages: 3 });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2); // page2가 size(10)보다 적으므로 마지막 페이지로 판단, page3 호출 안 함
+    expect(results).toHaveLength(13);
+  });
+
+  it("첫 페이지가 비어 있으면 다음 페이지를 호출하지 않는다", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(makeDaumResponse([]));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await searchDaumNewsMultiPage("AI", { pageSize: 10, maxPages: 3 });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([]);
+  });
+
+  it("maxPages를 지정하지 않으면 1페이지만 호출한다(기본값)", async () => {
+    const fullPage = Array.from({ length: 10 }, (_, i) => ({ ...SAMPLE_DOCS[0], url: `https://news.daum.net/${i}` }));
+    const mockFetch = vi.fn().mockResolvedValue(makeDaumResponse(fullPage));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await searchDaumNewsMultiPage("AI", { pageSize: 10 });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("여러 페이지 결과를 합쳐도 rankPosition은 전체 기준으로 다시 매긴다", async () => {
+    const page1 = Array.from({ length: 10 }, (_, i) => ({ ...SAMPLE_DOCS[0], url: `https://news.daum.net/p1-${i}` }));
+    const page2 = [{ ...SAMPLE_DOCS[0], url: "https://news.daum.net/p2-0" }];
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(makeDaumResponse(page1))
+      .mockResolvedValueOnce(makeDaumResponse(page2));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await searchDaumNewsMultiPage("AI", { pageSize: 10, maxPages: 2 });
+
+    expect(results.map((r) => r.rankPosition)).toEqual(Array.from({ length: 11 }, (_, i) => i + 1));
   });
 });

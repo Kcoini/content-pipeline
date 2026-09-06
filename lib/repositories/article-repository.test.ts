@@ -1,12 +1,45 @@
-import { describe, expect, it } from "vitest";
-import {
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ArticleRow } from "@/lib/supabase/database.types";
+
+const createServerSupabaseClient = vi.fn();
+const getSuccessfulWordPressDraft = vi.fn();
+
+vi.mock("@/lib/supabase/server", () => ({
+  createServerSupabaseClient: (...args: unknown[]) => createServerSupabaseClient(...args),
+}));
+vi.mock("@/lib/repositories/publish-repository", () => ({
+  getSuccessfulWordPressDraft: (...args: unknown[]) => getSuccessfulWordPressDraft(...args),
+}));
+
+const {
   ArticleNotEditableError,
   EmptyContentError,
   assertArticleApprovable,
   assertArticleEditable,
   mapArticleRowToArticle,
-} from "./article-repository";
-import type { ArticleRow } from "@/lib/supabase/database.types";
+  getArticles,
+  archiveArticle,
+  getArticleRelatedCounts,
+} = await import("./article-repository");
+
+function makeChain(result: { data: unknown; error: unknown; count?: number | null }) {
+  const chain: Record<string, unknown> = {};
+  const self = () => chain;
+  chain.select = vi.fn(self);
+  chain.update = vi.fn(self);
+  chain.eq = vi.fn(self);
+  chain.in = vi.fn(self);
+  chain.is = vi.fn(self);
+  chain.order = vi.fn(self);
+  chain.maybeSingle = vi.fn(() => Promise.resolve(result));
+  chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve);
+  return chain;
+}
+
+beforeEach(() => {
+  createServerSupabaseClient.mockReset();
+  getSuccessfulWordPressDraft.mockReset();
+});
 
 function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
   return {
@@ -20,6 +53,7 @@ function makeArticleRow(overrides: Partial<ArticleRow> = {}): ArticleRow {
     reviewed_by: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+    archived_at: null,
     article_mode: "source_based_explainer",
     seo_title: null,
     meta_description: null,
@@ -141,6 +175,7 @@ describe("mapArticleRowToArticle", () => {
       citedSourceIds: ["source-1", "source-2", "source-3"],
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
+      archivedAt: null,
       reviewedAt: null,
       reviewedBy: null,
       articleMode: "source_based_explainer",
@@ -298,5 +333,77 @@ describe("assertArticleApprovable", () => {
     expect(() => assertArticleApprovable({ id: "article-1", content: "   \n  " })).toThrow(
       EmptyContentError
     );
+  });
+});
+
+function makeSupabaseFrom(articlesChain: Record<string, unknown>) {
+  const articleSourcesChain = {
+    select: vi.fn(() => articleSourcesChain),
+    in: vi.fn(() => Promise.resolve({ data: [], error: null })),
+  };
+  return vi.fn((table: string) => (table === "articles" ? articlesChain : articleSourcesChain));
+}
+
+describe("getArticles", () => {
+  it("기본적으로 archived_at is null 조건을 사용한다(보관된 기사 제외)", async () => {
+    const chain = makeChain({ data: [makeArticleRow()], error: null });
+    createServerSupabaseClient.mockReturnValue({ from: makeSupabaseFrom(chain) });
+
+    await getArticles();
+
+    expect(chain.is).toHaveBeenCalledWith("archived_at", null);
+  });
+
+  it("includeArchived: true면 archived_at 필터를 사용하지 않는다", async () => {
+    const chain = makeChain({ data: [makeArticleRow()], error: null });
+    createServerSupabaseClient.mockReturnValue({ from: makeSupabaseFrom(chain) });
+
+    await getArticles({ includeArchived: true });
+
+    expect(chain.is).not.toHaveBeenCalled();
+  });
+});
+
+describe("archiveArticle", () => {
+  it("archived_at을 현재 시각으로 설정한다(hard delete가 아니다)", async () => {
+    const chain = makeChain({ data: makeArticleRow({ archived_at: "2026-02-01T00:00:00.000Z" }), error: null });
+    const from = makeSupabaseFrom(chain);
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const result = await archiveArticle("article-1");
+
+    expect(from).toHaveBeenCalledWith("articles");
+    expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({ archived_at: expect.any(String) }));
+    expect(chain.eq).toHaveBeenCalledWith("id", "article-1");
+    expect(result.archivedAt).toBe("2026-02-01T00:00:00.000Z");
+  });
+
+  it("존재하지 않는 기사면 에러를 던진다", async () => {
+    const chain = makeChain({ data: null, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: makeSupabaseFrom(chain) });
+
+    await expect(archiveArticle("missing-article")).rejects.toThrow("기사를 찾을 수 없습니다");
+  });
+});
+
+describe("getArticleRelatedCounts", () => {
+  it("연결된 social post 개수와 WordPress post 존재 여부를 반환한다", async () => {
+    const socialPostsChain = makeChain({ data: null, error: null, count: 3 });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => socialPostsChain) });
+    getSuccessfulWordPressDraft.mockResolvedValue({ externalPostId: "42", postUrl: "https://example.com" });
+
+    const counts = await getArticleRelatedCounts("article-1");
+
+    expect(counts).toEqual({ socialPostCount: 3, hasWordPressPost: true });
+  });
+
+  it("WordPress draft가 없으면 hasWordPressPost=false다", async () => {
+    const socialPostsChain = makeChain({ data: null, error: null, count: 0 });
+    createServerSupabaseClient.mockReturnValue({ from: vi.fn(() => socialPostsChain) });
+    getSuccessfulWordPressDraft.mockResolvedValue(null);
+
+    const counts = await getArticleRelatedCounts("article-1");
+
+    expect(counts).toEqual({ socialPostCount: 0, hasWordPressPost: false });
   });
 });

@@ -43,4 +43,10 @@ describe("article social page pagination (정적 소스 검사, Phase 3-18)", ()
   it("상세 페이지(buildSocialPostDetailUrl)로 가는 링크를 포함한다", () => {
     expect(pageSource).toContain("buildSocialPostDetailUrl");
   });
+
+  it("SNS/커뮤니티 글 목록의 각 항목에 삭제 버튼(archiveSocialPostAction)과 확인 모달이 있다", () => {
+    expect(pageSource).toContain("archiveSocialPostAction");
+    expect(pageSource).toContain("이 글을 삭제하시겠습니까?");
+    expect(pageSource).toContain("ConfirmSubmitButton");
+  });
 });

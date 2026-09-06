@@ -349,6 +349,59 @@ describe("publishArticleToWordPressDraft", () => {
     );
   });
 
+  it("contentOverride가 있으면 article.title/article.content 대신 override 값을 WordPress에 전송한다 (wordpress_blog 카드 전용)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", title: "article 원문 제목", content: "article 원문 본문입니다." })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1", {
+      contentOverride: { title: "wordpress_blog 글 제목", content: "wordpress_blog 글 본문입니다.", excerpt: "wordpress_blog excerpt" },
+    });
+
+    expect(createDraftPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "wordpress_blog 글 제목",
+        content: "wordpress_blog 글 본문입니다.",
+        excerpt: "wordpress_blog excerpt",
+      })
+    );
+  });
+
+  it("contentOverride를 넘기지 않으면 기존 그대로 article.title/article.content를 사용한다 (article 고급 기능 동작 불변)", async () => {
+    getArticleById.mockResolvedValue(
+      makeArticle({ status: "reviewed", title: "article 원문 제목", content: "article 원문 본문입니다." })
+    );
+    vi.stubEnv("WORDPRESS_PUBLISH_ENABLED", "true");
+    createDraftPost.mockResolvedValue({
+      success: true,
+      externalPostId: 1,
+      postUrl: "https://example-blog.test/?p=1",
+      raw: {},
+    });
+
+    await publishArticleToWordPressDraft("article-1");
+
+    expect(createDraftPost).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "article 원문 제목", content: "article 원문 본문입니다." })
+    );
+  });
+
+  it("contentOverride.content가 비어 있으면 (article.content와 무관하게) 게시를 막는다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ status: "reviewed", content: "article 원문 본문입니다." }));
+
+    const result = await publishArticleToWordPressDraft("article-1", { contentOverride: { content: "   " } });
+
+    expect(result.success).toBe(false);
+    expect(createDraftPost).not.toHaveBeenCalled();
+  });
+
   it("이미 success publish_logs(external_post_id 포함)가 있으면 중복 생성하지 않는다", async () => {
     getArticleById.mockResolvedValue(makeArticle({ status: "reviewed" }));
     getSuccessfulWordPressDraft.mockResolvedValue({

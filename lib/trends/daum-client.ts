@@ -37,10 +37,13 @@ interface DaumSearchResponse {
 /**
  * 카카오 Daum 뉴스 검색 API를 호출해 결과를 반환한다.
  * KAKAO_REST_API_KEY가 설정되지 않으면 오류를 던진다.
+ * page(기본 1)로 다음 페이지를 조회할 수 있다(Kakao 웹 검색 API는
+ * page 1~50, size 1~50을 지원한다).
  */
 export async function searchDaumNews(
   query: string,
-  size = 10
+  size = 10,
+  page = 1
 ): Promise<TrendSearchResult[]> {
   const apiKey = process.env.KAKAO_REST_API_KEY;
 
@@ -51,6 +54,7 @@ export async function searchDaumNews(
   const url = new URL(DAUM_WEB_URL);
   url.searchParams.set("query", query);
   url.searchParams.set("size", String(Math.min(size, 50)));
+  url.searchParams.set("page", String(Math.max(1, page)));
   url.searchParams.set("sort", "recency");
 
   let response: Response;
@@ -94,4 +98,41 @@ export async function searchDaumNews(
     rankPosition: index + 1,
     publishedAt: doc.datetime || null,
   }));
+}
+
+export interface DaumMultiPageOptions {
+  /** 페이지당 결과 수(기본 10, Kakao API 상한 50). */
+  pageSize?: number;
+  /** 조회할 최대 페이지 수(기본 1 — 과도한 API 호출을 막기 위해 호출하는 쪽에서 명시적으로 늘려야 한다). */
+  maxPages?: number;
+}
+
+/**
+ * searchDaumNews를 여러 페이지에 걸쳐 호출해 결과를 하나로 합친다.
+ * 한 페이지가 비어 있거나 요청한 size보다 적게 오면(마지막 페이지로
+ * 판단) 즉시 멈춰서 불필요한 API 호출을 하지 않는다.
+ */
+export async function searchDaumNewsMultiPage(
+  query: string,
+  options: DaumMultiPageOptions = {}
+): Promise<TrendSearchResult[]> {
+  const pageSize = options.pageSize ?? 10;
+  const maxPages = Math.max(1, options.maxPages ?? 1);
+
+  const results: TrendSearchResult[] = [];
+
+  for (let page = 1; page <= maxPages; page++) {
+    const pageResults = await searchDaumNews(query, pageSize, page);
+    if (pageResults.length === 0) break;
+
+    // rankPosition은 페이지 내부 순번이라 페이지를 넘어가면 겹친다 —
+    // 전체 목록 기준 순번으로 다시 매긴다.
+    for (const item of pageResults) {
+      results.push({ ...item, rankPosition: results.length + 1 });
+    }
+
+    if (pageResults.length < pageSize) break; // 마지막 페이지로 판단, 다음 페이지를 굳이 호출하지 않는다.
+  }
+
+  return results;
 }

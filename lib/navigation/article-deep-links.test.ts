@@ -28,6 +28,12 @@ describe("buildArticle*Url", () => {
   it("returnTo가 안전하면 query에 포함한다", () => {
     expect(buildArticleBlogUrl("a1", { returnTo: "/articles/a1" })).toBe("/articles/a1/blog?returnTo=%2Farticles%2Fa1");
   });
+
+  it("tab을 지정하면 query에 포함한다(wordpress_blog 카드 내부 탭 이동용)", () => {
+    expect(buildArticleBlogUrl("a1", { socialPostId: "p1", highlight: "p1", tab: "image" })).toBe(
+      "/articles/a1/blog?socialPostId=p1&tab=image&highlight=p1"
+    );
+  });
 });
 
 describe("buildSocialPostDeepLink", () => {

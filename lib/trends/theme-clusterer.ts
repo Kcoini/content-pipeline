@@ -3,6 +3,7 @@
 
 import type { RawTrendItem } from "./mock-trend-provider";
 import type { ThemeCluster } from "@/lib/types/domain";
+import { normalizeThemeKey } from "./theme-normalization";
 
 interface KeywordGroup {
   id: string;
@@ -55,12 +56,70 @@ function matchesGroup(item: RawTrendItem, group: KeywordGroup): boolean {
   return group.keywords.some((kw) => text.includes(kw.toLowerCase()));
 }
 
+/** 공통 테마 후보 하나를 뒷받침하는 원본 근거(네이버/다음 개별 기사) 한 건. */
+export interface ClusterEvidenceItem {
+  platform: string;
+  title: string;
+  url: string | null;
+}
+
 export interface ClusterCandidate {
   group: KeywordGroup;
   naverCount: number;
   daumCount: number;
   score: number;
   matchedKeywords: string[];
+  /** 공백/특수문자/연도/조사 차이를 흡수한 정규화 비교 키 (theme-normalization 참고). */
+  normalizedThemeKey: string;
+  /** 대표 테마 아래에 딸린 하위 주제 — 그룹에 매칭된 원본 기사 제목 중 대표 제목과 다른 것들. */
+  subtopics: string[];
+  /** 이 후보를 뒷받침하는 원본 근거(플랫폼별 최대 3건, 화면 "근거 보기"용). */
+  evidence: ClusterEvidenceItem[];
+}
+
+const MAX_SUBTOPICS = 8;
+const MAX_EVIDENCE_PER_PLATFORM = 3;
+
+/**
+ * 그룹에 매칭된 원본 기사 제목 중, 대표 테마 제목과 정규화 키가 다른
+ * 것들만 하위 주제(subtopics)로 남긴다 — 같은 이슈를 표현만 다르게
+ * 수집한 기사가 별도 하위 주제로 중복 등장하지 않게 정규화 키로
+ * 먼저 걸러낸다.
+ */
+function buildSubtopics(items: RawTrendItem[], groupTitleKey: string): string[] {
+  const seenKeys = new Set<string>([groupTitleKey]);
+  const subtopics: string[] = [];
+
+  for (const item of items) {
+    const title = item.title?.trim();
+    if (!title) continue;
+
+    const key = normalizeThemeKey(title);
+    if (!key || seenKeys.has(key)) continue;
+
+    seenKeys.add(key);
+    subtopics.push(title);
+    if (subtopics.length >= MAX_SUBTOPICS) break;
+  }
+
+  return subtopics;
+}
+
+/** 플랫폼별 최대 건수만큼 원본 근거를 뽑는다(전문/원문 전체가 아니라 title/url만). */
+function buildEvidence(items: RawTrendItem[]): ClusterEvidenceItem[] {
+  const perPlatformCount: Record<string, number> = {};
+  const evidence: ClusterEvidenceItem[] = [];
+
+  for (const item of items) {
+    if (!item.title) continue;
+    const count = perPlatformCount[item.platform] ?? 0;
+    if (count >= MAX_EVIDENCE_PER_PLATFORM) continue;
+
+    perPlatformCount[item.platform] = count + 1;
+    evidence.push({ platform: item.platform, title: item.title, url: item.url || null });
+  }
+
+  return evidence;
 }
 
 export function clusterTrendItems(items: RawTrendItem[]): ClusterCandidate[] {
@@ -84,7 +143,19 @@ export function clusterTrendItems(items: RawTrendItem[]): ClusterCandidate[] {
       )
     );
 
-    candidates.push({ group, naverCount, daumCount, score, matchedKeywords });
+    const matchedItems = items.filter((it) => matchesGroup(it, group));
+    const normalizedThemeKey = normalizeThemeKey(group.title);
+
+    candidates.push({
+      group,
+      naverCount,
+      daumCount,
+      score,
+      matchedKeywords,
+      normalizedThemeKey,
+      subtopics: buildSubtopics(matchedItems, normalizedThemeKey),
+      evidence: buildEvidence(matchedItems),
+    });
   }
 
   return candidates.sort((a, b) => b.score - a.score);
@@ -99,7 +170,12 @@ export function candidateToThemeCluster(candidate: ClusterCandidate, now: string
     daumCount: candidate.daumCount,
     score: candidate.score,
     status: "candidate",
+    normalizedKey: candidate.normalizedThemeKey,
+    subtopics: candidate.subtopics,
+    evidence: candidate.evidence,
+    seenCount: 1,
     createdAt: now,
     updatedAt: now,
+    lastSeenAt: now,
   };
 }

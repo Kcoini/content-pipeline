@@ -116,6 +116,8 @@ export async function getPublishLogsByArticleId(
 export interface SuccessfulWordPressDraft {
   externalPostId: string;
   postUrl: string | null;
+  /** 이 draft 기록이 만들어진 시각(마지막 생성/업데이트 성공 시각) — UI에 "마지막 업데이트" 표시용. */
+  createdAt: string | null;
 }
 
 /**
@@ -130,7 +132,7 @@ export async function getSuccessfulWordPressDraft(
 
   const { data, error } = await supabase
     .from("publish_logs")
-    .select("external_post_id, post_url")
+    .select("external_post_id, post_url, created_at")
     .eq("article_id", articleId)
     .eq("target", "wordpress")
     .eq("status", "success")
@@ -145,7 +147,7 @@ export async function getSuccessfulWordPressDraft(
 
   if (!data || !data.external_post_id) return null;
 
-  return { externalPostId: data.external_post_id, postUrl: data.post_url };
+  return { externalPostId: data.external_post_id, postUrl: data.post_url, createdAt: data.created_at ?? null };
 }
 
 export interface UpdatePublishLogFields {

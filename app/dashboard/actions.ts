@@ -17,7 +17,12 @@ import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
 import { getArticleModeConfig, resolveArticleMode } from "@/lib/articles/article-modes";
 import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
-import { createTheme as createThemeRecord, getThemeById } from "@/lib/repositories/theme-repository";
+import {
+  createTheme as createThemeRecord,
+  getThemeById,
+  archiveTheme,
+  getThemeRelatedCounts,
+} from "@/lib/repositories/theme-repository";
 import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, updateSourceSummary, skipSourceSummary, DuplicateSourceError } from "@/lib/repositories/source-repository";
 import { fetchUrlContent } from "@/lib/services/url-fetcher";
 import { generateSourceSummaryWithAi, generateSourceSummaryMock } from "@/lib/ai/source-auto-summarizer";
@@ -503,4 +508,46 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
 
   revalidatePath("/dashboard");
   redirect(`/dashboard?themeId=${themeId}`);
+}
+
+/**
+ * 테마 목록에서 "삭제" 버튼을 누르면 실행된다. hard delete가 아니라
+ * soft delete(archived_at = now())만 수행한다 — themes→articles→
+ * social_posts는 on delete cascade로 연결되어 있어(db/schema.sql) 실제
+ * 삭제는 연쇄적으로 위험하기 때문이다. 연결된 기사/출처는 DB에 그대로
+ * 남고, 이미 WordPress에 생성된 글도 전혀 건드리지 않는다. 확인 모달은
+ * 화면(ConfirmSubmitButton)에서 처리하므로 여기서는 실행만 담당한다.
+ */
+export async function archiveThemeAction(formData: FormData): Promise<void> {
+  const themeId = String(formData.get("themeId") ?? "");
+  const theme = await getThemeById(themeId);
+
+  if (!theme) {
+    redirect(`/dashboard?deleteError=${encodeURIComponent("테마를 찾을 수 없습니다.")}`);
+  }
+
+  if (theme.archivedAt) {
+    await logEvent({
+      type: "theme_delete_blocked",
+      status: "failed",
+      message: `테마(${themeId})는 이미 삭제(보관 처리)되어 있습니다.`,
+      details: { themeId },
+      themeId,
+    });
+    redirect(`/dashboard?deleteError=${encodeURIComponent("이미 삭제된 테마입니다.")}`);
+  }
+
+  const relatedCounts = await getThemeRelatedCounts(themeId);
+  await archiveTheme(themeId);
+
+  await logEvent({
+    type: "theme_archived",
+    status: "success",
+    message: `테마가 삭제(보관 처리)되었습니다: ${theme.title}`,
+    details: { themeId, relatedCounts },
+    themeId,
+  });
+
+  revalidatePath("/dashboard");
+  redirect(`/dashboard?deleteMessage=${encodeURIComponent(`테마를 삭제했습니다: ${theme.title}`)}`);
 }

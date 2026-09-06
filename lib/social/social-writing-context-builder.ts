@@ -6,6 +6,7 @@
 import { getArticleById } from "@/lib/repositories/article-repository";
 import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
 import { getPlatformWritingConfig, getSocialOutputContractName } from "./platform-writing-config";
+import { countUsableSources } from "./wordpress-blog-source-mode";
 import { getToneStyleConfig } from "./tone-style-config";
 import type {
   SocialPlatform,
@@ -13,6 +14,7 @@ import type {
   PlatformWritingConfig,
   ToneStyleConfig,
 } from "./social-platform-types";
+import type { AdSlotEntry } from "@/lib/types/domain";
 
 /** 모든 플랫폼/문체에 공통으로 적용되는 안전 규칙 요약 (prompts/safety/*.md의 핵심만 요약). */
 const COMMON_SAFETY_RULES: readonly string[] = [
@@ -53,11 +55,25 @@ export interface SocialWritingContext {
   secondaryKeywords: string[];
   seoTitle: string | null;
   metaDescription: string | null;
+  searchIntent: string | null;
+  readerPersona: string | null;
+  /** article이 monetized_blog 모드로 생성됐다면 이미 계산된 값(있으면 참고용으로만 재사용). */
+  adSlots: AdSlotEntry[];
+  monetizationScore: number | null;
+  policyRiskScore: number | null;
+  citedSourceIds: string[];
   /** 본문에서 뽑아낸 짧은 요약(원문 전체가 아님, 최대 600자) */
   excerpt: string;
   /** 출처들의 keyPoints를 합쳐 중복 제거한 핵심 포인트 (최대 8개) */
   keyPoints: string[];
   sourceCount: number;
+  /**
+   * wordpress_blog 전용 판단 기준: key_points 또는 summary가 있는(실제
+   * 종합할 사실이 있는) 출처 개수. sourceCount(전체 등록 출처 수)와
+   * 다르다 — summary/key_points가 아직 없는 출처는 세지 않는다
+   * (lib/social/wordpress-blog-source-mode.ts 참고).
+   */
+  usableSourceCount: number;
   /** 출처 요약(summary)만 포함 — 원문 raw HTML은 포함하지 않는다 */
   sourceSummaries: SocialWritingSourceSummary[];
   platform: SocialPlatform;
@@ -126,9 +142,16 @@ export async function buildSocialWritingContext(
     secondaryKeywords: article.secondaryKeywords,
     seoTitle: article.seoTitle,
     metaDescription: article.metaDescription,
+    searchIntent: article.searchIntent,
+    readerPersona: article.readerPersona,
+    adSlots: article.adSlots,
+    monetizationScore: article.monetizationScore,
+    policyRiskScore: article.policyRiskScore,
+    citedSourceIds: article.citedSourceIds,
     excerpt: buildExcerpt(article.content, article.metaDescription),
     keyPoints,
     sourceCount: sources.length,
+    usableSourceCount: countUsableSources(sources),
     sourceSummaries,
     platform: options.platform,
     toneStyle: options.toneStyle,

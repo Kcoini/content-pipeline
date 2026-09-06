@@ -24,6 +24,7 @@ import type { FeaturedImageMetadata } from "@/lib/images/featured-image-types";
 import type { WordPressMediaUploadPayload } from "@/lib/publish/wordpress-media-types";
 import { assertApproved } from "@/lib/harness/approval-gate";
 import { saveApprovalLog } from "@/lib/repositories/approval-repository";
+import { getSuccessfulWordPressDraft } from "@/lib/repositories/publish-repository";
 import {
   DEFAULT_ARTICLE_MODE,
   resolveArticleMode,
@@ -101,6 +102,7 @@ export function mapArticleRowToArticle(row: ArticleRow, citedSourceIds: string[]
     citedSourceIds,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
     reviewedAt: row.reviewed_at,
     reviewedBy: row.reviewed_by,
     articleMode: resolveArticleMode(row.article_mode),
@@ -269,14 +271,19 @@ export async function getArticleByThemeId(themeId: string): Promise<Article | un
   return mapArticleRowToArticle(articleRow, sourceMap.get(articleRow.id) ?? []);
 }
 
-/** 전체 기사 목록을 최신 생성순으로 조회한다 (/articles 목록 페이지). */
-export async function getArticles(): Promise<Article[]> {
+/**
+ * 전체 기사 목록을 최신 생성순으로 조회한다 (/articles 목록 페이지).
+ * 기본적으로 보관 처리(archived_at 설정)된 기사는 제외한다 — hard
+ * delete가 아니라 soft delete이므로 DB에는 남아있다.
+ */
+export async function getArticles(options: { includeArchived?: boolean } = {}): Promise<Article[]> {
   const supabase = createServerSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("articles")
-    .select()
-    .order("created_at", { ascending: false });
+  let query = supabase.from("articles").select().order("created_at", { ascending: false });
+  if (!options.includeArchived) {
+    query = query.is("archived_at", null);
+  }
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`기사 목록 조회에 실패했습니다: ${error.message}`);
@@ -286,6 +293,52 @@ export async function getArticles(): Promise<Article[]> {
   const sourceMap = await getCitedSourceIdsMap(rows.map((row) => row.id));
 
   return rows.map((row) => mapArticleRowToArticle(row, sourceMap.get(row.id) ?? []));
+}
+
+/** 기사 삭제(보관 처리) — hard delete가 아니라 archived_at = now()만 설정한다. */
+export async function archiveArticle(articleId: string): Promise<Article> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", articleId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`기사 보관 처리에 실패했습니다: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error(`기사를 찾을 수 없습니다: ${articleId}`);
+  }
+
+  const sourceMap = await getCitedSourceIdsMap([data.id]);
+  return mapArticleRowToArticle(data, sourceMap.get(data.id) ?? []);
+}
+
+export interface ArticleRelatedCounts {
+  socialPostCount: number;
+  hasWordPressPost: boolean;
+}
+
+/** 기사 삭제 확인 모달에 표시할 연관 데이터(social post 개수/WordPress post 존재 여부)를 센다. */
+export async function getArticleRelatedCounts(articleId: string): Promise<ArticleRelatedCounts> {
+  const supabase = createServerSupabaseClient();
+
+  const [socialPostsResult, wordPressDraft] = await Promise.all([
+    supabase.from("social_posts").select("id", { count: "exact", head: true }).eq("article_id", articleId).is("archived_at", null),
+    getSuccessfulWordPressDraft(articleId),
+  ]);
+
+  if (socialPostsResult.error) {
+    throw new Error(`social post 개수 조회에 실패했습니다: ${socialPostsResult.error.message}`);
+  }
+
+  return {
+    socialPostCount: socialPostsResult.count ?? 0,
+    hasWordPressPost: wordPressDraft !== null,
+  };
 }
 
 /** 기사 id로 단건 조회한다 (/articles/[id] 상세 페이지). */
@@ -753,6 +806,55 @@ export async function markFeaturedImageReviewed(articleId: string): Promise<Arti
 
   if (error || !data) {
     throw new Error(`대표 이미지 검토 처리에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+export interface SaveArticleWordPressFeaturedImageWaiverInput {
+  waived: boolean;
+  reasonCode: string | null;
+  memoPresent: boolean;
+}
+
+/**
+ * "원본 article을 WordPress Draft로 전송"할 때 대표 이미지 없이 진행하기로
+ * 한 선택(waiver)을 저장/해제한다. DB CHECK 제약(articles_featured_image_upload_status_check)
+ * 때문에 status 컬럼에 'waived' 값을 직접 저장할 수 없어, 기존 자유 형식
+ * JSON 컬럼인 format_metadata 안에 targetType='article'을 명시해 저장한다
+ * (social_posts 기준 wordpress_blog waive 상태와는 완전히 분리된 키다).
+ */
+export async function saveArticleWordPressFeaturedImageWaiver(
+  articleId: string,
+  input: SaveArticleWordPressFeaturedImageWaiverInput
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const formatMetadata = {
+    ...existing.formatMetadata,
+    article_wordpress_featured_image_waiver: {
+      targetType: "article",
+      featuredImageWaived: input.waived,
+      featuredImageWaiverReason: input.reasonCode,
+      featuredImageWaiverMemoPresent: input.memoPresent,
+      waivedAt: input.waived ? new Date().toISOString() : null,
+    },
+  };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({ format_metadata: formatMetadata })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`대표 이미지 생략(waive) 상태 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);

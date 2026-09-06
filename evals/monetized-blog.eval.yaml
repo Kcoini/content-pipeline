@@ -81,11 +81,63 @@ criteria:
     scale: 1-5
     pass_threshold: 3
 
+  # ── "문제 해결형 수익 블로그" 개선: E-E-A-T / AEO / GEO / YMYL 기준 추가 ──
+
+  - id: eeat-trustworthiness
+    description: >
+      허위 경험담, 허위 사용 후기, 허위 전문가 검토, 출처 없는 단정적 주장이
+      없는가. 독자가 스스로 판단할 수 있도록 비교 기준·주의점·한계를
+      제시하는가. (1=신뢰성 근거 없음/허위 표현 의심, 5=근거가 명확하고
+      한계도 함께 제시함). 가중 평균에 포함되며, 낮은 점수는 별도 gate로도
+      사용한다(eeat_trustworthiness_min_threshold).
+    weight: 0.12
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: answer-summary-quality
+    description: >
+      글 상단의 answerSummary(직접 답변)가 독자의 핵심 질문에 명확하고
+      간결하게 답하는가. 과도하게 단정적이지 않고, 본문의 결론과
+      충돌하지 않는가.
+    weight: 0.06
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: geo-clarity
+    description: >
+      각 섹션이 독립적으로 읽어도 의미가 통하는가. 결론을 먼저 제시하고
+      근거·예외를 뒤에 설명하는가. AI 요약에 잘못 인용될 만한 과장문이나
+      검색/AI 노출을 보장하는 표현이 없는가.
+    weight: 0.05
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: keyword-naturalness
+    description: >
+      targetKeyword와 secondaryKeywords가 문맥에 자연스럽게 쓰였는가.
+      키워드 반복(keyword stuffing)이나 부자연스러운 삽입이 없는가.
+    weight: 0.05
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: ymyl-risk
+    description: >
+      의료/금융/법률/안전/공공정책 등 고위험(YMYL) 주제에서 단정적
+      조언을 하지 않는가. (1=위험 없음, 5=단정적 조언으로 위험함 —
+      점수가 높을수록 위험. 가중 평균에는 포함하되 gate로도 사용한다.)
+    weight: 0.10
+    scale: 1-5
+    pass_threshold: 3
+
 scoring:
   aggregate: weighted_average
   pass_threshold: 3.0
   # adsense-policy-risk >= 4이면 passed=false 강제 (가중 평균과 무관)
   policy_risk_fail_threshold: 4
+  # eeat-trustworthiness < 3이면 passed=false 강제 (가중 평균과 무관)
+  eeat_trustworthiness_min_threshold: 3
+  # ymyl-risk >= 4이면 passed=false 강제 (가중 평균과 무관)
+  ymyl_risk_fail_threshold: 4
 
 output:
   format: json

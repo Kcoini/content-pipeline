@@ -103,6 +103,7 @@ export function mapSocialPostRow(row: SocialPostRow): SocialPost {
     publishedAt: row.published_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
     editedAt: row.edited_at,
     editedBy: row.edited_by,
     reviewNotes: row.review_notes,
@@ -254,21 +255,50 @@ export async function createSocialPostDraft(input: SocialPostDraftInput): Promis
   return mapSocialPostRow(data);
 }
 
-/** 특정 기사에 대해 생성된 모든 social post를 최신순으로 조회한다. */
-export async function listSocialPostsByArticle(articleId: string): Promise<SocialPost[]> {
+/**
+ * 특정 기사에 대해 생성된 모든 social post를 최신순으로 조회한다.
+ * 기본적으로 보관 처리(archived_at 설정)된 post는 제외한다 — wordpress_blog/
+ * naver_blog 카드 목록에서 "삭제" 버튼을 누른 글이 다시 보이지 않게 하기
+ * 위해서다(hard delete가 아니라 soft delete이므로 DB에는 남아있다).
+ */
+export async function listSocialPostsByArticle(
+  articleId: string,
+  options: { includeArchived?: boolean } = {}
+): Promise<SocialPost[]> {
   const supabase = createServerSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("social_posts")
-    .select()
-    .eq("article_id", articleId)
-    .order("created_at", { ascending: false });
+  let query = supabase.from("social_posts").select().eq("article_id", articleId).order("created_at", { ascending: false });
+  if (!options.includeArchived) {
+    query = query.is("archived_at", null);
+  }
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`social post 목록 조회에 실패했습니다: ${error.message}`);
   }
 
   return (data ?? []).map(mapSocialPostRow);
+}
+
+/** social post 삭제(보관 처리) — hard delete가 아니라 archived_at = now()만 설정한다. WordPress에 이미 생성된 Draft/Post는 건드리지 않는다. */
+export async function archiveSocialPost(id: string): Promise<SocialPost> {
+  const supabase = createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("social_posts")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`social post 보관 처리에 실패했습니다: ${error.message}`);
+  }
+  if (!data) {
+    throw new SocialPostNotFoundError(id);
+  }
+
+  return mapSocialPostRow(data);
 }
 
 /** social post 하나를 id로 조회한다. 없으면 null을 반환한다 (throw하지 않음). */

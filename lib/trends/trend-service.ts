@@ -4,18 +4,23 @@
 
 import { getMockTrendItems, rawItemToCandidate } from "./mock-trend-provider";
 import { searchNaverNews } from "./naver-client";
-import { searchDaumNews } from "./daum-client";
+import { searchDaumNewsMultiPage } from "./daum-client";
 import { SEED_QUERIES } from "./seed-queries";
+import { expandDaumQueries } from "./daum-query-expansion";
+import { getDaumSearchPageSize, getDaumSearchMaxPages } from "./daum-collection-config";
+import { filterUsableDaumResults } from "./daum-result-filter";
 import { clusterTrendItems } from "./theme-clusterer";
 import {
   insertTrendCandidates,
-  insertThemeClusters,
+  upsertThemeClusters,
   getThemeClusterById,
   updateThemeClusterStatus,
   getRecentTrendCandidates,
   getThemeClusters,
+  getTrendCandidateCounts,
   type InsertTrendCandidateInput,
-  type InsertThemeClusterInput,
+  type UpsertThemeClusterInput,
+  type TrendCandidateCounts,
 } from "@/lib/repositories/trend-repository";
 import { createTheme } from "@/lib/repositories/theme-repository";
 import { logEvent } from "@/lib/repositories/log-repository";
@@ -133,13 +138,22 @@ async function collectFromNaver(now: string): Promise<PlatformCollectionResult> 
 /**
  * 카카오 Daum 웹 검색 API로 seed queries를 검색해 결과를 수집한다.
  * key가 없거나 일부 query가 실패해도 성공한 결과는 반환한다.
+ *
+ * Phase 1-17: naver는 46건, daum은 4건만 보이는 문제를 진단한 결과, 실제
+ * 원인은 collectFromDaum() 자체(원본 수집량)가 아니라 화면 조회 단계
+ * (getRecentTrendCandidates)의 tie-break 문제였다(자세한 내용은
+ * docs/phase-1-17-daum-collection-balance.md 참고). 그래도 수집량/저장률을
+ * 더 개선할 수 있는 부분(query expansion, page 반복, 완화된 필터, 상세
+ * 진단 로그)은 이 함수에 반영했다.
  */
 async function collectFromDaum(now: string): Promise<PlatformCollectionResult> {
+  const expandedQueries = expandDaumQueries(SEED_QUERIES);
+
   await logEvent({
     type: "daum_trend_collection_started",
     status: "info",
-    message: "다음(카카오) 뉴스 수집 시작",
-    details: { queryCount: SEED_QUERIES.length },
+    message: `다음(카카오) 뉴스 수집 시작 (seed ${SEED_QUERIES.length}건 → 확장 검색어 ${expandedQueries.length}건)`,
+    details: { seedQueryCount: SEED_QUERIES.length, expandedQueryCount: expandedQueries.length },
   });
 
   if (!isDaumKeySet()) {
@@ -152,33 +166,64 @@ async function collectFromDaum(now: string): Promise<PlatformCollectionResult> {
     return { inputs: [], status: "skipped", count: 0, error: msg };
   }
 
+  const pageSize = getDaumSearchPageSize();
+  const maxPages = getDaumSearchMaxPages();
+
   const results = await Promise.allSettled(
-    SEED_QUERIES.map((q) => searchDaumNews(q, 5))
+    expandedQueries.map((q) => searchDaumNewsMultiPage(q, { pageSize, maxPages }))
   );
 
-  const inputs: InsertTrendCandidateInput[] = [];
+  const rawResults: TrendSearchResult[] = [];
   let failCount = 0;
   const errors: string[] = [];
+  // query별 결과 수 — 원본 응답이 아니라 개수만 남긴다(로그 안전).
+  const perQueryCounts: Record<string, number> = {};
 
-  for (const result of results) {
+  results.forEach((result, index) => {
+    const query = expandedQueries[index];
     if (result.status === "fulfilled") {
-      inputs.push(...result.value.map((item) => searchResultToInput(item, now)));
+      perQueryCounts[query] = result.value.length;
+      rawResults.push(...result.value);
     } else {
       failCount++;
+      perQueryCounts[query] = 0;
       errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
     }
-  }
+  });
 
-  const status = inputs.length > 0 ? "success" : "failed";
+  const rawDocumentsCount = rawResults.length;
+  const mappedInputs = rawResults.map((item) => searchResultToInput(item, now));
+
+  // publisher/게시일을 필수로 요구하지 않는다 — url이 없는(활용 불가능한)
+  // 항목만 제외한다(lib/trends/daum-result-filter.ts).
+  const { kept, filteredOutCount, skippedReasonsSummary } = filterUsableDaumResults(mappedInputs);
+  const dedupedInputs = deduplicateByUrl(kept);
+  const dedupedOutCount = kept.length - dedupedInputs.length;
+
+  const status = dedupedInputs.length > 0 ? "success" : "failed";
 
   await logEvent({
     type: status === "success" ? "daum_trend_collection_completed" : "daum_trend_collection_failed",
     status,
-    message: `다음 수집 완료: ${inputs.length}건 (실패 query ${failCount}건)`,
-    details: { count: inputs.length, failCount },
+    message: `다음 수집 완료: ${dedupedInputs.length}건 (원본 ${rawDocumentsCount}건, 필터 제외 ${filteredOutCount}건, 중복 제외 ${dedupedOutCount}건, 실패 query ${failCount}/${expandedQueries.length}건)`,
+    details: {
+      rawDocumentsCount,
+      mappedDocumentsCount: mappedInputs.length,
+      filteredOutCount,
+      dedupedOutCount,
+      savedCount: dedupedInputs.length,
+      skippedReasonsSummary,
+      queryCount: expandedQueries.length,
+      failCount,
+      pageSize,
+      maxPages,
+      perQueryCounts,
+      // API key/raw response 전체는 절대 남기지 않는다 — title/url 샘플 최대 3개까지만.
+      sampleResults: dedupedInputs.slice(0, 3).map((i) => ({ title: i.title, url: i.url })),
+    },
   });
 
-  return { inputs, status, count: inputs.length, error: errors[0] };
+  return { inputs: dedupedInputs, status, count: dedupedInputs.length, error: errors[0] };
 }
 
 /**
@@ -238,7 +283,9 @@ export async function collectTrendCandidates(): Promise<TrendCollectionResult> {
       collectFromDaum(now),
     ]);
 
+    const beforeDedupeCount = naverResult.inputs.length + daumResult.inputs.length;
     const allInputs = deduplicateByUrl([...naverResult.inputs, ...daumResult.inputs]);
+    const duplicateRemovedCount = beforeDedupeCount - allInputs.length;
 
     if (allInputs.length === 0) {
       throw new Error(
@@ -253,8 +300,8 @@ export async function collectTrendCandidates(): Promise<TrendCollectionResult> {
     await logEvent({
       type: "trend_collection_completed",
       status: "success",
-      message: `트렌드 후보 ${saved.length}건 수집 완료 (네이버 ${naverCount}건, 다음 ${daumCount}건)`,
-      details: { count: saved.length, mode: "api", naverCount, daumCount },
+      message: `트렌드 후보 ${saved.length}건 수집 완료 (네이버 ${naverCount}건, 다음 ${daumCount}건, 최종 결합 단계 중복 제외 ${duplicateRemovedCount}건)`,
+      details: { count: saved.length, mode: "api", naverCount, daumCount, duplicateRemovedCount },
     });
 
     return {
@@ -311,21 +358,27 @@ export async function clusterCommonThemes(): Promise<ThemeCluster[]> {
     return [];
   }
 
-  const inputs: InsertThemeClusterInput[] = clusterCandidates.map((c) => ({
+  const inputs: UpsertThemeClusterInput[] = clusterCandidates.map((c) => ({
     title: c.group.title,
     description: c.group.description,
     keywords: c.matchedKeywords.slice(0, 5),
     naverCount: c.naverCount,
     daumCount: c.daumCount,
     score: c.score,
+    normalizedKey: c.normalizedThemeKey,
+    subtopics: c.subtopics,
+    evidence: c.evidence,
   }));
 
-  const saved = await insertThemeClusters(inputs);
+  // 재수집 시 같은 후보가 계속 새로 쌓이지 않도록, insert 대신 기존
+  // 후보와 비교해 병합(update)하거나 새로 추가하는 upsertThemeClusters를
+  // 사용한다(lib/repositories/trend-repository.ts 참고).
+  const saved = await upsertThemeClusters(inputs);
 
   await logEvent({
     type: "theme_clustering_completed",
     status: "success",
-    message: `테마 클러스터 ${saved.length}건 생성`,
+    message: `테마 클러스터 ${saved.length}건 처리 완료(신규+병합)`,
     details: { count: saved.length },
   });
 
@@ -375,13 +428,34 @@ export async function createThemeFromCluster(clusterId: string): Promise<Theme> 
 /**
  * 최근 수집된 후보 목록과 클러스터 목록을 함께 반환한다 (/trends 페이지용).
  */
+/**
+ * Phase 1-20: /trends 상단 "수집 결과" 요약에 쓸, 표시된 candidates
+ * 중 가장 최근 collected_at을 찾는다(정확한 전역 최신값은 아닐 수
+ * 있지만 — candidates는 표시용으로 균형 조정된 최근 후보 목록이라
+ * 실제 최신 수집 시각과 사실상 같다 — 별도 쿼리 없이 표시용 근사치로
+ * 충분하다).
+ */
+function findLatestCollectedAt(candidates: TrendCandidate[]): string | null {
+  return candidates.reduce<string | null>((latest, c) => {
+    if (!latest) return c.collectedAt;
+    return new Date(c.collectedAt).getTime() > new Date(latest).getTime() ? c.collectedAt : latest;
+  }, null);
+}
+
+/**
+ * 최근 수집된 후보 목록과 클러스터 목록, 상단 요약 배너에 쓸 전체
+ * 개수/마지막 수집 시각을 함께 반환한다 (/trends 페이지용).
+ */
 export async function getTrendPageData(): Promise<{
   candidates: TrendCandidate[];
   clusters: ThemeCluster[];
+  counts: TrendCandidateCounts;
+  lastCollectedAt: string | null;
 }> {
-  const [candidates, clusters] = await Promise.all([
+  const [candidates, clusters, counts] = await Promise.all([
     getRecentTrendCandidates(50),
     getThemeClusters(),
+    getTrendCandidateCounts(),
   ]);
-  return { candidates, clusters };
+  return { candidates, clusters, counts, lastCollectedAt: findLatestCollectedAt(candidates) };
 }

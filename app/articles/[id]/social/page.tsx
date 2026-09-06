@@ -29,7 +29,9 @@ import {
   prepareManualPostingRecordAction,
   recordManualPostingResultAction,
   recordSocialPostMetricsAction,
+  archiveSocialPostAction,
 } from "../actions";
+import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -185,6 +187,22 @@ export default async function ArticleSocialPage({
                       {post.manualPostStatus === "posted" && <InfoBadge label="게시 완료" />}
                       {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="Metrics 필요" />}
                       {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="Low Performance" />}
+                      <form action={archiveSocialPostAction} className="ml-auto">
+                        <input type="hidden" name="articleId" value={article.id} />
+                        <input type="hidden" name="socialPostId" value={post.id} />
+                        <input type="hidden" name="returnTo" value={selfReturnTo} />
+                        <ConfirmSubmitButton
+                          confirmMessage={[
+                            "이 글을 삭제하시겠습니까?",
+                            "",
+                            "앱 내부의 생성 글과 상태만 삭제 또는 숨김 처리됩니다.",
+                            "이미 외부 플랫폼에 게시된 내용이 있다면 자동 삭제되지 않습니다.",
+                          ].join("\n")}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          삭제
+                        </ConfirmSubmitButton>
+                      </form>
                     </div>
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || post.caption || "(제목/캡션 없음)"}</p>
                     <p className="mt-1 text-zinc-500">

@@ -195,6 +195,8 @@ export interface SocialPost {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 목록에서 "삭제"(보관 처리)한 시각. null이면 활성 상태. hard delete가 아니고, WordPress에 이미 생성된 Draft/Post는 자동 삭제되지 않는다. */
+  archivedAt?: string | null;
   /** Phase 3-4: Review & Editing Workflow */
   editedAt: string | null;
   editedBy: string | null;

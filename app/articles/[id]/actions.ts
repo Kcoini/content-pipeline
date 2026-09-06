@@ -15,6 +15,29 @@ import {
 } from "@/lib/repositories/article-repository";
 import { logEvent } from "@/lib/harness/logger";
 import { publishArticleToWordPressDraft, runWordPressConnectionTest } from "@/lib/publish/publish-service";
+import { getSocialPostById, archiveSocialPost } from "@/lib/repositories/social-posts-repository";
+import { checkWordPressBlogPublishReadiness } from "@/lib/social/wordpress-blog-publish-readiness";
+import { updateWordPressSeoMetadataFromBlogPost } from "@/lib/social/wordpress-blog-seo-metadata-service";
+import { regenerateWordPressBlogMetadata } from "@/lib/social/wordpress-blog-metadata-regeneration-service";
+import { writeWordPressBlogSeoPluginMetadata } from "@/lib/social/wordpress-blog-seo-plugin-service";
+import {
+  confirmWordPressBlogPersonalInfoFalsePositive,
+  openWordPressBlogSafetyReview,
+  checkWordPressBlogPersonalInfoOverrideEligibility,
+} from "@/lib/social/wordpress-blog-personal-info-review";
+import {
+  generateWordPressBlogFeaturedImagePrompt,
+  generateWordPressBlogFeaturedImage,
+} from "@/lib/social/wordpress-blog-image-generation-service";
+import { prepareWordPressBlogPostForPublishing } from "@/lib/social/wordpress-blog-publish-preparation-orchestrator";
+import { buildWordPressBlogContentOverride } from "@/lib/social/wordpress-blog-content-override-builder";
+import { saveWordPressFeaturedImageMediaForBlogPost } from "@/lib/social/wordpress-blog-featured-image-service";
+import { uploadWordPressFeaturedImageFromBlogPost } from "@/lib/social/wordpress-blog-local-image-upload-service";
+import { waiveWordPressFeaturedImageForBlogPost } from "@/lib/social/wordpress-blog-featured-image-waiver-service";
+import {
+  waiveArticleWordPressFeaturedImage,
+  clearArticleWordPressFeaturedImageWaiver,
+} from "@/lib/publish/article-wordpress-featured-image-waiver-service";
 import { generateWordPressMetadata, reviewWordPressMetadata } from "@/lib/publish/wordpress-metadata-service";
 import { generateSeoPluginPayload, reviewSeoPluginMetadata } from "@/lib/seo/seo-plugin-metadata-service";
 import { isSeoPluginProvider } from "@/lib/seo/seo-plugin-types";
@@ -63,6 +86,7 @@ import {
   markManualPostingSkipped,
   markManualPostingFailed,
 } from "@/lib/social/platform-manual-posting-result-service";
+import { markManualChecklistItemConfirmed } from "@/lib/social/manual-posting-checklist-confirmation-service";
 import { recordSocialPostMetrics } from "@/lib/social/social-metrics-service";
 import { generatePerformanceRewriteSuggestion } from "@/lib/social/performance-rewrite-suggestion-generator";
 import { approveRewriteSuggestion, rejectRewriteSuggestion } from "@/lib/social/rewrite-suggestion-review-service";
@@ -231,6 +255,563 @@ export async function publishToWordPressDraftAction(formData: FormData): Promise
     ? `error=${encodeURIComponent(message)}`
     : `publishMessage=${encodeURIComponent(message)}`;
   redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * 고급 기능 "원본 article을 WordPress Draft로 전송" 섹션에서 "대표 이미지
+ * 없이 진행"을 선택했을 때 실행된다. 사유 코드를 필수로 받고,
+ * article.formatMetadata의 article 전용 waiver 키에만 저장한다
+ * (lib/publish/article-wordpress-featured-image-waiver-service.ts —
+ * wordpress_blog 카드의 waive와는 완전히 별개의 상태다).
+ */
+export async function waiveArticleWordPressFeaturedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const reasonCode = formData.get("reasonCode");
+  const memoRaw = formData.get("memo");
+  const memo = typeof memoRaw === "string" && memoRaw.trim() ? memoRaw.trim() : undefined;
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await waiveArticleWordPressFeaturedImage(articleId, reasonCode, memo);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Article/Blog 페이지 역할 분리 리팩터링: wordpress_blog social_post를
+ * 대상으로 하는 "메인" WordPress 게시 흐름 wrapper action이다.
+ *
+ * - platform이 wordpress_blog가 아니거나, quality_status/approval_status/
+ *   콘텐츠/금지 표현 등 wordpress_blog 자체의 게시 준비 조건
+ *   (checkWordPressBlogPublishReadiness)을 만족하지 못하면 실제 WordPress
+ *   API를 호출하지 않고 즉시 차단한다.
+ * - 준비 조건을 만족하면 기존 publishArticleToWordPressDraft(articleId)를
+ *   그대로 재사용한다 — 새로운 실제 WordPress API 호출 코드를 추가하지
+ *   않는다. (알려진 한계: 현재 이 경로는 여전히 article 본문을 WordPress로
+ *   보낸다 — wordpress_blog social_post의 SEO 최적화 콘텐츠 자체를 실제
+ *   payload로 보내는 것은 이번 리팩터링 범위 밖이며, docs에 다음 단계로
+ *   기록해 두었다.)
+ */
+/**
+ * wordpress_blog의 WordPress Draft 생성/업데이트가 진행해도 되는지
+ * 판단한다. `checkWordPressBlogPublishReadiness` 자체는 바꾸지 않고,
+ * 개인정보 false positive override가 적용 가능하면(다른 차단 사유
+ * 없음, approval=approved, 실제 위험 없음, 확인 기록/지문 일치) 그
+ * 사실을 함께 반환한다 — SEO Metadata 반영(writeWordPressBlogSeoPluginMetadata)과
+ * 동일한 조건/판단 함수(checkWordPressBlogPersonalInfoOverrideEligibility)를
+ * 재사용한다. 실제 개인정보가 남아 있으면 여전히 차단된다.
+ */
+async function resolveWordPressBlogDraftReadiness(
+  articleId: string,
+  socialPostId: string,
+  post: SocialPost
+): Promise<{ ready: boolean; blockers: string[]; overrideApplied: boolean }> {
+  const readiness = checkWordPressBlogPublishReadiness(post);
+  if (readiness.ready) {
+    return { ready: true, blockers: [], overrideApplied: false };
+  }
+
+  await logEvent({
+    type: "wordpress_blog_safety_override_requested",
+    status: "info",
+    message: `wordpress_blog 글(${socialPostId})의 WordPress Draft 생성/업데이트가 차단되어 override 가능 여부를 확인합니다.`,
+    articleId,
+    targetType: "article",
+    targetId: articleId,
+    details: { socialPostId, blockers: readiness.blockers },
+  });
+
+  const overrideCheck = checkWordPressBlogPersonalInfoOverrideEligibility(post, readiness);
+  if (!overrideCheck.eligible) {
+    return { ready: false, blockers: readiness.blockers, overrideApplied: false };
+  }
+
+  await logEvent({
+    type: "wordpress_blog_safety_override_applied",
+    status: "info",
+    message: `wordpress_blog 글(${socialPostId})의 개인정보 false positive 확인을 근거로 WordPress Draft 생성/업데이트 차단을 override합니다.`,
+    articleId,
+    targetType: "article",
+    targetId: articleId,
+    details: { socialPostId },
+  });
+
+  return { ready: true, blockers: readiness.blockers, overrideApplied: true };
+}
+
+export async function createWordPressDraftFromBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const returnToRaw = formData.get("returnTo");
+  const returnTo = getSafeReturnTo(typeof returnToRaw === "string" ? returnToRaw : null, `/articles/${articleId}/blog`);
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const post = await getSocialPostById(socialPostId);
+    if (!post) {
+      throw new Error(`블로그 글을 찾을 수 없습니다: ${socialPostId}`);
+    }
+    if (post.platform !== "wordpress_blog") {
+      throw new Error(`이 기능은 wordpress_blog 글에서만 사용할 수 있습니다 (현재 platform: ${post.platform}).`);
+    }
+
+    const effectiveReadiness = await resolveWordPressBlogDraftReadiness(articleId, socialPostId, post);
+    if (!effectiveReadiness.ready) {
+      await logEvent({
+        type: "blog_post_wordpress_draft_blocked",
+        status: "failed",
+        message: `wordpress_blog 글(${socialPostId})이 WordPress 게시 준비 조건을 만족하지 못해 차단되었습니다.`,
+        details: { socialPostId, blockerCount: effectiveReadiness.blockers.length },
+        articleId,
+        targetType: "article",
+        targetId: articleId,
+      });
+      throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${effectiveReadiness.blockers.join(" / ")}`);
+    }
+
+    await logEvent({
+      type: "blog_post_wordpress_draft_requested",
+      status: "info",
+      message: `wordpress_blog 글(${socialPostId})을 기준으로 WordPress Draft 생성을 요청합니다.`,
+      details: { socialPostId },
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+    });
+
+    const result = await publishArticleToWordPressDraft(articleId, {
+      contentOverride: buildWordPressBlogContentOverride(post),
+    });
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}/blog`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}${query}`);
+}
+
+/**
+ * wordpress_blog social_post를 대상으로 하는 게시 준비 action들
+ * (Draft 생성/업데이트, SEO metadata 업데이트, featured image 연결,
+ * publish guard, 일괄 실행)이 공통으로 쓰는 헬퍼: post를 조회하고
+ * platform=wordpress_blog인지 확인한다. 실제 동작은 각 caller가
+ * 콜백으로 넘긴다.
+ */
+async function withWordPressBlogPost<T>(
+  socialPostId: string,
+  run: (post: SocialPost) => Promise<T>
+): Promise<T> {
+  const post = await getSocialPostById(socialPostId);
+  if (!post) {
+    throw new Error(`블로그 글을 찾을 수 없습니다: ${socialPostId}`);
+  }
+  if (post.platform !== "wordpress_blog") {
+    throw new Error(`이 기능은 wordpress_blog 글에서만 사용할 수 있습니다 (현재 platform: ${post.platform}).`);
+  }
+  return run(post);
+}
+
+// buildWordPressBlogContentOverride는 lib/social/wordpress-blog-content-override-builder.ts로
+// 옮겼다 — 오케스트레이터(wordpress-blog-publish-preparation-orchestrator.ts)와
+// 로직을 공유해서, 두 곳이 서로 다르게 동작하는 일(예: 한쪽만 markdown→HTML
+// 변환을 잊는 것)을 막기 위해서다.
+
+/**
+ * "WordPress Draft 업데이트" — 이미 생성된 WordPress draft가 있는 경우에만
+ * 의미가 있다. 실제 update(PATCH) API는 이 프로젝트에 아직 구현되어 있지
+ * 않으므로(외부 API 로직을 새로 추가하지 않기 위해), 기존
+ * publishArticleToWordPressDraft의 force 옵션을 재사용해 draft를
+ * 다시 생성한다 — 완전한 "같은 글 수정"은 아니라는 한계를 안내 메시지에
+ * 남긴다.
+ */
+export async function updateWordPressDraftFromBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const contentOverride = await withWordPressBlogPost(socialPostId, async (post) => {
+      const effectiveReadiness = await resolveWordPressBlogDraftReadiness(articleId, socialPostId, post);
+      if (!effectiveReadiness.ready) {
+        throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${effectiveReadiness.blockers.join(" / ")}`);
+      }
+      return buildWordPressBlogContentOverride(post);
+    });
+
+    const result = await publishArticleToWordPressDraft(articleId, { force: true, contentOverride });
+    message = result.dryRun
+      ? result.message
+      : `${result.message} (실제 update API가 없어 draft를 다시 생성했습니다.)`;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 기준으로 WordPress SEO metadata(seoTitle/
+ * metaDescription 등)를 업데이트한다. article 원문이 아니라 wordpress_blog
+ * 글 자체의 SEO 필드를 우선 사용한다 (lib/social/wordpress-blog-seo-metadata-service.ts).
+ */
+export async function updateWordPressSeoMetadataFromBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await updateWordPressSeoMetadataFromBlogPost(articleId, socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드의 "SEO Metadata 재생성" 버튼이 사용한다. post_title/
+ * post_body는 다시 쓰지 않고, WordPress 게시용 metadata(seoTitle/
+ * metaDescription/targetKeyword 등)만 다시 만든다
+ * (lib/social/wordpress-blog-metadata-regeneration-service.ts).
+ */
+export async function regenerateWordPressBlogMetadataAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await regenerateWordPressBlogMetadata(articleId, socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드의 "SEO Plugin Metadata" 섹션에서 provider를
+ * 선택하고 실제 반영을 실행한다. wordpress_blog 자신의 seoTitle/
+ * metaDescription/targetKeyword만 사용하며(article fallback 없음),
+ * article과 같은 WordPress post를 대상으로 하지만 결과는
+ * social_posts.platformMetadata에만 저장한다
+ * (lib/social/wordpress-blog-seo-plugin-service.ts).
+ */
+export async function updateWordPressSeoPluginMetadataFromBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const provider = formData.get("seoPluginProvider");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await writeWordPressBlogSeoPluginMetadata(articleId, socialPostId, provider);
+    message = result.message;
+    isError = !result.success && !result.skipped;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드에서 "차단 사유 상세 보기"/"의심 위치 확인" 버튼을
+ * 눌렀을 때 호출한다. 데이터를 변경하지 않고(read-only), 사람이 상세를
+ * 확인했다는 사실만 감사 로그(wordpress_blog_safety_review_opened)로
+ * 남긴다.
+ */
+export async function openWordPressBlogSafetyReviewAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await openWordPressBlogSafetyReview(socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드에서 개인정보 의심 항목을 "개인정보 아님"으로
+ * 확인 처리한다. 실제 주민등록번호/010 휴대전화로 보이는 항목이 남아
+ * 있으면 서비스 단에서 거부한다. 사유(reason)는 필수다.
+ */
+export async function confirmWordPressBlogPersonalInfoFalsePositiveAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await confirmWordPressBlogPersonalInfoFalsePositive(socialPostId, {
+      reason,
+      confirmedBy: APPROVED_BY,
+    });
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드의 "AI 대표 이미지 생성" 섹션에서 이미지 prompt를
+ * 생성한다. wordpress_blog 자신의 title/targetKeyword/answerSummary만
+ * 사용하고 article.featuredImagePrompt는 읽지 않는다
+ * (lib/social/wordpress-blog-image-generation-service.ts).
+ */
+export async function generateWordPressBlogFeaturedImagePromptAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generateWordPressBlogFeaturedImagePrompt(articleId, socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * 준비된 prompt로 AI 대표 이미지를 생성한다. IMAGE_GENERATION_ENABLED=false이면
+ * 실제 API를 호출하지 않고 mock/dry-run으로 처리한다. 결과는 article 컬럼이
+ * 아니라 social_posts.platformMetadata에만 저장한다.
+ */
+export async function generateWordPressBlogFeaturedImageAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generateWordPressBlogFeaturedImage(articleId, socialPostId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 기준으로 대표 이미지를 WordPress draft에 연결한다.
+ * media id가 아직 없으면 attachFeaturedMediaToDraft가 "아직 준비되지
+ * 않았습니다" 메시지를 그대로 반환한다 — article 페이지로 이동하라고
+ * 안내하지 않는다.
+ */
+/**
+ * wordpress_blog 글 카드의 "대표 이미지 준비" 섹션에서 기존 WordPress
+ * Media ID를 대표 이미지로 지정한다. 실제 이미지 업로드나 AI 생성은
+ * 하지 않으며, 이미 WordPress Media Library에 있는 이미지의 id만
+ * 저장한다 (lib/social/wordpress-blog-featured-image-service.ts).
+ */
+/**
+ * wordpress_blog 글 카드의 "내 컴퓨터에서 이미지 업로드" 섹션에서
+ * 선택한 로컬 파일을 Supabase Storage → 실제 WordPress Media Library로
+ * 이어서 업로드한다 (lib/social/wordpress-blog-local-image-upload-service.ts,
+ * 기존 Phase 2-5/2-10/2-19 경로 재사용 — 새 실제 API 호출 코드 없음).
+ * alt text/caption 입력은 받지만 이번 단계에서는 저장하지 않는다(추후 지원).
+ */
+export async function uploadWordPressFeaturedImageFromBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const fileRaw = formData.get("file");
+  const file = fileRaw instanceof File ? fileRaw : null;
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await uploadWordPressFeaturedImageFromBlogPost(articleId, socialPostId, file);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+export async function saveWordPressFeaturedImageMediaForBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const mediaIdRaw = String(formData.get("mediaId") ?? "");
+  const mediaUrlRaw = formData.get("mediaUrl");
+  const mediaUrl = typeof mediaUrlRaw === "string" && mediaUrlRaw.trim() ? mediaUrlRaw.trim() : undefined;
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const mediaId = Number(mediaIdRaw);
+    const result = await saveWordPressFeaturedImageMediaForBlogPost(articleId, socialPostId, mediaId, mediaUrl);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글 카드의 "대표 이미지 준비" 섹션에서 "대표 이미지 없이
+ * 진행"을 선택했을 때 실행된다. 사유 코드를 필수로 받고, article의 대표
+ * 이미지 관련 컬럼은 이미 허용된 'skipped' 상태로 정리하며, 실제 waive
+ * 상태(waived/waivedReasonCode/waivedMemo)는 social_posts.platformMetadata
+ * 에만 저장한다 (lib/social/wordpress-blog-featured-image-waiver-service.ts —
+ * articles.featured_image_upload_status의 CHECK 제약 때문에 'waived' 값을
+ * DB 컬럼에 직접 쓸 수 없다).
+ */
+export async function waiveWordPressFeaturedImageForBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const reasonCode = formData.get("reasonCode");
+  const memoRaw = formData.get("memo");
+  const memo = typeof memoRaw === "string" && memoRaw.trim() ? memoRaw.trim() : undefined;
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await waiveWordPressFeaturedImageForBlogPost(articleId, socialPostId, reasonCode, memo);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+export async function attachWordPressFeaturedImageFromBlogPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    await withWordPressBlogPost(socialPostId, async (post) => {
+      const readiness = checkWordPressBlogPublishReadiness(post);
+      if (!readiness.ready) {
+        throw new Error(`WordPress 게시 준비가 되지 않았습니다: ${readiness.blockers.join(" / ")}`);
+      }
+    });
+
+    const result = await attachFeaturedMediaToDraft(articleId);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * wordpress_blog 글의 WordPress 게시 준비 단계(draft 생성/업데이트 →
+ * SEO metadata 업데이트 → featured image 연결 → publish guard)를 한
+ * 버튼으로 순서대로 실행한다. 실제 공개(public) 게시는 어떤 단계에서도
+ * 수행하지 않는다. 한 단계라도 실패하면 그 단계에서 멈추고, 어느
+ * 단계까지 진행됐는지를 메시지에 담는다.
+ */
+export async function prepareWordPressBlogPostForPublishingAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await prepareWordPressBlogPostForPublishing(articleId, socialPostId);
+    const stepSummary = result.steps.map((s) => `${s.step}:${s.status}`).join(", ");
+    message = `${result.message} (${stepSummary})`;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
 }
 
 /**
@@ -484,6 +1065,10 @@ export async function saveLocalFeaturedImageAction(formData: FormData): Promise<
     const result = await saveLocalImageUpload(articleId, file);
     message = result.message;
     isError = !result.success;
+    if (!isError) {
+      // 실제로 대표 이미지가 새로 준비되었으므로 "이미지 없이 진행" 선택을 해제한다.
+      await clearArticleWordPressFeaturedImageWaiver(articleId);
+    }
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
@@ -518,6 +1103,10 @@ export async function saveExistingWordPressMediaSourceAction(formData: FormData)
     });
     message = result.message;
     isError = !result.success;
+    if (!isError) {
+      // 실제로 대표 이미지가 새로 준비되었으므로 "이미지 없이 진행" 선택을 해제한다.
+      await clearArticleWordPressFeaturedImageWaiver(articleId);
+    }
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
@@ -601,6 +1190,10 @@ export async function uploadFeaturedImageToWordPressAction(formData: FormData): 
     const result = await uploadFeaturedImageToWordPress(articleId);
     message = result.message;
     isError = !result.success;
+    if (!isError && result.wordpressMediaId) {
+      // 실제로 대표 이미지가 새로 준비되었으므로 "이미지 없이 진행" 선택을 해제한다.
+      await clearArticleWordPressFeaturedImageWaiver(articleId);
+    }
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
@@ -1092,6 +1685,58 @@ export async function refreshSocialPostsAction(formData: FormData): Promise<void
   redirect(`/articles/${articleId}`);
 }
 
+/**
+ * wordpress_blog/naver_blog 등 social post 목록에서 "삭제" 버튼을 누르면
+ * 실행된다. hard delete가 아니라 soft delete(archived_at = now())만
+ * 수행한다 — 앱 내부의 생성 글/상태만 삭제·숨김 처리되고, 이미 WordPress에
+ * 생성된 Draft/Post는 이 action이 절대 건드리지 않는다(원격 삭제 기능
+ * 자체를 만들지 않았다). 확인 모달은 화면(ConfirmSubmitButton)에서
+ * 처리하므로 여기서는 실행만 담당한다.
+ */
+export async function archiveSocialPostAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  const post = await getSocialPostById(socialPostId);
+  if (!post) {
+    redirect(buildArticleOverviewUrl(articleId));
+  }
+
+  const fallbackUrl = getPlatformGroup(post.platform) === "blog" ? buildArticleBlogUrl(articleId) : buildArticleSocialUrl(articleId);
+
+  if (post.archivedAt) {
+    await logEvent({
+      type: "social_post_delete_blocked",
+      status: "failed",
+      message: `social post(${socialPostId})는 이미 삭제(보관 처리)되어 있습니다.`,
+      details: { socialPostId, platform: post.platform },
+      articleId,
+      targetType: "article",
+      targetId: articleId,
+    });
+    redirectToSafeTarget(formData, fallbackUrl, "이미 삭제된 글입니다.", true);
+  }
+
+  await archiveSocialPost(socialPostId);
+
+  await logEvent({
+    type: "social_post_archived",
+    status: "success",
+    message: `social post(${socialPostId})가 삭제(보관 처리)되었습니다 (platform: ${post.platform}).`,
+    details: {
+      socialPostId,
+      platform: post.platform,
+      hasWordPressPost: Boolean(post.externalPostId),
+    },
+    articleId,
+    targetType: "article",
+    targetId: articleId,
+  });
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, fallbackUrl, "글을 삭제했습니다.", false);
+}
+
 /** social post 하나에 대해 rule-based quality gate를 실행한다. */
 export async function runSocialPostQualityGateAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
@@ -1489,6 +2134,34 @@ export async function prepareManualPostingRecordAction(formData: FormData): Prom
   revalidateArticleWorkflowPaths(articleId);
 
   redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
+}
+
+/**
+ * wordpress_blog 카드 Step 7 체크리스트 중 "사람이 직접 확인해야 하는"
+ * 항목(needs_review) 하나를 "확인 완료"로 표시한다 (Phase 3-19). 실제
+ * 게시나 quality/approval/handoff 등 DB 상태는 전혀 바꾸지 않으며,
+ * social_posts.platformMetadata.manualChecklistConfirmations(JSON)에만
+ * 기록한다 — DB schema 변경 없음.
+ */
+export async function markManualChecklistItemConfirmedAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const checklistItemKey = String(formData.get("checklistItemKey") ?? "");
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await markManualChecklistItemConfirmed(articleId, socialPostId, checklistItemKey, APPROVED_BY);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
 }
 
 /**

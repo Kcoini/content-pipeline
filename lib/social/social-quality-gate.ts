@@ -15,6 +15,7 @@ import type {
 } from "./social-platform-types";
 import { getPlatformWritingConfig } from "./platform-writing-config";
 import { getToneTransformerRule } from "./tone-transformer-rules";
+import { classifyWordPressBlogSourceMode } from "./wordpress-blog-source-mode";
 
 /** 협박/공포 조장 표현. blocked 처리 대상. */
 const THREAT_PATTERNS = ["협박", "가만두지 않겠다", "당장 하지 않으면", "큰일 납니다", "후회하게 될"];
@@ -25,11 +26,85 @@ const AD_CLICK_BAIT_PATTERNS = ["광고 클릭", "지금 클릭", "클릭하면 
 /** 허위/과장 수익 보장 표현. blocked 처리 대상. */
 const INCOME_GUARANTEE_PATTERNS = ["수익 보장", "원금 보장", "확정 수익", "무조건 돈 버는"];
 
-/** 개인정보 노출 의심 패턴(주민등록번호/전화번호 형식). blocked 처리 대상. */
-const PII_PATTERN = /\d{6}-\d{7}|\d{3}-\d{3,4}-\d{4}/;
+/**
+ * 개인정보 노출 의심 패턴(주민등록번호/휴대전화 형식). blocked 처리 대상.
+ * `lib/social/social-output-contract-validator.ts`의 PII_PATTERN과 동일한
+ * 이유로, 휴대전화는 "010-"로 시작하는 번호만 의심한다 — 정책/지원사업
+ * 안내 글에 흔한 기관 대표번호(지역번호/1588 등)를 오탐하지 않기 위해서다.
+ */
+const PII_PATTERN = /\d{6}-\d{7}|\b010-\d{3,4}-\d{4}\b/;
 
 /** naver_cafe에서 특히 경계하는 홍보/도배성 표현. */
 const CAFE_PROMOTIONAL_PATTERNS = ["홍보합니다", "판매합니다", "문의주세요", "최저가", "지금 바로 구매"];
+
+/**
+ * wordpress_blog: SEO/AEO/GEO/E-E-A-T 문제 해결형 글 기준에서 상투적인
+ * 도입부로 간주하는 표현(prompts/social/wordpress-blog.md "도입부 규칙"
+ * 금지 목록과 동일). 도입부(본문 앞부분)에 이 표현이 있으면 needs_revision
+ * 처리한다 — 검색자가 원하는 초반 결론 대신 형식적인 시작으로 보이기
+ * 때문이다.
+ */
+const WORDPRESS_BLOG_CLICHE_OPENING_PATTERNS = [
+  "많은 관심을 받고 있습니다",
+  "알아보겠습니다",
+  "알아보도록 하겠습니다",
+  "자세히 살펴보겠습니다",
+  "이번 글에서는",
+];
+
+/** wordpress_blog: 초반 결론(AEO 직접 답변) 섹션이 있는지 확인하는 heading 패턴. */
+const WORDPRESS_BLOG_EARLY_ANSWER_HEADING_PATTERNS = ["먼저 결론", "핵심만 정리"];
+
+/** wordpress_blog: 근거 없는 권위 표현(E-E-A-T authoritativeness 위반 소지). */
+const WORDPRESS_BLOG_UNSUPPORTED_AUTHORITY_PATTERNS = ["전문가가 추천합니다", "전문가들이 인정하는", "전문가가 보장하는"];
+
+/** wordpress_blog: AI 검색 노출을 보장하는 표현(GEO 원칙 위반 — 절대 사용 금지). */
+const WORDPRESS_BLOG_AI_EXPOSURE_GUARANTEE_PATTERNS = ["AI 검색에 노출됩니다", "AI가 이 글을 인용", "검색 상위 노출 보장"];
+
+/** wordpress_blog: 공포 조장 표현(no-fearmongering.md 금지 표현 예시와 동일). */
+const WORDPRESS_BLOG_FEARMONGERING_PATTERNS = ["모르면 큰일 납니다", "놓치면 손해입니다", "지금 이 순간에도 위험합니다"];
+
+/**
+ * wordpress_blog: post_body 길이 기준. 목표는 2,500~4,000자(metadata 제외,
+ * 순수 본문 기준)이며, 1,800자는 시스템이 허용하는 절대 최소 안전선일
+ * 뿐이다. **1,800자 미만이면 이 항목을 fail로 처리해 quality gate가
+ * "ready"를 절대 반환하지 않게 한다**(failedItems.length > 0이면 무조건
+ * needs_revision) — 일반 length_check(경고)만으로는 score가 우연히 85
+ * 이상이 되어 짧고 얕은 글도 "ready"로 통과할 수 있었기 때문에, 이 항목을
+ * 별도로 강제한다. 1,200자 미만은 "article 개요만 우려낸 얕은 글"로 보고
+ * 더 강한 경고 문구를 남긴다(둘 다 fail이지만 메시지로 구분).
+ */
+const WORDPRESS_BLOG_VERY_SHALLOW_BODY_LENGTH = 1200;
+/** wordpress_blog: 시스템이 허용하는 절대 최소 안전선. 이 미만이면 무조건 fail. */
+const WORDPRESS_BLOG_MIN_ACCEPTABLE_BODY_LENGTH = 1800;
+/** wordpress_blog: 이 길이 이상이면 목표(2,500~4,000자)에 근접한 것으로 본다. */
+const WORDPRESS_BLOG_TARGET_BODY_LENGTH = 2500;
+
+/**
+ * wordpress_blog: single_source_mode(usable source 1건) 전용 완화 기준.
+ * 출처가 하나뿐이라는 한계를 인정하고 정보를 부풀리지 않는 것이 목적이므로,
+ * 일반 기준(목표 2,500~4,000자/최소 1,800자)을 그대로 요구하지 않는다.
+ * 대신 목표 1,800~3,000자/최소 1,500자로 완화한다 — 그래도 출처 없는 내용을
+ * 채워 넣지 않는 것이 우선이다.
+ */
+const WORDPRESS_BLOG_SINGLE_SOURCE_MIN_ACCEPTABLE_BODY_LENGTH = 1500;
+const WORDPRESS_BLOG_SINGLE_SOURCE_TARGET_BODY_LENGTH = 1800;
+
+/** wordpress_blog: single_source_mode 글에 반드시 있어야 하는 "확인 필요 사항" 섹션 확인 패턴. */
+const WORDPRESS_BLOG_VERIFICATION_NEEDED_HEADING_PATTERN = /확인\s*필요\s*사항/;
+
+/** wordpress_blog: 본문에 markdown h2/h3 구조(##, ###)가 있는지 확인하는 패턴. */
+const MARKDOWN_HEADING_PATTERN = /^#{2,3}\s+\S/m;
+
+/**
+ * wordpress_blog: source key points를 한 문단에 "/"로 이어 붙인 것으로
+ * 보이는 패턴(article summary/excerpt를 그대로 재활용한 얕은 글의 전형적
+ * 신호). "A / B / C"처럼 공백으로 감싼 "/" 구분자가 한 본문에 2회 이상
+ * 나오면 의심한다 — 각 항목이 여러 단어(구/절)여도 잡아낼 수 있도록,
+ * 항목 자체의 내용은 검사하지 않고 구분자 개수만 센다.
+ */
+const SLASH_SEPARATOR_PATTERN = /\s\/\s/g;
+const SLASH_JOINED_POINTS_MIN_COUNT = 2;
 
 const X_MAX_ITEM_LENGTH = 280;
 
@@ -47,6 +122,13 @@ export interface SocialPostQualityGateInput {
   threadItems?: ThreadItem[];
   cardItems?: CardItem[];
   mediaRequirements?: Record<string, unknown>;
+  /**
+   * wordpress_blog 전용: 이 글을 만들 때 사용된 usable source 개수
+   * (lib/social/wordpress-blog-source-mode.ts 참고). 전달되면 본문 길이
+   * 기준/확인 필요 사항 섹션 검사에 single_source_mode 완화 기준을
+   * 적용한다. 다른 플랫폼에는 영향이 없다.
+   */
+  usableSourceCount?: number;
 }
 
 function checklistItem(
@@ -276,6 +358,177 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
             input.excerpt?.trim() ? "excerpt가 준비되어 있습니다." : "excerpt가 없습니다 (있으면 가산 요소)."
           )
         );
+
+        // SEO/AEO/GEO/E-E-A-T 문제 해결형 블로그 기준(prompts/social/wordpress-blog.md)에
+        // 맞는지 확인하는 rule-based 검사. AI 평가가 아니라 문자열 패턴
+        // 기반이라 완벽하지 않지만, 가장 흔한 형식적 문제를 걸러낸다.
+        const bodyText = input.postBody ?? "";
+        const bodyLength = bodyText.trim().length;
+
+        // usable source 개수에 따른 작성 모드 — single_source_mode는 본문
+        // 길이 기준이 완화된다(목표 1,800~3,000자/최소 1,500자).
+        const sourceMode =
+          typeof input.usableSourceCount === "number"
+            ? classifyWordPressBlogSourceMode(input.usableSourceCount)
+            : null;
+        const isSingleSourceMode = sourceMode === "single_source";
+
+        const minAcceptableBodyLength = isSingleSourceMode
+          ? WORDPRESS_BLOG_SINGLE_SOURCE_MIN_ACCEPTABLE_BODY_LENGTH
+          : WORDPRESS_BLOG_MIN_ACCEPTABLE_BODY_LENGTH;
+        const targetBodyLength = isSingleSourceMode
+          ? WORDPRESS_BLOG_SINGLE_SOURCE_TARGET_BODY_LENGTH
+          : WORDPRESS_BLOG_TARGET_BODY_LENGTH;
+
+        // article 개요만 우려낸 얕은 글(source-grounded reconstruction이
+        // 아니라 article rewrite/excerpt)일 가능성이 큰 짧은 본문을 잡아낸다.
+        // **최소 허용 기준 미만은 무조건 fail** — length_check(경고)만으로는
+        // 점수가 우연히 85 이상이 되어 "ready"로 통과할 수 있었기 때문에,
+        // 이 항목을 fail로 만들어 failedItems.length > 0 → needs_revision을
+        // 강제한다. 1,200자 미만은 더 강한 경고 문구로 구분한다(단,
+        // single_source_mode에서는 최소 허용 기준 자체가 낮아진다).
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_body_depth",
+            "본문 길이(깊이) 충분함",
+            bodyLength < minAcceptableBodyLength ? "fail" : "pass",
+            bodyLength === 0
+              ? "본문이 비어 있습니다."
+              : !isSingleSourceMode && bodyLength < WORDPRESS_BLOG_VERY_SHALLOW_BODY_LENGTH
+                ? `본문이 ${bodyLength}자로 너무 짧습니다 — article summary/excerpt를 그대로 옮긴 얕은 글일 수 있습니다(목표: ${targetBodyLength}~4000자, 최소 허용: ${minAcceptableBodyLength}자).`
+                : bodyLength < minAcceptableBodyLength
+                  ? `본문이 ${bodyLength}자로 최소 허용 기준(${minAcceptableBodyLength}자) 미만입니다 — 재작성이 필요합니다.${isSingleSourceMode ? " (single_source_mode 완화 기준 적용됨)" : ""}`
+                  : bodyLength < targetBodyLength
+                    ? `본문이 ${bodyLength}자로 목표(${targetBodyLength}~${isSingleSourceMode ? "3000" : "4000"}자)보다 짧습니다.`
+                    : `본문 길이가 적절합니다 (${bodyLength}자).`
+          )
+        );
+
+        if (isSingleSourceMode) {
+          const hasVerificationNeededSection = WORDPRESS_BLOG_VERIFICATION_NEEDED_HEADING_PATTERN.test(bodyText);
+          checklist.push(
+            checklistItem(
+              "wordpress_blog_single_source_verification_needed_section",
+              "single_source_mode: 확인 필요 사항 섹션 존재",
+              hasVerificationNeededSection ? "pass" : "fail",
+              hasVerificationNeededSection
+                ? "'확인 필요 사항' 섹션이 있습니다."
+                : "single_source_mode 글에는 '확인 필요 사항' 섹션이 반드시 있어야 하는데 보이지 않습니다."
+            )
+          );
+
+          // single source라는 사실 자체는 blocked/needs_revision을 강제하는
+          // 사유가 아니다 — 항상 warning으로만 남겨 사람이 인지하게 한다.
+          checklist.push(
+            checklistItem(
+              "wordpress_blog_single_source_notice",
+              "single_source_mode 안내",
+              "warning",
+              "이 글은 usable source 1건을 기반으로 작성되었습니다 — 조건/금액/신청 기간 등은 공식 안내에서 재확인이 필요합니다."
+            )
+          );
+        }
+
+        // wordpress_blog는 markdown h2/h3 구조를 반드시 가져야 한다 —
+        // 구조 없이 이어 쓴 글은 article summary/excerpt처럼 보인다.
+        const hasHeadingStructure = MARKDOWN_HEADING_PATTERN.test(bodyText);
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_heading_structure",
+            "markdown h2/h3 구조 존재",
+            hasHeadingStructure ? "pass" : "fail",
+            hasHeadingStructure
+              ? "본문에 markdown h2/h3(##, ###) 구조가 있습니다."
+              : "본문에 markdown h2/h3(##, ###) 구조가 없습니다 — 소제목 없이 이어 쓴 글로 보입니다."
+          )
+        );
+
+        // key points를 "A / B / C"처럼 한 문단에 이어 붙인 형태(목록/표/FAQ로
+        // 재구성하지 않은 것)를 잡아낸다.
+        const slashJoinedPointsFound = (bodyText.match(SLASH_SEPARATOR_PATTERN) ?? []).length >= SLASH_JOINED_POINTS_MIN_COUNT;
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_no_slash_joined_points",
+            "핵심 포인트가 목록/표/FAQ로 재구성됨",
+            slashJoinedPointsFound ? "fail" : "pass",
+            slashJoinedPointsFound
+              ? "핵심 포인트가 한 문단에 '/'로 이어 붙어 있습니다 — 목록/표/조건 정리/FAQ 섹션으로 재구성해야 합니다."
+              : "핵심 포인트를 '/'로 나열한 흔적이 없습니다."
+          )
+        );
+
+        const openingText = bodyText.trim().slice(0, 200);
+
+        const clicheOpeningFound = WORDPRESS_BLOG_CLICHE_OPENING_PATTERNS.filter((pattern) => openingText.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_non_generic_opening",
+            "상투적 도입부 없음",
+            clicheOpeningFound.length > 0 ? "fail" : "pass",
+            clicheOpeningFound.length > 0
+              ? `도입부에 상투적인 표현이 있습니다: ${clicheOpeningFound.join(", ")}`
+              : "도입부가 상투적인 표현으로 시작하지 않습니다."
+          )
+        );
+
+        const hasEarlyAnswer = WORDPRESS_BLOG_EARLY_ANSWER_HEADING_PATTERNS.some((pattern) => bodyText.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_early_direct_answer",
+            "초반 직접 답변(AEO) 존재",
+            hasEarlyAnswer ? "pass" : "warning",
+            hasEarlyAnswer
+              ? "'먼저 결론'/'핵심만 정리' 같은 초반 직접 답변 섹션이 있습니다."
+              : "초반에 결론을 바로 보여주는 섹션('먼저 결론' 등)이 보이지 않습니다."
+          )
+        );
+
+        const unsupportedAuthorityFound = WORDPRESS_BLOG_UNSUPPORTED_AUTHORITY_PATTERNS.filter((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_no_unsupported_authority",
+            "근거 없는 권위 표현 없음",
+            unsupportedAuthorityFound.length > 0 ? "fail" : "pass",
+            unsupportedAuthorityFound.length > 0
+              ? `근거 없는 권위 표현이 있습니다: ${unsupportedAuthorityFound.join(", ")}`
+              : "근거 없는 권위 표현이 없습니다."
+          )
+        );
+
+        const aiExposureGuaranteeFound = WORDPRESS_BLOG_AI_EXPOSURE_GUARANTEE_PATTERNS.filter((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_no_ai_exposure_guarantee",
+            "AI 검색 노출 보장 표현 없음",
+            aiExposureGuaranteeFound.length > 0 ? "fail" : "pass",
+            aiExposureGuaranteeFound.length > 0
+              ? `AI 검색 노출을 보장하는 표현이 있습니다: ${aiExposureGuaranteeFound.join(", ")}`
+              : "AI 검색 노출 보장 표현이 없습니다."
+          )
+        );
+
+        const fearmongeringFound = WORDPRESS_BLOG_FEARMONGERING_PATTERNS.filter((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_no_fearmongering",
+            "공포 조장 표현 없음",
+            fearmongeringFound.length > 0 ? "fail" : "pass",
+            fearmongeringFound.length > 0
+              ? `공포 조장 표현이 있습니다: ${fearmongeringFound.join(", ")}`
+              : "공포 조장 표현이 없습니다."
+          )
+        );
+
+        const hasFaqSection = /faq|자주\s*묻는\s*질문/i.test(bodyText);
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_faq_present",
+            "FAQ 섹션 존재 (가산)",
+            hasFaqSection ? "pass" : "warning",
+            hasFaqSection ? "FAQ 섹션이 있습니다." : "FAQ 섹션이 보이지 않습니다 (있으면 AEO에 도움)."
+          )
+        );
+
         break;
       }
 

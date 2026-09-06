@@ -96,6 +96,15 @@ describe("checkForbiddenPatterns", () => {
   it("정상적인 텍스트는 blocked=false를 반환한다", () => {
     expect(checkForbiddenPatterns("장기요양보험 신청 절차를 정리했습니다.").blocked).toBe(false);
   });
+
+  // wordpress_blog 전용 개인정보 false positive override 기능
+  // (lib/social/wordpress-blog-personal-info-review.ts)은 이 공용 검사를
+  // 수정하지 않는다 — naver_blog 등 다른 모든 플랫폼이 공유하는
+  // checkForbiddenPatterns의 개인정보 판정 기준은 이전과 동일하게 유지된다.
+  it("공용 개인정보 패턴은 wordpress_blog override 기능 추가 후에도 그대로 유지된다(naver_blog 등 다른 플랫폼 영향 없음)", () => {
+    expect(checkForbiddenPatterns("문의처: 064-710-4252").blocked).toBe(true);
+    expect(checkForbiddenPatterns("주민번호: 900101-1234567").blocked).toBe(true);
+  });
 });
 
 describe("checkPlatformSpecificRisks", () => {
