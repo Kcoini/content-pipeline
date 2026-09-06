@@ -487,3 +487,4 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 원본 article WordPress 전송 시 Markdown→HTML 변환(Phase 2-21): [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
 - 기사초안 재생성 무반응 방지 + article mode 전환 확인(Phase 2-22): [`phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md)
 - WordPress Draft 반영 승인 조건 명확화(Phase 2-23): [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
+- 수익형 블로그 구조 강화(Phase 2-24, SEO/AEO/GEO/E-E-A-T/체류시간/모바일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)

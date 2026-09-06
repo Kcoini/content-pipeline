@@ -23,6 +23,7 @@ import {
   type ArticleMode,
   type InternalLinkSuggestion,
 } from "@/lib/articles/article-modes";
+import { WORDPRESS_BOX_CLASSES } from "@/lib/wordpress/markdown-to-wordpress-html";
 
 /** source_based_explainer의 sourceUsage에서 각 출처가 맡을 수 있는 역할. */
 export type SourceUsageRole = "background" | "data" | "contrast" | "analysis" | "implication" | "watch_point";
@@ -331,7 +332,15 @@ function generateGeneralNewsMock(theme: Theme, sources: Source[]): GeneratedArti
   return { title, content, citedSourceIds };
 }
 
-/** Phase 2-1: 수익형 블로그형(monetized_blog) mock 생성기 — SEO/광고 슬롯/체크리스트 포함. */
+/**
+ * Phase 2-1/2-24: 수익형 블로그형(monetized_blog) mock 생성기.
+ * SEO/광고 슬롯/체크리스트에 더해, WordPress 공개 화면에서 뉴스 요약이
+ * 아니라 수익형 블로그 구조(핵심 요약 박스/독자 상황별 영향/표/체크
+ * 리스트/FAQ 4개 이상/참고한 자료/기준일 안내)로 보이도록 필수 섹션을
+ * 모두 포함한다. 실제 AI 생성(generateMonetizedBlogAiDraft)과 달리
+ * 특정 주제(금리 등)에 국한하지 않고 어떤 theme에도 적용 가능한 일반
+ * 문구를 사용한다.
+ */
 function generateMonetizedBlogMock(theme: Theme, sources: Source[]): GeneratedArticle {
   const title = theme.title;
   const citedSourceIds = sources.map((source) => source.id);
@@ -342,36 +351,111 @@ function generateMonetizedBlogMock(theme: Theme, sources: Source[]): GeneratedAr
 
   const sections = [
     `# ${seoTitle}`,
-    ["## 도입부", `${theme.description || title}에 대해 궁금한 점을 이 글에서 모두 정리했다.`].join("\n"),
+    [
+      "## 도입부",
+      `"${title}"는 사람마다 관심사와 상황이 달라 똑같이 받아들여지지 않는다.` +
+        ` 이미 익숙한 독자와 처음 접하는 독자, 지금 바로 결정을 내려야 하는 독자와 여유를 두고 지켜보는 독자 모두` +
+        ` 확인해야 할 기준이 다르다. 이 글은 그 기준을 상황별로 정리한다.`,
+    ].join("\n"),
     adSlotMarkerComment("after_intro"),
-    ["## 핵심 요약", `- ${title} 관련 핵심 정보 ${sources.length}건을 정리했다.`].join("\n"),
+    ["## 먼저 결론부터 보면", `${title}와 관련해 핵심만 먼저 정리하면 아래와 같다.`].join("\n"),
+    [
+      '<div class="summary-box">',
+      "**먼저 결론**",
+      "",
+      `- ${title} 관련 핵심 정보 ${sources.length}건을 확인했다.`,
+      "- 상황(아래 '독자 상황별 영향' 참고)에 따라 확인해야 할 항목이 다르다.",
+      "- 세부 수치·제도 내용은 아래 표와 참고한 자료에서 다시 확인하라.",
+      "",
+      "</div>",
+    ].join("\n"),
     adSlotMarkerComment("after_summary"),
-    ["## 목차", "1. 문제 설명", "2. 핵심 정보", "3. 비교", "4. 체크리스트", "5. 주의점", "6. FAQ", "7. 결론"].join("\n"),
+    [
+      "## 목차",
+      "1. 문제 설명",
+      "2. 핵심 정보",
+      "3. 주요 지표 비교",
+      "4. 독자 상황별 영향",
+      "5. 확인 체크리스트",
+      "6. 주의할 점 / 예외",
+      "7. FAQ",
+      "8. 최종 요약",
+    ].join("\n"),
     ["## 문제 설명", `"${title}"를 찾는 독자가 흔히 겪는 어려움을 정리했다.`].join("\n"),
     [
       "## 핵심 정보",
       ...sources.slice(0, 3).map((s) => `- **${s.title || s.url}**: ${s.keyPoints?.[0] || s.summary?.substring(0, 80) || "(내용 없음)"}`),
     ].join("\n"),
     adSlotMarkerComment("mid_content_1"),
-    ["## 비교표", "| 항목 | 설명 |", "|---|---|", `| ${title} | 출처 ${sources.length}건 기반 요약 |`].join("\n"),
+    [
+      "## 주요 지표 비교",
+      "| 항목 | 확인 내용 |",
+      "|---|---|",
+      `| ${title} | 출처 ${sources.length}건 기반 핵심 요약 |`,
+      "| 확인 시점 | 아래 기준일 안내 참고 |",
+    ].join("\n"),
     adSlotMarkerComment("mid_content_2"),
-    ["## 체크리스트", "- [ ] 출처를 확인했는가", "- [ ] 최신 정보인가", "- [ ] 나에게 해당하는 정보인가"].join("\n"),
-    ["## 주의점", "이 글은 일반 정보 제공 목적이며, 개별 상황에 따라 다를 수 있다."].join("\n"),
+    [
+      "## 독자 상황별 영향",
+      `**${title}에 이미 익숙한 독자라면**`,
+      "기존에 확인해 둔 조건과 달라진 부분이 있는지 먼저 비교한다.",
+      "",
+      `**${title}를 처음 접하는 독자라면**`,
+      "위 핵심 요약과 주요 지표부터 확인한 뒤, 아래 체크리스트 순서대로 점검한다.",
+      "",
+      "**지금 바로 결정을 내려야 하는 독자라면**",
+      "확인 체크리스트와 주의할 점을 먼저 읽고, 필요하면 관련 기관·전문가에게 최신 조건을 다시 확인한다.",
+    ].join("\n"),
+    [
+      "## 확인 체크리스트",
+      '<div class="checklist-box">',
+      "- 최신 정보인지 확인했는가",
+      "- 나에게 실제로 해당하는 조건인가",
+      "- 출처와 기준일을 확인했는가",
+      "</div>",
+    ].join("\n"),
+    [
+      "## 주의할 점 / 예외",
+      '<div class="warning-box">',
+      "이 글은 일반 정보 제공 목적이며, 개별 상황과 최신 제도 변경에 따라 다를 수 있다. 중요한 결정 전에는 관련",
+      "기관의 최신 공지를 다시 확인하라.",
+      "</div>",
+    ].join("\n"),
     adSlotMarkerComment("before_faq"),
     [
       "## FAQ",
       `**Q. ${title}란 무엇인가?**`,
-      "A. 등록된 출처를 바탕으로 정리한 정보다.",
+      "A. 등록된 출처를 바탕으로 정리한 정보다. 세부 조건은 아래 참고한 자료에서 다시 확인할 수 있다.",
+      "",
+      `**Q. ${title}는 누구에게 해당하는가?**`,
+      "A. 위 '독자 상황별 영향'에서 자신에게 해당하는 상황을 먼저 확인하라. 상황마다 확인할 기준이 다르다.",
+      "",
+      `**Q. ${title} 관련 정보는 언제까지 유효한가?**`,
+      "A. 아래 기준일 안내를 참고하라. 제도·수치는 이후 변경될 수 있어 최신 공지를 다시 확인하는 것이 안전하다.",
+      "",
+      `**Q. ${title}에 대해 더 확인하려면 어디를 보면 되는가?**`,
+      "A. 아래 참고한 자료 섹션에 실제로 활용한 출처를 정리했다. 해당 출처의 원문을 직접 확인하라.",
     ].join("\n"),
     adSlotMarkerComment("before_conclusion"),
-    ["## 결론", `"${title}"에 대해 핵심 내용을 정리했다. 추가 정보는 참고자료를 확인하라.`].join("\n"),
+    [
+      "## 최종 요약",
+      `"${title}"에 대해 핵심 내용과 상황별 확인 기준을 정리했다. 자신에게 해당하는 상황을 확인하고, 세부` +
+        " 내용은 참고한 자료에서 다시 확인하라.",
+    ].join("\n"),
     [
       "## 관련 글 추천",
       `- ${title} 관련 주제를 더 깊이 다루는 글 (추후 연결 예정)`,
     ].join("\n"),
     [
-      "## 참고자료",
-      ...sources.map((s, i) => `${i + 1}. ${s.title || s.url} ${s.publisher ? `(${s.publisher})` : ""}`),
+      "## 참고한 자료",
+      ...sources.map((s, i) =>
+        s.url ? `${i + 1}. [${s.title || s.url}](${s.url})${s.publisher ? ` (${s.publisher})` : ""}` : `${i + 1}. ${s.title || s.url}${s.publisher ? ` (${s.publisher})` : ""}`
+      ),
+    ].join("\n"),
+    [
+      "## 기준일 안내",
+      "이 글은 작성 시점에 확인 가능한 공개 자료를 바탕으로 정리했다. 관련 수치·제도는 이후 변경될 수 있으므로," +
+        " 최종 확인은 참고한 자료의 원문에서 직접 하라.",
     ].join("\n"),
   ];
 
@@ -400,6 +484,7 @@ function generateMonetizedBlogMock(theme: Theme, sources: Source[]): GeneratedAr
     internalLinkSuggestions,
     monetizationScore: 50,
     policyRiskScore: 10,
+    qualityWarnings: assessMonetizedBlogQuality(contentWithAllSlots, "", targetKeyword, 10),
   };
 }
 
@@ -940,27 +1025,36 @@ monetized_blog는 단순 광고 수익형 글이 아니라, 독자의 문제를
 - 각 marker는 최대 1회만 사용하세요. 광고 marker가 글의 흐름(도입부
   → 핵심 답변 전환 등)을 방해하지 않게 하세요.
 
-【구조 — 도입부를 먼저, 핵심 답변은 그 뒤에. heading은 자연스럽게】
-SEO 제목 → 메타 설명 → 도입부 → 짧은 핵심 답변(answerSummary를
-자연스럽게 반영) → 핵심 요약 박스(AD_SLOT: after_summary) → 목차 →
-문제 설명 → 핵심 정보(AD_SLOT: mid_content_1) → 비교표
-(AD_SLOT: mid_content_2) → 선택 기준 → 체크리스트 → 주의점/한계 →
-FAQ(AD_SLOT: before_faq) → 결론(AD_SLOT: before_conclusion) → 관련
-글 추천 → 참고자료
+【필수 구조 — 아래 항목을 모두 포함해야 한다 (Phase 2-24)】
+SEO 제목 → 메타 설명 → ① 독자 문제 중심 도입부 → ② 짧은 핵심 답변
+("먼저 결론", answerSummary를 자연스럽게 반영) → ③ 핵심 요약 박스
+(summary-box, AD_SLOT: after_summary) → 목차 → 문제 설명 → 핵심 정보
+(AD_SLOT: mid_content_1) → ④ 주요 지표/비교 표(최소 1개, markdown
+table, AD_SLOT: mid_content_2) → ⑤ 독자 상황별 영향 (아래 참고) →
+⑥ 확인 체크리스트 → ⑦ 주의할 점 / 예외 → ⑧ FAQ(최소 4개,
+AD_SLOT: before_faq) → ⑨ 최종 요약(결론, AD_SLOT: before_conclusion)
+→ 관련 글 추천 → ⑩ 참고한 자료 → ⑪ 기준일 안내
 
 이 순서는 AEO/GEO 이점(직접 답변, 명확한 결론 우선 제시)은
 유지하면서도 일반 블로그 독자가 보고서식·AI 답변식이 아니라
 자연스럽게 읽히도록 하기 위한 하이브리드 구조입니다. 도입부 없이
-곧바로 결론부터 던지는 구성을 사용하지 마세요.
+곧바로 결론부터 던지는 구성을 사용하지 마세요. 이 글은 뉴스 요약이
+아니라 독자가 스스로 판단할 기준을 제공하는 수익형 블로그 글입니다 —
+기사 해설형(source_based_explainer)처럼 사실 종합·해설에 머물지 말고,
+독자가 "그래서 나는 어떻게 해야 하나"를 알 수 있게 써야 합니다.
 
-【도입부 작성 기준】
-- 독자의 상황이나 문제의식에서 시작한다.
-- 왜 이 주제가 중요한지 설명한다.
-- 이 글에서 무엇을 정리할지 안내한다.
+【① 도입부 작성 기준】
+- 독자의 상황이나 문제의식에서 시작한다. 뉴스 요약형 문장("OO가
+  X로 인상되었습니다")으로 시작하지 말고, 그 변화가 서로 다른
+  독자(예: 대출이 있는 사람, 예금을 넣으려는 사람 등 주제에 맞는
+  독자군)에게 각각 어떤 영향을 주는지로 시작한다.
+- "이번 글에서는 알아보겠습니다", "~에 대해 알아보겠습니다" 같은
+  상투적 안내 문구는 금지한다.
+- 첫 300자 안에 이 글이 다루는 핵심 답을 이미 알 수 있어야 한다.
 - 과장, 클릭베이트, 광고성 표현은 사용하지 않는다.
 - targetKeyword는 자연스럽게 포함하되 억지로 반복하지 않는다.
 
-【짧은 핵심 답변 섹션 작성 기준】
+【② 짧은 핵심 답변 섹션 작성 기준】
 - 도입부 바로 뒤에 배치한다.
 - answerSummary의 내용을 바탕으로 2~4문장으로 작성하되, 그대로
   복사하지 말고 자연스럽게 풀어 쓴다.
@@ -970,6 +1064,76 @@ FAQ(AD_SLOT: before_faq) → 결론(AD_SLOT: before_conclusion) → 관련
 - 아래와 같은 heading은 금지한다: "## 무조건 이것만 보세요",
   "## 이거 모르면 손해입니다", "## 충격적인 결론", "## 반드시 수익
   나는 방법" — 클릭베이트/과장 표현이 섞인 heading은 쓰지 않는다.
+
+【③ 핵심 요약 박스 — HTML 사용】
+- "짧은 핵심 답변" 섹션 직후에, 아래 형태의 HTML을 markdown 본문에
+  그대로 삽입한다(WordPress 전송 시 이 태그는 그대로 보존된다):
+  <div class="summary-box">
+  **먼저 결론**
+
+  - 핵심 결론 1
+  - 핵심 결론 2
+  - 핵심 결론 3
+
+  </div>
+- 반드시 여는 태그 <div class="summary-box"> 와 닫는 태그 </div>를
+  각각 빈 줄로 앞뒤를 구분한 독립된 줄에 작성한다(같은 줄에 다른
+  텍스트를 붙이지 않는다). class 값은 반드시 "summary-box"만 사용한다.
+- inline style(style="...")은 절대 넣지 않는다 — 스타일은 WordPress
+  테마/추가 CSS가 담당한다.
+- 이 박스 안에는 핵심 결론을 bullet 3개 내외로만 담는다(긴 문단 금지).
+- 본문 전체에서 사용 가능한 박스 class 전체 목록: ${WORDPRESS_BOX_CLASSES.join(", ")}.
+  이 중 어느 것을 쓰든 형식은 동일하다(여는/닫는 태그를 독립된 줄에,
+  inline style 없이, 목록에 있는 class 값만 사용).
+
+【④ 주요 지표/비교 표】
+- 최소 1개 이상의 markdown table을 반드시 포함한다(예: 주요 지표
+  정리, 독자군별 영향 비교, 확인 항목 비교).
+- 표 셀에는 긴 문단을 넣지 않는다 — 1~2문장 또는 2~3개 항목 수준으로
+  짧게 작성해 모바일에서도 읽기 쉽게 한다.
+
+【⑤ 독자 상황별 영향】
+- 이 주제가 서로 다른 독자군에게 어떻게 다르게 영향을 주는지 2~4개
+  상황으로 나눠 설명한다(각각 소제목 또는 굵은 글씨로 구분).
+- 경제/금융/정책/제도 주제라면 다음 상황을 우선 고려한다: 대출이
+  있는 경우, 예금·적금이 있는 경우, 투자를 하는 경우, 부동산 매수
+  또는 전세를 고민하는 경우. 그 외 주제라면 이 주제와 실제로 관련
+  있는 독자군(예: 초보자/숙련자, 특정 조건 해당자/비해당자 등)으로
+  대체한다 — 관련 없는 카테고리를 억지로 채우지 않는다.
+- 각 상황마다 "무엇을 확인해야 하는지", "어떤 판단 기준을 써야
+  하는지"를 제시한다 — 단순히 "다를 수 있습니다"로 끝내지 않는다.
+
+【⑥ 확인 체크리스트】
+- 독자가 스스로 점검할 수 있는 행동 체크리스트를 본문 중후반에
+  넣는다(예: "<h2>OO 확인할 체크리스트</h2>" + <ul><li> 항목).
+- 필요하면 <div class="checklist-box">…</div>로 감싸도 된다(③과 동일한
+  HTML 규칙: 여는/닫는 태그를 독립된 줄에, inline style 없이).
+
+【⑦ 주의할 점 / 예외】
+- 이 정보가 적용되지 않는 경우, 확인이 필요한 예외, 일반 정보 제공
+  목적임을 명시한다. 필요하면 <div class="warning-box">…</div>를
+  사용해도 된다(③과 동일한 HTML 규칙).
+
+【⑧ FAQ — 최소 4개】
+- FAQ는 반드시 4개 이상 작성한다.
+- 실제 검색 질문처럼 자연스럽게 작성한다.
+- 답변은 3~5문장 이내로 작성한다.
+- 출처가 필요한 수치나 제도 내용은 단정하지 않는다.
+- "상황에 따라 다르다"로만 끝내지 말고, 확인할 기준(예: 어디서
+  확인하는지, 무엇을 비교해야 하는지)을 함께 제시한다.
+- 본문에 없는 내용을 새로 만들어 답하지 않는다.
+
+【⑩ 참고한 자료 / ⑪ 기준일 안내】
+- 본문 하단에 "## 참고한 자료" 섹션을 두고, 실제로 활용한 출처를
+  나열한다(citedSourceIds에 해당하는 출처의 제목/발행처만 사용하고,
+  출처 없는 자료를 새로 만들지 않는다). 실제 출처 URL이 있으면
+  markdown 링크로 표기한다.
+- 경제·금융·정책·제도처럼 시점에 따라 값이 바뀔 수 있는 주제라면,
+  참고한 자료 섹션 근처에 기준일 안내 문단을 넣는다(예: "이 글은
+  작성 시점에 확인 가능한 공개 자료를 바탕으로 정리했으며, 금리·
+  환율·물가 등 지표는 이후 변경될 수 있습니다."). 필요하면
+  <div class="source-box">…</div>로 감싸도 된다(③과 동일한 HTML
+  규칙).
 
 광고 marker는 글 흐름을 해치지 않는 위치에만 삽입하세요.
 
@@ -1006,7 +1170,9 @@ const MONETIZED_BLOG_TOOL = {
         type: "string",
         description:
           "기사 본문 (markdown, 도입부로 시작, 도입부 직후 answerSummary를 자연스럽게 반영한 짧은 핵심 답변 섹션 포함, " +
-          "AD_SLOT marker 각 1회 포함, 목차/비교표/체크리스트/FAQ 포함, 1200자 이상)",
+          `<div class="summary-box">…</div> 핵심 요약 박스 포함, 최소 1개 이상의 markdown table 포함, ` +
+          "독자 상황별 영향 섹션 포함, 확인 체크리스트 포함, FAQ 최소 4개 포함, 참고한 자료/기준일 안내 포함, " +
+          "AD_SLOT marker 각 1회 포함, 목차 포함, 1200자 이상)",
       },
       citedSourceIds: {
         type: "array",
@@ -1116,6 +1282,40 @@ const INTRO_HEADING_PATTERN = /^#{2,3}\s*.*(도입부|들어가|서론|intro)/im
 const ANSWER_SUMMARY_MAX_RECOMMENDED_LENGTH = 400;
 /** policyRiskScore가 이 값 이상이면 검토가 필요하다고 본다(차단은 아님 — 최종 판단은 사람이 한다). */
 const POLICY_RISK_WARNING_THRESHOLD = 70;
+
+// Phase 2-24: 수익형 블로그 구조 검사 기준값.
+/** FAQ는 최소 이 개수 이상이어야 한다("**Q." 형태로 표시된 질문 기준). */
+const MIN_MONETIZED_BLOG_FAQ_COUNT = 4;
+/** 문단(빈 줄로 구분된 블록) 하나가 이 길이를 넘으면 체류시간 구조상 너무 길다고 본다. */
+const MONETIZED_BLOG_MAX_PARAGRAPH_LENGTH = 400;
+/** "이번 글에서는 알아보겠습니다" 류의 상투적 뉴스 요약형 안내 문구. */
+const BANNED_INTRO_PHRASE_PATTERN = /이번\s*글에서는|이\s*글에서는\s*(알아보|정리해\s*보|살펴보)/;
+
+/**
+ * 표/목록/heading/HTML 박스 태그처럼 구조화된 줄이 아닌 "순수 문단"만
+ * 골라 길이를 확인하고, 권장 길이를 넘는 첫 번째 문단을 반환한다(없으면
+ * undefined). 표 셀/목록 항목은 원래 짧게 쓰이므로 이 검사 대상에서
+ * 제외한다 — 검사 목적은 "설명형 긴 문단"을 잡아내는 것이다.
+ */
+function findFirstOverlyLongParagraph(content: string): string | undefined {
+  const blocks = content.split(/\n\s*\n/);
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const isStructured =
+      /^#{1,4}\s/.test(trimmed) ||
+      /^[-*]\s|^\d+\.\s/.test(trimmed) ||
+      trimmed.includes("|") ||
+      trimmed.startsWith("<") ||
+      trimmed.startsWith(">") ||
+      trimmed.startsWith("**Q");
+    if (isStructured) continue;
+    if (trimmed.length > MONETIZED_BLOG_MAX_PARAGRAPH_LENGTH) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
 
 const EEAT_NOTE_KEYS = ["experience", "expertise", "authoritativeness", "trustworthiness"] as const;
 
@@ -1268,6 +1468,77 @@ function assessMonetizedBlogQuality(
         message: `AD_SLOT marker(${position})가 본문에 ${count}회 등장합니다 (정확히 1회여야 함).`,
       });
     }
+  }
+
+  // Phase 2-24: 뉴스 요약형이 아니라 수익형 블로그 구조(요약 박스/표/
+  // 체크리스트/FAQ 4개 이상/출처+기준일/문단 길이)를 갖췄는지 확인한다.
+  // 이 검사는 차단(block)이 아니라 검토 필요 신호(qualityWarnings)만
+  // 남긴다 — 통과하지 못해도 저장/게시 자체를 막지 않는다.
+
+  if (!content.includes('<div class="summary-box">')) {
+    warnings.push({
+      code: "missing_summary_box",
+      message: '핵심 요약 박스(<div class="summary-box">)가 본문에 없습니다.',
+    });
+  }
+
+  if (!CORE_ANSWER_HEADING_PATTERN.test(content)) {
+    warnings.push({
+      code: "missing_core_answer_heading",
+      message: '"먼저 결론"에 해당하는 핵심 답변 섹션(heading)이 본문에 없습니다.',
+    });
+  }
+
+  // markdown table: 헤더 행 다음에 |---|---| 형태의 구분 행이 오는지 확인한다.
+  if (!/\|[^\n]*\|[ \t]*\r?\n[ \t]*\|[\s:-]+\|/.test(content)) {
+    warnings.push({
+      code: "missing_table",
+      message: "최소 1개 이상의 표(markdown table)가 본문에 없습니다.",
+    });
+  }
+
+  if (!/체크리스트|checklist-box/i.test(content)) {
+    warnings.push({
+      code: "missing_checklist",
+      message: "확인 체크리스트 섹션이 본문에 없습니다.",
+    });
+  }
+
+  const faqQuestionCount = (content.match(/\*\*Q[.:：]/g) ?? []).length;
+  if (faqQuestionCount < MIN_MONETIZED_BLOG_FAQ_COUNT) {
+    warnings.push({
+      code: "faq_count_insufficient",
+      message: `FAQ가 ${faqQuestionCount}개로 최소 기준(${MIN_MONETIZED_BLOG_FAQ_COUNT}개)에 못 미칩니다.`,
+    });
+  }
+
+  if (!/참고한\s*자료|참고\s*자료|참고자료/.test(content)) {
+    warnings.push({
+      code: "missing_source_section",
+      message: '"참고한 자료" 섹션이 본문에 없습니다.',
+    });
+  }
+
+  if (!content.includes("기준일")) {
+    warnings.push({
+      code: "missing_source_date_notice",
+      message: "자료 기준일 안내 문구가 본문에 없습니다.",
+    });
+  }
+
+  const longParagraph = findFirstOverlyLongParagraph(content);
+  if (longParagraph) {
+    warnings.push({
+      code: "paragraph_too_long",
+      message: `${longParagraph.length}자짜리 문단이 있어 체류시간 구조(짧은 문단 분리)에 적합하지 않을 수 있습니다 (권장: ${MONETIZED_BLOG_MAX_PARAGRAPH_LENGTH}자 이내).`,
+    });
+  }
+
+  if (BANNED_INTRO_PHRASE_PATTERN.test(content)) {
+    warnings.push({
+      code: "intro_generic_phrasing",
+      message: '"이번 글에서는 알아보겠습니다" 류의 상투적 안내 문구가 본문에 있습니다. 독자 문제 중심 도입부로 바꿔야 합니다.',
+    });
   }
 
   return warnings;

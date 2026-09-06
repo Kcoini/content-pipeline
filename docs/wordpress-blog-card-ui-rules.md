@@ -183,9 +183,22 @@ badge를 붙이지 않는다).
   필요 등)로 변환해서 보여준다. 원본 문자열이 필요한 사람(개발자/
   관리자)을 위해서만 "내부 상태값 보기"에 그대로 남겨둔다.
 
+## 본문 구조(post_body) 품질 기준 (Phase 2-24)
+
+wordpress_blog 카드의 quality gate는 아래 항목을 "가산"(warning,
+통과를 막지는 않음) 수준으로 확인한다 — 카드 화면에서 부족한 항목을
+바로 확인할 수 있다: 핵심 요약 박스(`<div class="summary-box">`),
+표(markdown table), 확인 체크리스트, FAQ 최소 4개, 자료 기준일 안내.
+`post_body`는 뉴스 요약이 아니라 독자 상황별 판단 기준을 제공해야
+하며, WordPress 전송본은 항상 HTML로 변환된다(Markdown 문법이 공개
+화면에 그대로 노출되지 않는다). 상세는
+[`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
+참고.
+
 ## 관련 문서
 
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 문서의 근거가 되는 프로젝트 전체 규칙
 - [`docs/ui-review-agent-checklist.md`](./ui-review-agent-checklist.md) — 이 구조를 실제로 만족하는지 점검하는 체크리스트
 - [`docs/ui-audit-wordpress-blog-card.md`](./ui-audit-wordpress-blog-card.md) — 현재 구현이 이 규칙을 얼마나 만족하는지 점검한 결과
 - [`docs/article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md) — Step 1~7/체크리스트 구현 상세
+- [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스/표/체크리스트/FAQ/기준일)

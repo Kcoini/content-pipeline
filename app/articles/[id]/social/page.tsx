@@ -17,6 +17,7 @@ import { parsePagination } from "@/lib/navigation/pagination";
 import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
 import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-types";
+import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import {
   generatePlaceholderSocialPostAction,
   generateSocialDraftAction,
@@ -206,8 +207,11 @@ export default async function ArticleSocialPage({
                     </div>
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || post.caption || "(제목/캡션 없음)"}</p>
                     <p className="mt-1 text-zinc-500">
-                      {(post.caption || post.threadItems.map((t) => t.text).join(" ") || post.cardItems.map((c) => c.heading).join(" ") || "").slice(0, 140) ||
-                        "(본문 없음)"}
+                      {/* Phase 3-19: naver_cafe/threads처럼 본문이 postBody에 저장되는
+                          플랫폼은 caption/threadItems/cardItems만 확인하면 본문이 있어도
+                          "(본문 없음)"으로 보인다 — getSocialPostDisplayBody가 플랫폼별
+                          지원 필드(PLATFORM_WRITING_CONFIGS)를 기준으로 올바른 필드를 고른다. */}
+                      {getSocialPostDisplayBody(post).slice(0, 140) || "(본문 없음)"}
                     </p>
                     <p className="mt-1 text-[11px] text-zinc-400">
                       quality: {post.qualityStatus} · approval: {post.approvalStatus} · export: {post.exportStatus} · guard:{" "}

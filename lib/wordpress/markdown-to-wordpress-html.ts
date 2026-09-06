@@ -27,6 +27,11 @@
 //   해결하기 위해, 렌더링된 <table>에 인라인 스타일/colgroup/반응형
 //   래퍼를 자동으로 적용한다(WordPress 테마 CSS에 의존하지 않는다 —
 //   테마가 무엇이든 항상 같은 모양으로 보이게 하기 위해서다).
+// - Phase 2-24: 수익형 블로그(monetized_blog) 구조 강화를 위해, 본문
+//   (markdown) 안에 `<div class="summary-box">…</div>` 같은 "박스"
+//   컨테이너를 쓸 수 있다 — class는 WORDPRESS_BOX_CLASSES 화이트리스트만
+//   허용하며, inline style은 넣지 않는다(스타일은 WordPress 테마/추가
+//   CSS가 담당한다).
 
 import MarkdownIt from "markdown-it";
 import sanitizeHtml from "sanitize-html";
@@ -42,6 +47,18 @@ const markdownRenderer = new MarkdownIt({
   typographer: false,
   breaks: false,
 });
+
+// Phase 2-24: 수익형 블로그(monetized_blog) 구조 강화용 "박스" 컨테이너
+// class 화이트리스트. AI/mock이 "핵심 요약 박스" 등을 나타낼 때 이 중
+// 하나만 사용할 수 있다. WordPress 테마 CSS 또는 추가 CSS에서 스타일링
+// 하도록 class만 부여하며, inline style은 넣지 않는다.
+export const WORDPRESS_BOX_CLASSES = [
+  "summary-box",
+  "key-points-box",
+  "checklist-box",
+  "warning-box",
+  "source-box",
+] as const;
 
 const ALLOWED_TAGS = [
   "h2",
@@ -67,6 +84,7 @@ const ALLOWED_TAGS = [
   "pre",
   "br",
   "hr",
+  "div",
 ];
 
 // style 속성은 표 관련 요소에만, 그것도 제한된 CSS 속성값만 허용한다.
@@ -81,12 +99,19 @@ const ALLOWED_ATTRIBUTES: sanitizeHtml.IOptions["allowedAttributes"] = {
   th: ["colspan", "rowspan", "style"],
   td: ["colspan", "rowspan", "style"],
   col: ["style"],
+  div: ["class"],
 };
 
 const ALLOWED_STYLES: sanitizeHtml.IOptions["allowedStyles"] = {
   th: { "text-align": [/^left$|^right$|^center$/] },
   td: { "text-align": [/^left$|^right$|^center$/] },
   col: { width: [/^\d{1,3}%$/] },
+};
+
+// div의 class 속성은 WORDPRESS_BOX_CLASSES 화이트리스트 값만 허용한다 —
+// AI가 임의의 class(예: 숨김 처리용 CSS 클래스)를 넣어도 제거된다.
+const ALLOWED_CLASSES: sanitizeHtml.IOptions["allowedClasses"] = {
+  div: [...WORDPRESS_BOX_CLASSES],
 };
 
 // AD_SLOT placeholder는 순수 영숫자(ADSLOT_숫자)만 사용한다 — 앞뒤에
@@ -154,6 +179,65 @@ function restoreBrTags(html: string): string {
   return html.replace(BR_PLACEHOLDER_PATTERN, "<br>");
 }
 
+const BOX_OPEN_TAG_PATTERN = new RegExp(`<div class="(?:${WORDPRESS_BOX_CLASSES.join("|")})">`, "g");
+const BOX_CLOSE_TAG = "</div>";
+const BOX_OPEN_PLACEHOLDER_PREFIX = "BOXOPEN";
+const BOX_CLOSE_PLACEHOLDER_PREFIX = "BOXCLOSE";
+const BOX_OPEN_PLACEHOLDER_PATTERN = /BOXOPEN(\d+)/g;
+const BOX_CLOSE_PLACEHOLDER_PATTERN = /BOXCLOSE(\d+)/g;
+
+/**
+ * 본문(markdown) 안의 `<div class="화이트리스트 class">...</div>` 박스
+ * 태그를 markdown 렌더링 전에 고유 placeholder로 치환해 둔다(AD_SLOT/
+ * <br>과 동일한 원리) — html:false 렌더러가 raw HTML을 escape하는 것과
+ * 무관하게, 박스 태그만 원본 그대로 보존하기 위해서다.
+ *
+ * 여는 태그와 닫는 태그는 등장 순서로 짝짓는다(monetized_blog 박스는
+ * 항상 평평한 구조로 쓰이며 중첩하지 않는다). 화이트리스트에 없는
+ * class나 형식이 다른 `<div>`는 이 패턴에 매치되지 않아 그대로 남고,
+ * markdown-it(html:false)에 의해 안전하게 escape된다 — 짝이 없는
+ * `</div>`도 마찬가지로 그대로 두어 escape되게 한다.
+ */
+function extractBoxTags(markdown: string): { text: string; opens: string[] } {
+  const opens: string[] = [];
+  let text = markdown.replace(BOX_OPEN_TAG_PATTERN, (fullMatch) => {
+    const index = opens.push(fullMatch) - 1;
+    return `${BOX_OPEN_PLACEHOLDER_PREFIX}${index}`;
+  });
+
+  if (opens.length > 0) {
+    let closeCount = 0;
+    text = text.replace(new RegExp(escapeRegExp(BOX_CLOSE_TAG), "g"), (fullMatch) => {
+      if (closeCount >= opens.length) return fullMatch;
+      const index = closeCount;
+      closeCount += 1;
+      return `${BOX_CLOSE_PLACEHOLDER_PREFIX}${index}`;
+    });
+  }
+
+  return { text, opens };
+}
+
+/**
+ * sanitize까지 끝난 HTML에서 placeholder를 원래의 박스 태그로 되돌린다.
+ * placeholder는 markdown 렌더러가 독립된 한 줄을 문단(`<p>...</p>`)으로
+ * 감싸기 때문에 `<p>BOXOPEN0</p>` 형태로 나타난다 — `<div>`는 block
+ * 요소라 `<p>` 안에 두면 안 되므로, 먼저 이 `<p>` 감싸기를 벗겨낸 뒤에
+ * 실제 태그로 치환한다(그래야 `<div class="...">…</div>`가 형제
+ * block 요소로 올바르게 중첩된다).
+ */
+function restoreBoxTags(html: string, opens: string[]): string {
+  let restored = html
+    .replace(/<p>(BOXOPEN\d+)<\/p>/g, "$1")
+    .replace(/<p>(BOXCLOSE\d+)<\/p>/g, "$1");
+  restored = restored.replace(BOX_OPEN_PLACEHOLDER_PATTERN, (_match, indexRaw: string) => {
+    const index = Number(indexRaw);
+    return opens[index] ?? "";
+  });
+  restored = restored.replace(BOX_CLOSE_PLACEHOLDER_PATTERN, () => BOX_CLOSE_TAG);
+  return restored;
+}
+
 /**
  * 줄 맨 앞의 h1(`# 제목`)만 h2로 낮춘다. `## `/`### ` 등은 건드리지 않는다
  * (정규식이 `#` 바로 뒤에 공백이 와야 매치되므로, 두 번째 `#`가 있으면
@@ -168,6 +252,7 @@ function sanitizeWordPressHtml(html: string): string {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: ALLOWED_ATTRIBUTES,
     allowedStyles: ALLOWED_STYLES,
+    allowedClasses: ALLOWED_CLASSES,
     allowedSchemes: ["http", "https", "mailto"],
     disallowedTagsMode: "discard",
     // on* 이벤트 속성/script/iframe은 allowedTags·allowedAttributes에
@@ -266,12 +351,14 @@ export function convertMarkdownToWordPressHtml(markdown: string | null | undefin
 
   const { text: withoutAdSlots, markers } = extractAdSlotMarkers(trimmed);
   const { text: withoutBrTags, count: brCount } = extractBrTags(withoutAdSlots);
-  const demoted = demoteTopLevelHeading(withoutBrTags);
+  const { text: withoutBoxTags, opens: boxOpens } = extractBoxTags(withoutBrTags);
+  const demoted = demoteTopLevelHeading(withoutBoxTags);
   const rawHtml = markdownRenderer.render(demoted);
   const safeHtml = sanitizeWordPressHtml(rawHtml);
   const styledHtml = applyWordPressTableStyling(safeHtml);
   const withBrRestored = brCount > 0 ? restoreBrTags(styledHtml) : styledHtml;
-  return restoreAdSlotMarkers(withBrRestored, markers);
+  const withBoxRestored = boxOpens.length > 0 ? restoreBoxTags(withBrRestored, boxOpens) : withBrRestored;
+  return restoreAdSlotMarkers(withBoxRestored, markers);
 }
 
 // 이미 HTML로 렌더링된 본문인지 판단할 때 쓰는 블록 태그 패턴.

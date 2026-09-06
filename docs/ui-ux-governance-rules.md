@@ -341,6 +341,7 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - [`docs/phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md) — 기사초안 재생성 무반응 방지 + article mode 전환 확인 배너
 - [`docs/phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md) — WordPress Draft 반영 승인 조건 명확화(reviewed/승인 용어 혼동 정리)
 - [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md) — article 고급 기능 WordPress 게시 준비 자동화(여러 클릭 → 자동 실행 1회 + 검토/승인)
+- [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스 HTML/표/체크리스트/FAQ 4개/기준일 안내)
 
 ## 섹션 12. 준비 단계 자동화 규칙
 

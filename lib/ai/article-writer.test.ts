@@ -241,6 +241,61 @@ describe("generateMockArticleDraft — article_mode", () => {
     }
     expect(result.content).not.toMatch(/adsbygoogle|googlesyndication|data-ad-client|data-ad-slot/i);
   });
+
+  // Phase 2-24: 뉴스 요약형이 아니라 수익형 블로그 구조(요약 박스/표/
+  // 독자 상황별 영향/체크리스트/FAQ 4개 이상/참고한 자료/기준일 안내)를
+  // 갖추는지 확인한다.
+  it("먼저 결론(핵심 답변) heading이 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toMatch(/##\s*먼저\s*결론부터\s*보면/);
+  });
+
+  it('핵심 요약 박스(<div class="summary-box">)가 포함된다', () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toContain('<div class="summary-box">');
+  });
+
+  it("최소 1개 이상의 markdown table이 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toMatch(/\|[^\n]*\|\s*\n\s*\|[\s:-]+\|/);
+  });
+
+  it("독자 상황별 영향 섹션이 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toContain("## 독자 상황별 영향");
+  });
+
+  it("확인 체크리스트 섹션이 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toMatch(/체크리스트/);
+  });
+
+  it("FAQ가 최소 4개 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    const count = (result.content.match(/\*\*Q[.:：]/g) ?? []).length;
+    expect(count).toBeGreaterThanOrEqual(4);
+  });
+
+  it('"참고한 자료" 섹션이 포함된다', () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toContain("## 참고한 자료");
+  });
+
+  it("자료 기준일 안내가 포함된다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.content).toContain("기준일");
+  });
+
+  it("완전한 구조를 갖췄으므로 qualityWarnings가 비어 있다", () => {
+    const result = generateMockArticleDraft(theme, sources, "monetized_blog");
+    expect(result.qualityWarnings).toEqual([]);
+  });
+
+  it("source_based_explainer mock 생성은 그대로 유지된다(monetized_blog 구조 강화의 영향을 받지 않는다)", () => {
+    const result = generateMockArticleDraft(theme, sources, "source_based_explainer");
+    expect(result.content).not.toContain('<div class="summary-box">');
+    expect(result.content).toContain("## 리드문");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -612,7 +667,21 @@ describe("generateAiArticleDraft — article_mode별 prompt 선택", () => {
 
   it("문제 없는 응답은 qualityWarnings가 비어 있다", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
-    fetchMock.mockResolvedValueOnce(mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput()));
+    // Phase 2-24: qualityWarnings가 비려면 구조 요건(요약 박스/표/체크리스트/
+    // FAQ 4개 이상/참고한 자료/기준일 안내)을 모두 만족하는 본문이어야 한다.
+    const fullContent = [
+      "## 먼저 결론부터 보면",
+      "핵심 결론은 다음과 같다.",
+      '<div class="summary-box">\n\n**먼저 결론**\n\n- 핵심 결론 1\n- 핵심 결론 2\n\n</div>',
+      "## 주요 지표 비교\n\n| 항목 | 설명 |\n|---|---|\n| A | B |",
+      "## 확인 체크리스트\n\n- 항목 1\n- 항목 2",
+      "## FAQ\n\n**Q. 질문1**\nA. 답변1\n\n**Q. 질문2**\nA. 답변2\n\n**Q. 질문3**\nA. 답변3\n\n**Q. 질문4**\nA. 답변4",
+      "## 참고한 자료\n\n1. 출처 1\n2. 출처 2",
+      "## 기준일 안내\n\n이 글은 작성 시점 기준으로 정리했다.",
+    ].join("\n\n");
+    fetchMock.mockResolvedValueOnce(
+      mockToolUseResponse("write_monetized_blog_article", baseMonetizedBlogInput({ content: fullContent }))
+    );
 
     const result = await generateAiArticleDraft(theme, [], "monetized_blog");
 

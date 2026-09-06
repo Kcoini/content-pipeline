@@ -50,3 +50,16 @@ describe("article social page pagination (정적 소스 검사, Phase 3-18)", ()
     expect(pageSource).toContain("ConfirmSubmitButton");
   });
 });
+
+describe("naver_cafe 등 본문형 플랫폼 미리보기 (정적 소스 검사, Phase 3-19)", () => {
+  it("목록 카드 본문 미리보기는 getSocialPostDisplayBody를 사용한다(caption만 보지 않는다)", () => {
+    expect(pageSource).toContain("getSocialPostDisplayBody");
+    expect(pageSource).toContain('from "@/lib/social/social-post-display"');
+  });
+
+  it("caption만 확인하고 postBody를 무시하는 예전 방식으로 되돌아가지 않는다", () => {
+    expect(pageSource).not.toMatch(
+      /\(post\.caption \|\| post\.threadItems\.map\(\(t\) => t\.text\)\.join\(" "\) \|\| post\.cardItems/
+    );
+  });
+});

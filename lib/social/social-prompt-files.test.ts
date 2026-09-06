@@ -60,6 +60,35 @@ describe("prompts/safety/*.md", () => {
   });
 });
 
+describe("prompts/social/wordpress-blog.md 구조 강화 지시 (Phase 2-24)", () => {
+  const content = readFileSync(join(ROOT, "prompts", "social", "wordpress-blog.md"), "utf-8");
+
+  it('핵심 요약 박스를 <div class="summary-box">HTML로 지시한다', () => {
+    expect(content).toContain('<div class="summary-box">');
+    expect(content).toContain("summary-box");
+    expect(content).toContain("key-points-box");
+    expect(content).toContain("checklist-box");
+    expect(content).toContain("warning-box");
+    expect(content).toContain("source-box");
+  });
+
+  it("inline style을 금지한다", () => {
+    expect(content).toMatch(/inline\s*`?style/);
+  });
+
+  it("FAQ 최소 4개를 요구한다", () => {
+    expect(content).toMatch(/FAQ는 최소 4개/);
+  });
+
+  it("경제/금융/정책/제도 주제에 자료 기준일 안내를 요구한다", () => {
+    expect(content).toContain("기준일 안내");
+  });
+
+  it("최소 1개 이상의 markdown table을 요구한다", () => {
+    expect(content).toMatch(/비교표\(최소 1개/);
+  });
+});
+
 describe("contracts/social/*.schema.json", () => {
   it.each(CONTRACT_SCHEMA_FILES)("%s 파일이 존재하고 유효한 JSON이다", (fileName) => {
     const filePath = join(ROOT, "contracts", "social", fileName);

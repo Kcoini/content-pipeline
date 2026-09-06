@@ -269,12 +269,95 @@ describe("runSocialPostQualityGate", () => {
       expect(item?.status).toBe("fail");
     });
 
-    it("FAQ 섹션이 있으면 wordpress_blog_faq_present가 pass다", () => {
+    it("FAQ가 4개 이상('**Q.' 형태)이면 wordpress_blog_faq_present가 pass다 (Phase 2-24)", () => {
+      const faqSection = [
+        "## FAQ",
+        "",
+        "**Q. 질문 A**",
+        "A. 답변입니다.",
+        "",
+        "**Q. 질문 B**",
+        "A. 답변입니다.",
+        "",
+        "**Q. 질문 C**",
+        "A. 답변입니다.",
+        "",
+        "**Q. 질문 D**",
+        "A. 답변입니다.",
+      ].join("\n");
       const result = runSocialPostQualityGate(
-        makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30) + "\n\n## FAQ\n\nQ. 질문 A. 답변입니다.")
+        makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30) + "\n\n" + faqSection)
       );
       const item = result.checklist.find((c) => c.key === "wordpress_blog_faq_present");
       expect(item?.status).toBe("pass");
+    });
+
+    it("FAQ가 있어도 4개 미만이면 wordpress_blog_faq_present가 warning이다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(
+        makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30) + "\n\n## FAQ\n\n**Q. 질문 A**\nA. 답변입니다.")
+      );
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_faq_present");
+      expect(item?.status).toBe("warning");
+    });
+
+    it('핵심 요약 박스(<div class="summary-box">)가 있으면 wordpress_blog_summary_box_present가 pass다 (Phase 2-24)', () => {
+      const result = runSocialPostQualityGate(
+        makeWordpressBlogInput(
+          "도입부입니다. " + "본문 내용. ".repeat(30) + '\n\n<div class="summary-box">\n\n- 결론 1\n\n</div>'
+        )
+      );
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_summary_box_present");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("핵심 요약 박스가 없으면 wordpress_blog_summary_box_present가 warning이다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30)));
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_summary_box_present");
+      expect(item?.status).toBe("warning");
+    });
+
+    it("표(markdown table)가 있으면 wordpress_blog_table_present가 pass다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(
+        makeWordpressBlogInput(
+          "도입부입니다. " + "본문 내용. ".repeat(30) + "\n\n| 항목 | 설명 |\n|---|---|\n| A | B |"
+        )
+      );
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_table_present");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("표가 없으면 wordpress_blog_table_present가 warning이다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30)));
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_table_present");
+      expect(item?.status).toBe("warning");
+    });
+
+    it("확인 체크리스트가 있으면 wordpress_blog_checklist_present가 pass다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(
+        makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30) + "\n\n## 확인 체크리스트\n\n- 항목 1")
+      );
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_checklist_present");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("확인 체크리스트가 없으면 wordpress_blog_checklist_present가 warning이다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30)));
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_checklist_present");
+      expect(item?.status).toBe("warning");
+    });
+
+    it("자료 기준일 안내가 있으면 wordpress_blog_source_date_notice_present가 pass다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(
+        makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30) + "\n\n## 기준일 안내\n\n작성 시점 기준.")
+      );
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_source_date_notice_present");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("자료 기준일 안내가 없으면 wordpress_blog_source_date_notice_present가 warning이다 (Phase 2-24)", () => {
+      const result = runSocialPostQualityGate(makeWordpressBlogInput("도입부입니다. " + "본문 내용. ".repeat(30)));
+      const item = result.checklist.find((c) => c.key === "wordpress_blog_source_date_notice_present");
+      expect(item?.status).toBe("warning");
     });
 
     it("본문이 1,200자 미만이면 wordpress_blog_body_depth가 fail이다(article summary/excerpt를 옮긴 얕은 글 의심)", () => {
@@ -329,7 +412,38 @@ describe("runSocialPostQualityGate", () => {
             "",
             "## FAQ",
             "",
-            "Q. 신청은 어디서 하나요? 국민건강보험공단 지사에서 신청할 수 있습니다.",
+            "**Q. 신청은 어디서 하나요?**",
+            "A. 국민건강보험공단 지사에서 신청할 수 있습니다.",
+            "",
+            "**Q. 조건 A와 B를 모두 충족해야 하나요?**",
+            "A. 상세 조건은 공식 안내를 확인해야 합니다.",
+            "",
+            "**Q. 신청 결과는 언제 확인할 수 있나요?**",
+            "A. 공식 안내에서 확인해야 합니다.",
+            "",
+            "**Q. 이의 신청이 가능한가요?**",
+            "A. 공식 절차를 통해 이의 신청이 가능합니다.",
+            "",
+            '<div class="summary-box">',
+            "",
+            "- 핵심 결론 1",
+            "",
+            "</div>",
+            "",
+            "## 주요 지표 비교",
+            "",
+            "| 항목 | 설명 |",
+            "|---|---|",
+            "| A | B |",
+            "",
+            "## 확인 체크리스트",
+            "",
+            "- 항목 1",
+            "- 항목 2",
+            "",
+            "## 기준일 안내",
+            "",
+            "이 글은 작성 시점 기준으로 정리했다.",
           ].join("\n")
         )
       );
@@ -344,6 +458,10 @@ describe("runSocialPostQualityGate", () => {
         "wordpress_blog_body_depth",
         "wordpress_blog_heading_structure",
         "wordpress_blog_no_slash_joined_points",
+        "wordpress_blog_summary_box_present",
+        "wordpress_blog_table_present",
+        "wordpress_blog_checklist_present",
+        "wordpress_blog_source_date_notice_present",
       ]) {
         const item = result.checklist.find((c) => c.key === key);
         expect(item?.status).toBe("pass");

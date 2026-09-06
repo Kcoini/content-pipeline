@@ -197,6 +197,13 @@ describe("loadEvalConfig — Phase 2-1 mode별 eval 파일", () => {
     expect(config.scoring.eeat_trustworthiness_min_threshold).toBeDefined();
     expect(config.scoring.ymyl_risk_fail_threshold).toBeDefined();
   });
+
+  it("Phase 2-24: 독자 상황별 영향/출처·기준일 표시 기준을 포함한다", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    const ids = config.criteria.map((c) => c.id);
+    expect(ids).toContain("reader-scenario-relevance");
+    expect(ids).toContain("source-date-disclosure");
+  });
 });
 
 describe("applyGateConditions — monetized_blog 개선 gate", () => {

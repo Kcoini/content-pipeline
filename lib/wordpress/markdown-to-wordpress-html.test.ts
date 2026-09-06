@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { convertMarkdownToWordPressHtml, ensureWordPressHtmlContent, looksLikeHtmlContent } from "./markdown-to-wordpress-html";
+import {
+  convertMarkdownToWordPressHtml,
+  ensureWordPressHtmlContent,
+  looksLikeHtmlContent,
+  WORDPRESS_BOX_CLASSES,
+} from "./markdown-to-wordpress-html";
 import { adSlotMarkerComment } from "@/lib/articles/article-modes";
 
 describe("convertMarkdownToWordPressHtml", () => {
@@ -268,5 +273,58 @@ describe("ensureWordPressHtmlContent (Phase 2-21: article 고급 기능 WordPres
     expect(ensureWordPressHtmlContent(null)).toBe("");
     expect(ensureWordPressHtmlContent(undefined)).toBe("");
     expect(ensureWordPressHtmlContent("   ")).toBe("");
+  });
+});
+
+describe("박스 컨테이너(<div class=\"...\">) 변환 (Phase 2-24: 수익형 블로그 구조 강화)", () => {
+  it('<div class="summary-box">...</div>가 그대로 보존되고, 안의 markdown(굵게/목록)은 정상 변환된다', () => {
+    const markdown = [
+      "## 먼저 결론부터 보면",
+      "",
+      '<div class="summary-box">',
+      "",
+      "**먼저 결론**",
+      "",
+      "- 핵심 결론 1",
+      "- 핵심 결론 2",
+      "",
+      "</div>",
+    ].join("\n");
+    const html = convertMarkdownToWordPressHtml(markdown);
+    expect(html).toContain('<div class="summary-box">');
+    expect(html).toContain("</div>");
+    expect(html).toContain("<strong>먼저 결론</strong>");
+    expect(html).toContain("<li>핵심 결론 1</li>");
+    // <div>가 <p> 안에 갇히지 않아야 한다(block 요소가 p 안에 들어가면 깨진다).
+    expect(html).not.toMatch(/<p>\s*<div/);
+  });
+
+  it("WORDPRESS_BOX_CLASSES에 있는 모든 class를 지원한다(checklist-box/warning-box/source-box/key-points-box)", () => {
+    for (const boxClass of WORDPRESS_BOX_CLASSES) {
+      const markdown = [`<div class="${boxClass}">`, "", "내용", "", "</div>"].join("\n");
+      const html = convertMarkdownToWordPressHtml(markdown);
+      expect(html).toContain(`<div class="${boxClass}">`);
+    }
+  });
+
+  it("화이트리스트에 없는 class는 보존되지 않고 escape되어 안전하게 무력화된다", () => {
+    const markdown = ['<div class="evil-class">', "", "내용", "", "</div>"].join("\n");
+    const html = convertMarkdownToWordPressHtml(markdown);
+    expect(html).not.toMatch(/<div\b/);
+    expect(html).toContain("&lt;div");
+  });
+
+  it("onclick 등 위험한 속성이 섞인 div는 실행 가능한 HTML로 남지 않는다(escape되어 무력화)", () => {
+    const markdown = ['<div class="summary-box" onclick="alert(1)">', "", "내용", "", "</div>"].join("\n");
+    const html = convertMarkdownToWordPressHtml(markdown);
+    // 화이트리스트 패턴(class 속성 하나만 있는 형태)과 정확히 일치하지 않으므로
+    // 박스로 인식되지 않고 그대로 escape된다 — onclick이 실제 속성으로 남지 않는다.
+    expect(html).not.toMatch(/<div\b[^&]*onclick=/);
+  });
+
+  it("이미 HTML로 변환된 content(ensureWordPressHtmlContent의 HTML 분기)에서도 summary-box가 유지된다", () => {
+    const alreadyHtml = '<h2>제목</h2><div class="summary-box"><p>본문</p></div>';
+    const result = ensureWordPressHtmlContent(alreadyHtml);
+    expect(result).toContain('<div class="summary-box">');
   });
 });

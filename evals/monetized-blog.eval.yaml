@@ -103,6 +103,25 @@ criteria:
     scale: 1-5
     pass_threshold: 3
 
+  - id: reader-scenario-relevance
+    description: >
+      뉴스 요약이 아니라, 이 주제가 서로 다른 독자 상황(예: 대출자/
+      예금자/투자자/실수요자, 또는 주제에 맞는 다른 독자군)에 각각
+      어떻게 다르게 영향을 주는지 구체적으로 구분해 설명하는가.
+      "상황에 따라 다르다"로만 끝내지 않고 확인 기준을 제시하는가.
+    weight: 0.08
+    scale: 1-5
+    pass_threshold: 3
+
+  - id: source-date-disclosure
+    description: >
+      경제/금융/정책/제도처럼 시점에 따라 값이 바뀌는 주제에서, 자료
+      기준일과 참고한 자료(출처)를 명확히 표시하는가. 수치가 이후
+      변경될 수 있다는 점을 안내하는가.
+    weight: 0.06
+    scale: 1-5
+    pass_threshold: 3
+
   - id: geo-clarity
     description: >
       각 섹션이 독립적으로 읽어도 의미가 통하는가. 결론을 먼저 제시하고

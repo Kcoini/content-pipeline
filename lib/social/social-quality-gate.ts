@@ -106,6 +106,12 @@ const MARKDOWN_HEADING_PATTERN = /^#{2,3}\s+\S/m;
 const SLASH_SEPARATOR_PATTERN = /\s\/\s/g;
 const SLASH_JOINED_POINTS_MIN_COUNT = 2;
 
+// Phase 2-24: wordpress_blog 구조 강화(요약 박스/표/체크리스트/FAQ 4개
+// 이상/기준일 안내) 확인용 기준값·패턴.
+const WORDPRESS_BLOG_MIN_FAQ_COUNT = 4;
+/** markdown table: 헤더 행 다음에 |---|---| 형태의 구분 행이 오는지 확인한다. */
+const WORDPRESS_BLOG_TABLE_PATTERN = /\|[^\n]*\|[ \t]*\r?\n[ \t]*\|[\s:-]+\|/;
+
 const X_MAX_ITEM_LENGTH = 280;
 
 /** 85 이상이면 ready, 그 미만이면(blocked가 아닌 한) needs_revision. */
@@ -519,13 +525,71 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
           )
         );
 
-        const hasFaqSection = /faq|자주\s*묻는\s*질문/i.test(bodyText);
+        // Phase 2-24: FAQ는 "섹션이 있는가"가 아니라 "몇 개인가"로 확인한다 —
+        // 뉴스 요약형 글도 FAQ 1개 정도는 흉내 낼 수 있지만, 수익형 블로그
+        // 구조는 최소 4개 이상을 요구한다("**Q." 형태 질문 기준).
+        const faqQuestionCount = (bodyText.match(/\*\*Q[.:：]/g) ?? []).length;
+        const hasFaqSection = faqQuestionCount > 0 || /faq|자주\s*묻는\s*질문/i.test(bodyText);
         checklist.push(
           checklistItem(
             "wordpress_blog_faq_present",
-            "FAQ 섹션 존재 (가산)",
-            hasFaqSection ? "pass" : "warning",
-            hasFaqSection ? "FAQ 섹션이 있습니다." : "FAQ 섹션이 보이지 않습니다 (있으면 AEO에 도움)."
+            "FAQ 최소 4개 (가산)",
+            faqQuestionCount >= WORDPRESS_BLOG_MIN_FAQ_COUNT
+              ? "pass"
+              : hasFaqSection
+                ? "warning"
+                : "warning",
+            faqQuestionCount >= WORDPRESS_BLOG_MIN_FAQ_COUNT
+              ? `FAQ가 ${faqQuestionCount}개 있습니다.`
+              : hasFaqSection
+                ? `FAQ 섹션은 있지만 ${faqQuestionCount}개로 최소 기준(${WORDPRESS_BLOG_MIN_FAQ_COUNT}개)에 못 미칩니다.`
+                : "FAQ 섹션이 보이지 않습니다 (있으면 AEO에 도움)."
+          )
+        );
+
+        const hasSummaryBox = /<div class="summary-box">/.test(bodyText);
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_summary_box_present",
+            '핵심 요약 박스(<div class="summary-box">) 존재 (가산)',
+            hasSummaryBox ? "pass" : "warning",
+            hasSummaryBox
+              ? "핵심 요약 박스가 있습니다."
+              : "핵심 요약 박스가 보이지 않습니다 (있으면 가독성/체류시간에 도움)."
+          )
+        );
+
+        const hasTable = WORDPRESS_BLOG_TABLE_PATTERN.test(bodyText);
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_table_present",
+            "표(markdown table) 존재 (가산)",
+            hasTable ? "pass" : "warning",
+            hasTable ? "표가 있습니다." : "표가 보이지 않습니다 (비교/정리에 도움이 되면 추가를 권장)."
+          )
+        );
+
+        const hasChecklistSection = /체크리스트|checklist-box/i.test(bodyText);
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_checklist_present",
+            "확인 체크리스트 존재 (가산)",
+            hasChecklistSection ? "pass" : "warning",
+            hasChecklistSection
+              ? "확인 체크리스트가 있습니다."
+              : "확인 체크리스트가 보이지 않습니다 (독자 행동 유도에 도움이 되면 추가를 권장)."
+          )
+        );
+
+        const hasSourceDateNotice = bodyText.includes("기준일");
+        checklist.push(
+          checklistItem(
+            "wordpress_blog_source_date_notice_present",
+            "자료 기준일 안내 존재 (가산)",
+            hasSourceDateNotice ? "pass" : "warning",
+            hasSourceDateNotice
+              ? "자료 기준일 안내가 있습니다."
+              : "자료 기준일 안내가 보이지 않습니다 (경제/금융/정책/제도 주제라면 추가를 권장)."
           )
         );
 

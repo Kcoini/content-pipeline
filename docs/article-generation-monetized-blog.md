@@ -565,6 +565,19 @@ Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절�
 [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
 참고.
 
+## 수익형 블로그 구조 강화 (Phase 2-24)
+
+`monetized_blog`는 뉴스 요약이 아니라 독자 상황별 판단 기준을 제공하는
+글이어야 한다. WordPress 전송본은 반드시 HTML이어야 하며(Phase 2-21),
+본문은 독자 문제 중심 도입부 → 먼저 결론 → 핵심 요약 박스
+(`<div class="summary-box">`) → 표(최소 1개) → 독자 상황별 영향 →
+확인 체크리스트 → 주의점/예외 → FAQ(최소 4개) → 최종 요약 → 참고한
+자료 → 기준일 안내를 기본 구조로 한다. 금융·경제·정책·제도 글은
+수치의 기준일과 출처를 반드시 표시한다. 상세는
+[`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
+참고 — 이 개선은 `monetized_blog`(article mode)와 `wordpress_blog`
+(social post platform) 양쪽 프롬프트에 모두 적용됐다.
+
 ## 관련 문서
 
 - 운영 매뉴얼: [`phase-3-operation-manual.md`](./phase-3-operation-manual.md)
@@ -572,4 +585,5 @@ Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절�
 - WordPress 전송 Markdown→HTML 변환: [`phase-2-21-article-wordpress-markdown-to-html.md`](./phase-2-21-article-wordpress-markdown-to-html.md)
 - 기사초안 재생성 무반응 방지: [`phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md)
 - WordPress Draft 반영 승인 조건 명확화: [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
+- 수익형 블로그 구조 강화(요약 박스/표/체크리스트/FAQ/기준일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
 - 프롬프트 요약: [`../prompts/articles/monetized-blog.md`](../prompts/articles/monetized-blog.md)
