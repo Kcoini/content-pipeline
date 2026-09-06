@@ -92,9 +92,17 @@ Test/WordPress Draft/Public Publish 등 Phase 2의 WordPress 관련
 이 섹션 맨 위에는 `/articles/[id]/blog`와 **같은 구조의 공통 UI**
 (`WordPressPublishingPanel`, "대상: 원본 article" + "보조 기능"/
 "고급 기능" 배지)로 품질/승인/Draft/SEO/대표 이미지/Publish Guard
-상태를 한눈에 요약해 보여준다. 그 아래에는 기존 개별 기능(WordPress
-Metadata/SEO Plugin/Featured Image/Connection Test/Draft/Public
-Publish) 섹션이 그대로 남아 있다 — 삭제하거나 통합하지 않았다.
+상태를 한눈에 요약해 보여준다. 그 바로 아래에 **"WordPress 게시 준비
+자동 실행"** 버튼이 있다 — WordPress Metadata 생성, SEO Plugin
+Metadata 생성(기본 Rank Math), 대표 이미지 준비/생성(또는 실패·비활성화
+시 자동 "이미지 없음으로 진행" 처리), Quality Gate 실행을 한 번에
+처리한다. 실제 공개 게시는 이 버튼으로 실행되지 않는다 — 자세한 내용은
+[`phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md)
+참고. 그 아래에는 기존 개별 기능(WordPress Metadata/SEO Plugin/
+Featured Image/Connection Test/Draft/Public Publish) 섹션이 그대로
+남아 있다 — 삭제하거나 통합하지 않았다. 이 개별 섹션들은 자동 실행
+결과를 검토하거나 특정 항목만 다시 생성하고 싶을 때 쓰는 고급
+옵션이다.
 버튼 이름도 "원본 article Draft 생성"/"원본 article SEO Metadata
 업데이트"/"원본 article 대표 이미지 연결"처럼 항상 "원본 article"
 접두어를 붙여, wordpress_blog 카드의 동일 기능 버튼과 헷갈리지

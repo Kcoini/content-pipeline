@@ -322,3 +322,26 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - [`docs/phase-1-21-theme-selection-focused-ui.md`](./phase-1-21-theme-selection-focused-ui.md) — 자동 테마 추출 화면을 "대표 테마 선택 중심 UI"로 개편
 - [`docs/phase-1-22-dashboard-top-nav-simplification.md`](./phase-1-22-dashboard-top-nav-simplification.md) — 상단 내비게이션 단순화(드롭다운 메뉴 구조)
 - [`docs/phase-1-23-dashboard-theme-workspace.md`](./phase-1-23-dashboard-theme-workspace.md) — 대시보드를 "선택한 테마 중심 작업형 대시보드"로 개편
+- [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md) — article 고급 기능 WordPress 게시 준비 자동화(여러 클릭 → 자동 실행 1회 + 검토/승인)
+
+## 섹션 12. 준비 단계 자동화 규칙
+
+여러 개별 생성/준비 버튼(metadata 생성, SEO 생성, 이미지 생성 등)을
+순서대로 눌러야 하는 화면은, 그 전체를 한 번에 실행하는 자동화
+오케스트레이터 + 버튼 하나로 통합할 수 있다. 이때 지킬 것:
+
+- **자동 실행은 이미 있는 값을 기본적으로 덮어쓰지 않는다.** 값이
+  없을 때만 생성하고, 재생성/덮어쓰기는 명시적 옵션(체크박스 등)으로
+  분리한다.
+- **선택 사항(대표 이미지 등) 하나가 준비되지 않았다는 이유만으로
+  전체 자동 실행을 실패로 표시하지 않는다.** 실패해도 되는 단계는
+  warning으로 남기고, 자동으로 안전한 대체 상태(예: "이미지 없음으로
+  진행 가능" waiver)를 적용한다.
+- **실제 외부 시스템에 반영(공개 게시 등 되돌리기 어려운 작업)은 이
+  자동화 범위에 포함하지 않는다.** 자동 실행은 항상 "준비" 단계까지만
+  다루고, 실제 반영은 사람이 별도 버튼으로 눌러야 한다.
+- **자동 실행 버튼은 기존 개별 버튼들 위(먼저 보이는 위치)에 둔다.**
+  기존 개별 버튼은 삭제하지 않고 "자동 실행이 사용하는 개별 기능/고급
+  옵션"으로 안내 문구만 바꾼다.
+- 실제 사례:
+  [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md).

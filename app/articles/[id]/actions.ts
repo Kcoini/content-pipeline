@@ -38,6 +38,7 @@ import {
   waiveArticleWordPressFeaturedImage,
   clearArticleWordPressFeaturedImageWaiver,
 } from "@/lib/publish/article-wordpress-featured-image-waiver-service";
+import { prepareArticleWordPressPublishing } from "@/lib/publish/article-wordpress-publish-preparation-orchestrator";
 import { generateWordPressMetadata, reviewWordPressMetadata } from "@/lib/publish/wordpress-metadata-service";
 import { generateSeoPluginPayload, reviewSeoPluginMetadata } from "@/lib/seo/seo-plugin-metadata-service";
 import { isSeoPluginProvider } from "@/lib/seo/seo-plugin-types";
@@ -275,6 +276,39 @@ export async function waiveArticleWordPressFeaturedImageAction(formData: FormDat
 
   try {
     const result = await waiveArticleWordPressFeaturedImage(articleId, reasonCode, memo);
+    message = result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidatePath(`/articles/${articleId}`);
+
+  const query = isError
+    ? `error=${encodeURIComponent(message)}`
+    : `publishMessage=${encodeURIComponent(message)}`;
+  redirect(`/articles/${articleId}?${query}`);
+}
+
+/**
+ * Phase 2-20: 기사 개요 고급 기능 "원본 article WordPress 전송"의
+ * "WordPress 게시 준비 자동 실행" 버튼이 사용하는 action이다.
+ * WordPress Metadata/SEO Plugin Metadata(기본 Rank Math)/대표 이미지
+ * 준비·생성(또는 자동 waiver)/Quality Gate를 한 번의 클릭으로 순서대로
+ * 실행한다. 실제 WordPress 공개 게시는 수행하지 않는다 — WordPress
+ * Draft 반영은 여전히 "WordPress Draft에 반영" 버튼(publishToWordPressDraftAction)을
+ * 사용자가 직접 눌러야 실행된다.
+ */
+export async function prepareArticleWordPressPublishingAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const overwrite = formData.get("overwrite") === "true";
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await prepareArticleWordPressPublishing(articleId, { overwrite });
     message = result.message;
     isError = !result.success;
   } catch (error) {

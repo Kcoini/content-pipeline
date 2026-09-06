@@ -10,6 +10,11 @@
 **적용 범위**: `platform === "wordpress_blog"` social post 카드에만 적용한다.
 `naver_blog`/`naver_cafe`/`x`/`threads`/`instagram` 카드나 `/articles/[id]`의
 article 고급 기능에는 적용하지 않는다(각자 다른 규칙을 따를 수 있다).
+article 고급 기능의 WordPress 게시 준비 자동화(별도 "WordPress 게시
+준비 자동 실행" 버튼)는
+[`phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md)를
+참고한다 — 이 문서의 카드 구조 규칙과는 독립적으로 적용된 것이며,
+wordpress_blog 카드 흐름과 충돌하지 않도록 설계되었다.
 
 > 이 문서는 **화면 UI 구조**만 다룬다. wordpress_blog로 생성되는 글
 > **콘텐츠 자체의 작성 원칙**(SEO/AEO/GEO/E-E-A-T 문제 해결형 블로그

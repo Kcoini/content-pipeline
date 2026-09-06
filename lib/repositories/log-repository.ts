@@ -376,6 +376,19 @@ export type LogEventType =
   | "wordpress_featured_image_waived"
   // article 원본 WordPress 전송용 대표 이미지 waive (wordpress_blog의 waive와는 독립적)
   | "article_wordpress_featured_image_waived"
+  // Phase 2-20: article 고급기능 "WordPress 게시 준비 자동 실행" 오케스트레이터 이벤트.
+  // 개별 서비스(wordpress_metadata_generation_*, seo_plugin_metadata_generation_*,
+  // featured_image_preparation_*, image_generation_*)는 각자 이미 자기 이벤트를
+  // 남기므로, 아래는 오케스트레이터 자신의 진행 상황(요약 레벨)만 기록한다.
+  | "article_wordpress_prepare_started"
+  | "article_wordpress_metadata_generated"
+  | "article_wordpress_seo_metadata_generated"
+  | "article_wordpress_seo_provider_defaulted_rank_math"
+  | "article_wordpress_image_prompt_generated"
+  | "article_wordpress_image_generation_attempted"
+  | "article_wordpress_image_generation_skipped"
+  | "article_wordpress_prepare_completed"
+  | "article_wordpress_prepare_failed"
   | "wordpress_blog_metadata_regenerated"
   | "wordpress_blog_seo_plugin_write_completed"
   | "wordpress_blog_featured_image_generation_started"
