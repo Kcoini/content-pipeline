@@ -36,6 +36,16 @@ article 자체가 WordPress에 올라가는 것은 아니다(article 본문을
 [`article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md)
 참고.
 
+article 고급 기능의 WordPress 게시 준비(WordPress Metadata/SEO Plugin
+Metadata/대표 이미지)는 "WordPress 게시 준비 자동 실행" 버튼 한 번으로
+자동 생성된다 — 사용자는 검토/승인 중심으로 작업하면 된다. SEO Plugin
+Metadata는 기본 Rank Math 기준으로 생성되고, 대표 이미지는 자동 생성을
+시도하되 비활성화되어 있거나 실패하면 자동으로 "이미지 없음으로 진행"
+상태(waiver)가 적용되어 WordPress Draft 반영을 막지 않는다. 실제 공개
+게시는 자동 실행되지 않는다. 자세한 내용은
+[`phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md)
+참고.
+
 `answerSummary`/`eeatNotes`/`geoSummary`/`structuredDataSuggestions`는
 **`monetized_blog` article 모드에서도 별도 구조화 필드로 저장되지
 않는다** — AI 생성 시점에만 존재했다가 article.content 본문 텍스트

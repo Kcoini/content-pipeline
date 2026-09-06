@@ -12,6 +12,7 @@ import {
   approveArticleAction,
   updateArticleAction,
   publishToWordPressDraftAction,
+  prepareArticleWordPressPublishingAction,
   generateWordPressMetadataAction,
   reviewWordPressMetadataAction,
   generateSeoPluginMetadataAction,
@@ -595,10 +596,81 @@ export default async function ArticleDetailPage({
                 }}
               />
 
+              {/* Phase 2-20: WordPress 게시 준비 자동 실행 — 여러 번 클릭하지
+                  않아도 되도록, WordPress Metadata 생성/SEO Plugin Metadata
+                  생성(기본 Rank Math)/대표 이미지 준비·생성(또는 실패 시
+                  자동 waiver)/Quality Gate 실행을 한 번에 처리한다. 실제
+                  WordPress 공개 게시는 절대 실행하지 않는다 — Draft 생성/
+                  업데이트도 이 버튼이 아니라 아래 "원본 article Draft
+                  생성" 버튼을 별도로 눌러야 한다. */}
+              <section className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm">
+                <h2 className="text-sm font-semibold text-indigo-900">WordPress 게시 준비</h2>
+                <p className="mt-1 text-xs text-indigo-800">
+                  WordPress 게시 준비를 자동으로 실행합니다. 제목, SEO
+                  Metadata, Rank Math 설정, 대표 이미지 준비를 한 번에
+                  처리합니다. 대표 이미지가 없더라도 Draft 업로드는
+                  가능합니다. 공개 게시는 하지 않습니다.
+                </p>
+
+                <ul className="mt-3 flex flex-col gap-1 text-xs text-indigo-900">
+                  <li>
+                    · WordPress Metadata:{" "}
+                    {article.wpMetadataStatus === "not_ready" ? "준비 안 됨" : `${WP_METADATA_STATUS_LABEL[article.wpMetadataStatus]} · 검토 필요`}
+                  </li>
+                  <li>
+                    · SEO Plugin Metadata:{" "}
+                    {article.seoPluginMetadataStatus === "not_ready"
+                      ? "준비 안 됨"
+                      : `${article.seoPluginProvider} 기준 ${SEO_PLUGIN_METADATA_STATUS_LABEL[article.seoPluginMetadataStatus]} · 검토 필요`}
+                  </li>
+                  <li>
+                    · 대표 이미지:{" "}
+                    {hasArticleFeaturedImage
+                      ? "준비됨"
+                      : articleFeaturedImageWaiver.waived
+                        ? "이미지 없음으로 진행 가능"
+                        : article.generatedImageStatus === "generated"
+                          ? "자동 생성됨 · 검토 필요"
+                          : "준비 안 됨"}
+                  </li>
+                  <li>
+                    · Quality Gate:{" "}
+                    {PUBLISH_QUALITY_GATE_STATUS_LABEL[article.publishQualityGateStatus]}
+                  </li>
+                  <li>
+                    · 승인 상태: {isReviewed ? "승인됨 (reviewed)" : "승인 필요 (draft)"}
+                  </li>
+                  <li>
+                    · WordPress Draft:{" "}
+                    {hasWordPressSuccess ? "이미 생성됨" : isReviewed ? "생성 가능" : "승인 후 생성 가능"}
+                  </li>
+                </ul>
+
+                <p className="mt-3 text-xs font-medium text-indigo-900">
+                  생성된 내용을 검토한 뒤 승인하면 WordPress Draft에 반영할 수 있습니다.
+                </p>
+
+                <form action={prepareArticleWordPressPublishingAction} className="mt-3 flex flex-wrap items-center gap-3">
+                  <input type="hidden" name="articleId" value={article.id} />
+                  <button
+                    type="submit"
+                    className="rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                  >
+                    WordPress 게시 준비 자동 실행
+                  </button>
+                  <label className="flex items-center gap-1 text-[11px] text-indigo-700">
+                    <input type="checkbox" name="overwrite" value="true" className="h-3 w-3" />
+                    이미 생성된 항목도 다시 생성(덮어쓰기)
+                  </label>
+                </form>
+              </section>
+
               <p className="mt-3 rounded border border-amber-200 bg-white px-3 py-2 text-[11px] text-amber-700">
-                아래는 위 요약이 참조하는 개별 기능이다(WordPress Metadata/SEO
-                plugin/featured image/connection test/draft/public publish) —
-                Phase 2 때 만들어진 기존 동작을 그대로 유지한다.
+                아래는 &quot;WordPress 게시 준비 자동 실행&quot;이 사용하는 개별
+                기능이다(WordPress Metadata/SEO plugin/featured image/
+                connection test/draft/public publish) — 자동 실행 후
+                내용을 검토하거나, 특정 항목만 다시 생성하고 싶을 때
+                개별적으로 사용할 수 있는 고급 옵션이다.
               </p>
 
               <div className="mt-4 flex flex-col gap-4">

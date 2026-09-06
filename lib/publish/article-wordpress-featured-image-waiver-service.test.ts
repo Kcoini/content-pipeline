@@ -16,6 +16,7 @@ const {
   waiveArticleWordPressFeaturedImage,
   clearArticleWordPressFeaturedImageWaiver,
   getArticleWordPressFeaturedImageWaiverState,
+  ARTICLE_FEATURED_IMAGE_WAIVER_REASONS,
 } = await import("./article-wordpress-featured-image-waiver-service");
 
 function makeArticle(overrides: Record<string, unknown> = {}) {
@@ -69,6 +70,22 @@ describe("waiveArticleWordPressFeaturedImage", () => {
       reasonCode: "no_suitable_image",
       memoPresent: false,
     });
+  });
+
+  it("Phase 2-20: auto_generation_unavailable(자동 실행 전용 사유)도 유효한 사유로 허용된다", async () => {
+    const result = await waiveArticleWordPressFeaturedImage("article-1", "auto_generation_unavailable");
+
+    expect(result.success).toBe(true);
+    expect(saveArticleWordPressFeaturedImageWaiver).toHaveBeenCalledWith("article-1", {
+      waived: true,
+      reasonCode: "auto_generation_unavailable",
+      memoPresent: false,
+    });
+  });
+
+  it("ARTICLE_FEATURED_IMAGE_WAIVER_REASONS 목록에 auto_generation_unavailable이 포함된다", () => {
+    const codes = ARTICLE_FEATURED_IMAGE_WAIVER_REASONS.map((r) => r.code);
+    expect(codes).toContain("auto_generation_unavailable");
   });
 
   it("사유가 'other'가 아니면 memo가 있어도 memoPresent는 false다", async () => {

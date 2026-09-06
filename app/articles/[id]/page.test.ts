@@ -135,3 +135,42 @@ describe("고급 기능: 대표 이미지 없이 원본 article 전송 (waive, �
     expect(pageSource).toContain("@/lib/publish/article-wordpress-featured-image-waiver-service");
   });
 });
+
+describe("고급 기능: WordPress 게시 준비 자동 실행 (정적 소스 검사, Phase 2-20)", () => {
+  it("prepareArticleWordPressPublishingAction을 호출하는 자동 실행 버튼이 있다", () => {
+    expect(pageSource).toContain("prepareArticleWordPressPublishingAction,");
+    expect(pageSource).toContain("<form action={prepareArticleWordPressPublishingAction}");
+    expect(pageSource).toContain("WordPress 게시 준비 자동 실행");
+  });
+
+  it("덮어쓰기(재생성) 옵션은 secondary 체크박스로 제공된다", () => {
+    const start = pageSource.indexOf("prepareArticleWordPressPublishingAction}");
+    const end = pageSource.indexOf("</form>", start);
+    const block = pageSource.slice(start, end);
+    expect(block).toContain('name="overwrite"');
+    expect(block).toContain('type="checkbox"');
+  });
+
+  it("자동 실행 안내 문구에 공개 게시를 하지 않는다는 내용이 포함된다", () => {
+    expect(pageSource).toContain("공개 게시는 하지 않습니다");
+  });
+
+  it("상태 요약에 WordPress Metadata/SEO Plugin Metadata/대표 이미지/Quality Gate/승인/Draft 상태를 모두 표시한다", () => {
+    const start = pageSource.indexOf("WordPress 게시 준비</h2>");
+    const end = pageSource.indexOf("</form>", start);
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("WordPress Metadata:");
+    expect(block).toContain("SEO Plugin Metadata:");
+    expect(block).toContain("대표 이미지:");
+    expect(block).toContain("Quality Gate:");
+    expect(block).toContain("승인 상태:");
+    expect(block).toContain("WordPress Draft:");
+  });
+
+  it("자동 실행 버튼은 개별 기능 섹션들보다 먼저(위에) 위치한다", () => {
+    const autoRunIndex = pageSource.indexOf("WordPress 게시 준비</h2>");
+    const individualSectionsIndex = pageSource.indexOf("WordPress Metadata</h2>");
+    expect(autoRunIndex).toBeGreaterThanOrEqual(0);
+    expect(individualSectionsIndex).toBeGreaterThan(autoRunIndex);
+  });
+});

@@ -26,6 +26,7 @@ export type ArticleFeaturedImageWaiverReasonCode =
   | "manual_later"
   | "text_focused"
   | "no_suitable_image"
+  | "auto_generation_unavailable"
   | "other";
 
 export const ARTICLE_FEATURED_IMAGE_WAIVER_REASONS: readonly {
@@ -36,6 +37,10 @@ export const ARTICLE_FEATURED_IMAGE_WAIVER_REASONS: readonly {
   { code: "manual_later", label: "나중에 WordPress에서 수동 추가 예정" },
   { code: "text_focused", label: "텍스트 중심 기사" },
   { code: "no_suitable_image", label: "적절한 이미지 없음" },
+  // Phase 2-20: "WordPress 게시 준비 자동 실행"이 이미지 생성 비활성화/실패
+  // 시 사람 개입 없이 자동으로 적용하는 사유 — 사용자가 직접 선택하는
+  // 사유(위 4개)와 구분한다.
+  { code: "auto_generation_unavailable", label: "자동 이미지 생성 비활성화 또는 실패 (자동 적용)" },
   { code: "other", label: "기타" },
 ];
 
@@ -45,6 +50,7 @@ function isArticleFeaturedImageWaiverReasonCode(value: unknown): value is Articl
     value === "manual_later" ||
     value === "text_focused" ||
     value === "no_suitable_image" ||
+    value === "auto_generation_unavailable" ||
     value === "other"
   );
 }
