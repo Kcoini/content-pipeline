@@ -12,6 +12,7 @@ import { checkPlatformApiPublishEligibility } from "@/lib/social/platform-api-pu
 import { buildPlatformApiPublishDryRunPayload } from "@/lib/social/platform-api-publish-payload-builder";
 import { ApiReadinessSummary } from "@/components/platform-api/api-readiness-summary";
 import { ApiDryRunPayloadPreview } from "@/components/platform-api/api-dry-run-payload-preview";
+import { sanitizeNaverCafePlainText } from "@/lib/social/naver-cafe-plain-text-sanitizer";
 import { preparePlatformApiPublishingAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +70,12 @@ export default async function SocialPostDetailPage({
   const fallbackReturnTo = buildArticleOverviewUrl(p.articleId);
   const safeReturnTo = getSafeReturnTo(returnTo, fallbackReturnTo);
 
-  const bodyPreview = truncate(p.postBody);
+  // Phase 3-20: naver_cafe는 게시용 plain text 글이므로, 기존에 저장된
+  // 글에 escape된 markdown(\##, \**, &#x20; 등)이 남아 있어도 화면에는
+  // 항상 정리된 형태로 보여준다. 다른 플랫폼은 markdown 원문을 그대로
+  // 보여준다(wordpress_blog/naver_blog는 markdown이 정상 형식이다).
+  const displayPostBody = p.platform === "naver_cafe" ? sanitizeNaverCafePlainText(p.postBody) : p.postBody;
+  const bodyPreview = truncate(displayPostBody);
   const captionPreview = truncate(p.caption);
   const threadPreview = p.threadItems.slice(0, 3);
   const cardPreview = p.cardItems.slice(0, 3);
@@ -237,14 +243,16 @@ export default async function SocialPostDetailPage({
             </div>
           </dl>
 
-          {p.postBody && (
+          {displayPostBody && (
             <div className="mt-3 text-xs">
-              <p className="font-medium text-zinc-600">post_body preview</p>
+              <p className="font-medium text-zinc-600">
+                post_body preview{p.platform === "naver_cafe" && " (plain text 정리됨)"}
+              </p>
               <p className="mt-1 whitespace-pre-wrap text-zinc-600">{bodyPreview.preview}</p>
               {bodyPreview.truncated && (
                 <details className="mt-1">
                   <summary className="cursor-pointer text-[11px] text-zinc-400">전체 본문 펼치기</summary>
-                  <p className="mt-1 whitespace-pre-wrap text-zinc-600">{p.postBody}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-zinc-600">{displayPostBody}</p>
                 </details>
               )}
             </div>
@@ -289,8 +297,23 @@ export default async function SocialPostDetailPage({
             </div>
           )}
 
-          <details className="mt-3 text-xs">
-            <summary className="cursor-pointer text-[11px] text-zinc-400">export/dry-run/handoff payload 요약 (기본 접힘)</summary>
+        </section>
+
+        {/* Phase 3-20: 게시용 본문(위 콘텐츠 미리보기)과 내부 관리 정보를
+            명확히 분리한다 — 상태/성과/Rewrite/A-B Test/API Publishing/
+            메타데이터/payload 요약은 모두 "관리자용" 정보이며 기본
+            접힘으로 감싼다. 복사/export/handoff payload에는 이 정보가
+            들어가지 않는다(각 payload 빌더가 title/body만 담는다). */}
+        <details className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 shadow-sm">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-600">
+            관리 정보 보기 (관리자용 — 상태/성과/Rewrite/A-B Test/API/메타데이터)
+          </summary>
+          <p className="mt-2 text-[11px] text-zinc-400">
+            아래 정보는 내부 운영/디버깅용이며 게시용 본문이 아닙니다. 복사/export/handoff에는 포함되지 않습니다.
+          </p>
+
+          <div className="mt-3 text-xs">
+            <p className="font-medium text-zinc-600">export/dry-run/handoff payload 요약</p>
             <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <dt className="font-medium text-zinc-600">export_payload 키 개수</dt>
@@ -306,10 +329,9 @@ export default async function SocialPostDetailPage({
               </div>
             </dl>
             <p className="mt-1 text-[11px] text-zinc-400">전체 payload 원문은 이 페이지에서 노출하지 않습니다.</p>
-          </details>
-        </section>
+          </div>
 
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+        <section className="mt-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">상태</h2>
           <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
             <div>
@@ -559,6 +581,7 @@ export default async function SocialPostDetailPage({
             </div>
           </dl>
         </section>
+        </details>
       </div>
     </div>
   );

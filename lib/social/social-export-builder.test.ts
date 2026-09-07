@@ -51,6 +51,18 @@ describe("buildExportPayload", () => {
     expect(result.payload.text).toContain("본문");
   });
 
+  it("naver_cafe export text는 escape된 markdown을 정리한다 (Phase 3-20)", () => {
+    const post = makeSocialPost({
+      platform: "naver_cafe",
+      postTitle: "질문 있습니다",
+      postBody: "\\## 제목\n\n\\*\\*굵게\\*\\*&#x20;내용",
+    });
+
+    const result = buildExportPayload(post);
+
+    expect(result.payload.text).not.toMatch(/\\#|\\\*|&#x20;/);
+  });
+
   it("x는 thread_items 구조를 지원한다", () => {
     const post = makeSocialPost({
       platform: "x",
@@ -135,6 +147,34 @@ describe("buildManualExportPayload (Phase 3-5)", () => {
     expect(result.ok).toBe(true);
     expect(result.exportFormat).toBe("naver_cafe_plain_text_copy");
     expect(result.instructions?.some((line) => line.includes("카페 규칙"))).toBe(true);
+  });
+
+  it("naver_cafe manual export(buildManualExportPayload)는 escape된 markdown을 정리한 본문만 담는다 (Phase 3-20)", () => {
+    const post = makeSocialPost({
+      platform: "naver_cafe",
+      postTitle: "질문 있습니다",
+      postBody: "\\## 제목\n\n\\*\\*굵게\\*\\*&#x20;내용",
+    });
+
+    const result = buildManualExportPayload(post);
+
+    expect(result.exportBody).not.toMatch(/\\#|\\\*|&#x20;/);
+    expect(result.exportBody).toContain("제목");
+    expect(result.exportBody).toContain("굵게 내용");
+  });
+
+  it("naver_cafe manual export payload에는 내부 관리 정보(quality/approval/export/status/id)가 포함되지 않는다 (Phase 3-20)", () => {
+    const post = makeSocialPost({ platform: "naver_cafe", postTitle: "질문 있습니다", postBody: "본문 내용" });
+
+    const result = buildManualExportPayload(post);
+    const serialized = JSON.stringify(result);
+
+    expect(serialized).not.toContain("quality_status");
+    expect(serialized).not.toContain("approval_status");
+    expect(serialized).not.toContain("qualityStatus");
+    expect(serialized).not.toContain("approvalStatus");
+    expect(serialized).not.toContain("localhost");
+    expect(serialized).not.toContain(post.id);
   });
 
   it("x는 thread_items 배열과 전체 복사용 text를 반환한다", () => {

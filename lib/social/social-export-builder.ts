@@ -4,6 +4,7 @@
 
 import { getPlatformWritingConfig } from "./platform-writing-config";
 import type { CardItem, SocialPost } from "./social-platform-types";
+import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
 
 const X_MAX_ITEM_LENGTH = 280;
 
@@ -82,12 +83,15 @@ export function buildManualExportPayload(post: SocialPost): ManualExportResult {
       if (!post.postTitle?.trim() || !post.postBody?.trim()) {
         return { ok: false, platform: post.platform, exportFormat, error: "제목과 본문이 모두 있어야 export할 수 있습니다." };
       }
+      // Phase 3-20: 카페에 그대로 복사해 붙여넣는 용도이므로, escape된
+      // markdown/HTML entity 잔여물을 반드시 정리한 뒤 내보낸다. 내부 관리
+      // 정보(quality_status 등)는 애초에 이 payload에 포함하지 않는다.
       return {
         ok: true,
         platform: post.platform,
         exportFormat,
         exportTitle: post.postTitle,
-        exportBody: post.postBody,
+        exportBody: sanitizeNaverCafePlainText(post.postBody),
         instructions: [
           "카페 규칙과 홍보성 게시 제한을 반드시 확인하세요.",
           "질문형/토론형 마무리 문장이 있는지 다시 확인하세요.",
@@ -177,7 +181,11 @@ function buildMarkdownBody(post: SocialPost): string {
 
 function buildPlainTextBody(post: SocialPost): string {
   const heading = post.postTitle ? `${post.postTitle}\n\n` : "";
-  const body = post.postBody ?? post.caption ?? "";
+  // Phase 3-20: naver_cafe는 escape된 markdown/HTML entity 잔여물을 반드시
+  // 정리한 뒤 내보낸다(post.caption은 naver_cafe에서 쓰지 않으므로
+  // sanitize 대상이 아니다 — 그대로 fallback만 한다).
+  const rawBody = post.postBody ?? post.caption ?? "";
+  const body = post.platform === "naver_cafe" ? sanitizeNaverCafePlainText(rawBody) : rawBody;
   const hashtags = post.hashtags.length > 0 ? `\n\n${post.hashtags.map((tag) => `#${tag}`).join(" ")}` : "";
   return `${heading}${body}${hashtags}`.trim();
 }

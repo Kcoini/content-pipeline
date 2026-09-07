@@ -101,6 +101,28 @@ describe("buildPlatformPublishDryRunPayload", () => {
     expect(String(result.dryRunPayload.caution)).toContain("카페 규칙");
   });
 
+  it("naver_cafe dry-run/handoff payload의 body는 escape된 markdown을 정리한 값이다 (Phase 3-20)", () => {
+    const post = makeSocialPost({
+      platform: "naver_cafe",
+      postTitle: "질문 있습니다",
+      postBody: "\\## 제목\n\n\\*\\*굵게\\*\\*&#x20;내용",
+    });
+    const result = buildPlatformPublishDryRunPayload(post);
+
+    expect(String(result.dryRunPayload.body)).not.toMatch(/\\#|\\\*|&#x20;/);
+    expect(result.handoffPayload).toBe(result.dryRunPayload);
+  });
+
+  it("naver_cafe dry-run/handoff payload에는 내부 관리 정보(quality/approval 등)가 포함되지 않는다 (Phase 3-20)", () => {
+    const post = makeSocialPost({ platform: "naver_cafe" });
+    const result = buildPlatformPublishDryRunPayload(post);
+
+    const serialized = JSON.stringify(result.dryRunPayload);
+    expect(serialized).not.toContain("quality_status");
+    expect(serialized).not.toContain("approval_status");
+    expect(serialized).not.toContain("localhost");
+  });
+
   it("x는 threadItems/itemLengths/totalItems를 반환한다", () => {
     const post = makeSocialPost({
       platform: "x",

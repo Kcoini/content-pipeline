@@ -18,9 +18,19 @@ describe("social post detail page (정적 소스 검사, Phase 3-18)", () => {
   });
 
   it("post_body/caption preview + 펼치기(details) 구조를 사용한다", () => {
-    expect(pageSource).toContain("truncate(p.postBody");
+    expect(pageSource).toContain("truncate(displayPostBody");
     expect(pageSource).toContain("truncate(p.caption");
     expect(pageSource).toContain("<details");
+  });
+
+  it("naver_cafe는 sanitizeNaverCafePlainText로 정리된 본문(displayPostBody)을 화면에 표시한다(Phase 3-20)", () => {
+    expect(pageSource).toContain("sanitizeNaverCafePlainText");
+    expect(pageSource).toMatch(/p\.platform === "naver_cafe" \? sanitizeNaverCafePlainText\(p\.postBody\) : p\.postBody/);
+  });
+
+  it("게시용 본문과 내부 관리 정보(상태/성과/Rewrite/A-B Test/API/메타데이터)를 접힌 '관리 정보' accordion으로 분리한다(Phase 3-20)", () => {
+    expect(pageSource).toContain("관리 정보 보기");
+    expect(pageSource).toMatch(/<details className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 shadow-sm">/);
   });
 
   it("SocialPostDetailNavigation을 사용한다", () => {

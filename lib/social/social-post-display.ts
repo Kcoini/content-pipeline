@@ -19,6 +19,7 @@
 
 import { PLATFORM_WRITING_CONFIGS } from "./platform-writing-config";
 import type { SocialPost } from "./social-platform-types";
+import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
 
 /** 목록 카드/미리보기에서 본문으로 표시할 텍스트를 결정한다(플랫폼별 우선순위 반영). */
 export function getSocialPostDisplayBody(
@@ -30,6 +31,15 @@ export function getSocialPostDisplayBody(
   // 구조화된 배열 콘텐츠가 있으면 postBody/caption 판단보다 먼저 사용한다.
   const threadText = post.threadItems.map((item) => item.text).join(" ");
   if (threadText) return threadText;
+
+  // Phase 3-20: naver_cafe는 기존에 저장된 글에 escape된 markdown(\##, \*\*,
+  // &#x20; 등)이 남아 있을 수 있다 — 새로 생성되는 글은 저장 시점에 이미
+  // 정리되지만(social-draft-generation-service.ts), 화면에서는 기존 데이터도
+  // 항상 정리된 형태로 보여준다(sanitizeNaverCafePlainText는 이미 깨끗한
+  // 텍스트에 다시 적용해도 안전하다).
+  if (post.platform === "naver_cafe") {
+    return sanitizeNaverCafePlainText(post.postBody) || post.caption?.trim() || "";
+  }
 
   const config = PLATFORM_WRITING_CONFIGS[post.platform];
   const bodyFirst = config.supportsBody

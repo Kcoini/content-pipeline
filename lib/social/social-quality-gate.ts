@@ -37,6 +37,29 @@ const PII_PATTERN = /\d{6}-\d{7}|\b010-\d{3,4}-\d{4}\b/;
 /** naver_cafe에서 특히 경계하는 홍보/도배성 표현. */
 const CAFE_PROMOTIONAL_PATTERNS = ["홍보합니다", "판매합니다", "문의주세요", "최저가", "지금 바로 구매"];
 
+// Phase 3-20: naver_cafe는 plain text 커뮤니티 글이어야 한다 — 아래
+// 기준은 lib/social/naver-cafe-plain-text-sanitizer.ts가 저장/표시/export
+// 시점에 실제로 정리하는 대상과 동일한 패턴이다(정리되지 않은 원본이
+// quality gate에 들어온 경우를 대비한 방어적 검사).
+/** 백슬래시로 escape된 markdown 마커(\#, \*, \-, \[ 등) 또는 흔한 HTML numeric entity. */
+const NAVER_CAFE_MARKDOWN_ESCAPE_PATTERN = /\\[#*\-_[\]()>]|&#x?[0-9a-fA-F]+;/;
+/** 댓글 유도(회원 질문)를 "충분하다"고 볼 최소 질문 개수. */
+const NAVER_CAFE_MIN_QUESTION_COUNT = 2;
+/** 게시용 본문에 절대 섞이면 안 되는 내부 관리 상태값 이름. */
+const NAVER_CAFE_INTERNAL_STATUS_KEYWORDS = [
+  "quality_status",
+  "approval_status",
+  "export_status",
+  "publish_status",
+  "platform_publish_guard_status",
+  "platform_publish_dry_run_status",
+  "handoff_status",
+  "manual_post_status",
+  "performance_status",
+  "rewrite_suggestion_status",
+  "ab_test_status",
+];
+
 /**
  * wordpress_blog: SEO/AEO/GEO/E-E-A-T 문제 해결형 글 기준에서 상투적인
  * 도입부로 간주하는 표현(prompts/social/wordpress-blog.md "도입부 규칙"
@@ -623,15 +646,61 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
               : "광고성/도배성 표현이 발견되지 않았습니다."
           )
         );
-        const hasDiscussionCue = /[?？]|어떻게 생각|계신가요|공유해|추천해/.test(text);
+        // Phase 3-20: 댓글 유도 질문은 "있다/없다"가 아니라 최소 2개 이상
+        // 있어야 ready로 본다 — 질문 하나만으로는 커뮤니티 글다운 대화
+        // 유도가 약하다고 판단한다.
+        const questionCount = (text.match(/[?？]/g) ?? []).length;
         checklist.push(
           checklistItem(
             "naver_cafe_discussion_cue",
-            "질문/토론 유도 여부",
-            hasDiscussionCue ? "pass" : "warning",
-            hasDiscussionCue
-              ? "질문 또는 토론을 유도하는 문장이 포함되어 있습니다."
-              : "질문/토론을 유도하는 문장이 보이지 않습니다 (커뮤니티 글에는 권장)."
+            "회원 질문 2개 이상 (댓글 유도)",
+            questionCount >= NAVER_CAFE_MIN_QUESTION_COUNT ? "pass" : questionCount > 0 ? "warning" : "fail",
+            questionCount >= NAVER_CAFE_MIN_QUESTION_COUNT
+              ? `질문이 ${questionCount}개 포함되어 있어 댓글 유도가 충분합니다.`
+              : questionCount > 0
+                ? `질문이 ${questionCount}개뿐입니다 (권장: 최소 ${NAVER_CAFE_MIN_QUESTION_COUNT}개) — 회원들에게 묻는 질문을 더 추가하는 것을 권장합니다.`
+                : "질문/토론을 유도하는 문장이 전혀 없습니다 — 커뮤니티 글은 회원에게 묻는 질문이 반드시 있어야 합니다."
+          )
+        );
+
+        // naver_cafe는 plain text 커뮤니티 글이어야 한다 — AI가 실수로
+        // 남긴 escape된 markdown(\##, \*\*, &#x20; 등)이 있으면 카페에
+        // 그대로 붙여넣었을 때 이상하게 보인다. sanitizeNaverCafePlainText로
+        // 저장/표시 시 정리되지만, 정리되지 않은 원본이 quality gate에
+        // 들어온 경우를 대비해 여기서도 명확히 차단한다.
+        const markdownEscapeFound = NAVER_CAFE_MARKDOWN_ESCAPE_PATTERN.test(text);
+        checklist.push(
+          checklistItem(
+            "naver_cafe_no_markdown_escape",
+            "escape된 markdown/HTML entity 없음",
+            markdownEscapeFound ? "fail" : "pass",
+            markdownEscapeFound
+              ? "본문에 \\##, \\**, &#x20; 같은 markdown escape/HTML entity 잔여물이 남아 있습니다 — plain text로 정리해야 합니다."
+              : "markdown escape/HTML entity 잔여물이 없습니다."
+          )
+        );
+
+        const localhostLinkFound = /https?:\/\/localhost|127\.0\.0\.1/i.test(text);
+        checklist.push(
+          checklistItem(
+            "naver_cafe_no_localhost_link",
+            "localhost 링크 없음",
+            localhostLinkFound ? "blocked" : "pass",
+            localhostLinkFound
+              ? "본문에 localhost/127.0.0.1 링크가 포함되어 있습니다 — 게시용 본문에 내부 개발 링크가 섞여서는 안 됩니다."
+              : "localhost 링크가 없습니다."
+          )
+        );
+
+        const internalStatusFound = NAVER_CAFE_INTERNAL_STATUS_KEYWORDS.filter((keyword) => text.includes(keyword));
+        checklist.push(
+          checklistItem(
+            "naver_cafe_no_internal_status_leak",
+            "내부 관리 상태값 노출 없음",
+            internalStatusFound.length > 0 ? "blocked" : "pass",
+            internalStatusFound.length > 0
+              ? `본문에 내부 관리 상태값으로 보이는 문구가 있습니다: ${internalStatusFound.join(", ")}`
+              : "내부 관리 상태값이 노출되지 않았습니다."
           )
         );
         break;

@@ -20,6 +20,7 @@ import { runSocialPostQualityGate } from "./social-quality-gate";
 import { applyToneTransform } from "./tone-transformer-rules";
 import { getPlatformWritingTemplate } from "./platform-writing-templates";
 import { generateWordPressBlogMetadata } from "./wordpress-blog-metadata-generator";
+import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
 import {
   isSocialAiGenerationEnabled,
   getSocialAiMaxTokens,
@@ -445,7 +446,14 @@ export async function generateSocialDraft(
       platform,
       toneStyle,
       postTitle: sanitized.post_title as string | null,
-      postBody: sanitized.post_body as string | null,
+      // Phase 3-20: naver_cafe는 AI가 markdown 습관(escape된 #/** 등)을
+      // 실수로 남기는 경우가 있어, 저장 전에 항상 plain text로 정리한다.
+      // 다른 플랫폼(wordpress_blog/naver_blog 등)은 markdown 본문을 그대로
+      // 저장해야 하므로 건드리지 않는다.
+      postBody:
+        platform === "naver_cafe"
+          ? sanitizeNaverCafePlainText(sanitized.post_body as string | null) || null
+          : (sanitized.post_body as string | null),
       caption: sanitized.caption as string | null,
       hashtags: (sanitized.hashtags as string[]) ?? [],
       threadItems: (sanitized.thread_items as ThreadItem[]) ?? [],

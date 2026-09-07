@@ -89,6 +89,38 @@ describe("prompts/social/wordpress-blog.md 구조 강화 지시 (Phase 2-24)", (
   });
 });
 
+describe("prompts/social/naver-cafe.md 구조 강화 지시 (Phase 3-20)", () => {
+  const content = readFileSync(join(ROOT, "prompts", "social", "naver-cafe.md"), "utf-8");
+
+  it("markdown heading/HTML 태그/굵게(**)/표 사용을 금지한다", () => {
+    expect(content).toContain("markdown heading 금지");
+    expect(content).toContain("HTML 태그 금지");
+    expect(content).toContain("굵게 표시(`**`) 금지");
+    expect(content).toContain("표(table) 금지");
+  });
+
+  it("plain text로 작성해야 한다고 명시한다", () => {
+    expect(content).toContain("plain text");
+  });
+
+  it("700~1200자 권장 길이를 명시한다", () => {
+    expect(content).toContain("700~1,200자");
+  });
+
+  it("제목은 질문형/공감형으로 작성하도록 안내한다", () => {
+    expect(content).toContain("질문형 또는 공감형");
+  });
+
+  it("본문 마지막에 회원에게 묻는 질문 3~5개를 요구한다", () => {
+    expect(content).toMatch(/질문[^\n]*3~5개/);
+  });
+
+  it("export/dry-run/handoff payload에 내부 관리 정보를 포함하지 않는다고 명시한다", () => {
+    expect(content).toContain("quality_status/approval_status");
+    expect(content).toContain("localhost 링크");
+  });
+});
+
 describe("contracts/social/*.schema.json", () => {
   it.each(CONTRACT_SCHEMA_FILES)("%s 파일이 존재하고 유효한 JSON이다", (fileName) => {
     const filePath = join(ROOT, "contracts", "social", fileName);

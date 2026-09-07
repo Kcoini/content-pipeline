@@ -229,3 +229,7 @@ article 상세 페이지의 "Multi-platform Writing" 섹션에서:
 - social post 성과 데이터(조회수/반응) 저장 스키마 추가
 - article 승인 → social post 일괄 생성 파이프라인 자동화(단, 항상 사람
   승인 게이트를 거치도록 설계)
+
+## 관련 문서
+
+- naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(Phase 3-20): [`phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md)

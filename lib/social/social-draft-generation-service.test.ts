@@ -250,6 +250,41 @@ describe("generateSocialDraft", () => {
     );
   });
 
+  it("naver_cafe: AI가 escape된 markdown(\\##, \\**, &#x20;)을 생성해도 저장 전에 plain text로 정리된다 (Phase 3-20)", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "naver_cafe", platformConfig: getPlatformWritingConfig("naver_cafe") })
+    );
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: true,
+      output: { post_title: "질문 있어요", post_body: "\\## 제목\n\n\\*\\*굵게\\*\\*&#x20;내용" },
+    });
+
+    await generateSocialDraft("article-1", "naver_cafe", "curiosity");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.postBody).not.toMatch(/\\#|\\\*|&#x20;/);
+    expect(call.postBody).toContain("제목");
+    vi.unstubAllEnvs();
+  });
+
+  it("naver_blog는 AI가 markdown을 생성해도 그대로 저장한다(naver_cafe 전용 정리 로직의 영향을 받지 않는다)", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "naver_blog", platformConfig: getPlatformWritingConfig("naver_blog") })
+    );
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: true,
+      output: { post_title: "제목", post_body: "## 소제목\n\n**굵게** 내용" },
+    });
+
+    await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.postBody).toBe("## 소제목\n\n**굵게** 내용");
+    vi.unstubAllEnvs();
+  });
+
   it("threads draft는 post_body를 생성한다", async () => {
     buildSocialWritingContext.mockResolvedValue(
       makeContext({ platform: "threads", platformConfig: getPlatformWritingConfig("threads") })

@@ -3,6 +3,7 @@
 // 직전에 사람이 최종 확인할 수 있는 payload와 handoff용 payload만 만든다.
 
 import type { CardItem, SocialPost } from "./social-platform-types";
+import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
 
 export interface PlatformPublishDryRunResult {
   ok: boolean;
@@ -92,10 +93,12 @@ export function buildPlatformPublishDryRunPayload(post: SocialPost): PlatformPub
         };
       }
       const checklist = [...baseFinalChecklist(), "카페 규칙, 홍보성 문구, 링크 남발 여부를 확인하세요."];
+      // Phase 3-20: 사람이 그대로 복사해 카페에 붙여넣는 payload이므로,
+      // escape된 markdown/HTML entity 잔여물을 정리한 본문만 담는다.
       const dryRunPayload = {
         type: "manual_copy_handoff",
         title: post.postTitle,
-        body: post.postBody,
+        body: sanitizeNaverCafePlainText(post.postBody),
         finalChecklist: checklist,
         caution: "카페 규칙, 홍보성 문구, 링크 남발을 반드시 확인하세요.",
       };

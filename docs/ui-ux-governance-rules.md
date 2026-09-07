@@ -326,6 +326,23 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   오해한다. 실제 사례: `lib/publish/publish-service.ts`/
   `app/articles/[id]/blog/page.tsx`
   (`docs/phase-2-23-wordpress-draft-approval-status-clarity.md` 참고).
+- **게시용 본문과 내부 관리 정보(quality_status/approval_status/
+  export_status/성과/Rewrite/A-B Test/API readiness/metadata/localhost
+  링크 등)를 같은 화면에 나란히 펼쳐 보여주지 않는다.** 게시용 본문
+  미리보기는 항상 눈에 바로 보이게 하고, 내부 관리 정보는 "관리 정보
+  보기" 같은 접힌(collapsed) accordion 안에 모아 관리자용임을
+  표시한다. export/copy/handoff payload에는 내부 관리 정보를 절대
+  포함하지 않는다. 실제 사례: `app/social-posts/[id]/page.tsx`,
+  `lib/social/social-export-builder.ts`
+  (`docs/phase-3-20-naver-cafe-plain-text-cleanup.md` 참고).
+- **플랫폼마다 "게시용 본문"의 실제 형식이 다르면(markdown 허용
+  플랫폼 vs plain text 전용 플랫폼), 저장/표시/export 시점에 각
+  플랫폼에 맞는 형식으로 정리한다.** naver_cafe처럼 plain text 전용
+  플랫폼에 AI가 markdown 습관(escape된 `#`/`**`, HTML entity 등)을
+  남기는 것은 프롬프트만으로 100% 막을 수 없다 — 별도의 정리 함수를
+  저장 전/표시 전/export 전 모든 지점에 일관되게 적용한다. 실제 사례:
+  `lib/social/naver-cafe-plain-text-sanitizer.ts`
+  (`docs/phase-3-20-naver-cafe-plain-text-cleanup.md` 참고).
 
 ## 관련 문서
 
@@ -342,6 +359,7 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - [`docs/phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md) — WordPress Draft 반영 승인 조건 명확화(reviewed/승인 용어 혼동 정리)
 - [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md) — article 고급 기능 WordPress 게시 준비 자동화(여러 클릭 → 자동 실행 1회 + 검토/승인)
 - [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스 HTML/표/체크리스트/FAQ 4개/기준일 안내)
+- [`docs/phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md) — naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(관리 정보 accordion)
 
 ## 섹션 12. 준비 단계 자동화 규칙
 

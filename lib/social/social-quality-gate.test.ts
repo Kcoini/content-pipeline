@@ -190,6 +190,110 @@ describe("runSocialPostQualityGate", () => {
     expect(item?.status).toBe("blocked");
   });
 
+  // Phase 3-20: naver_cafe는 plain text 커뮤니티 글이어야 하고, 게시용
+  // 본문에 escape된 markdown/HTML entity/localhost 링크/내부 관리
+  // 상태값이 남아 있으면 안 된다.
+  it("naver_cafe: markdown escape(\\##, \\**, &#x20;)가 남아 있으면 ready가 아니다(needs_revision)", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "질문 있어요",
+      postBody:
+        "\\## 제목\n\n\\*\\*굵게\\*\\*&#x20;내용입니다. " +
+        "회원분들 어떻게 생각하세요? 다들 경험 있으신가요? " +
+        "본문 내용입니다. ".repeat(30),
+    });
+
+    const item = result.checklist.find((c) => c.key === "naver_cafe_no_markdown_escape");
+    expect(item?.status).toBe("fail");
+    expect(result.status).not.toBe("ready");
+  });
+
+  it("naver_cafe: markdown escape가 없으면 naver_cafe_no_markdown_escape가 pass다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "질문 있어요",
+      postBody: "평범한 plain text 본문입니다. " + "본문 내용입니다. ".repeat(30),
+    });
+
+    const item = result.checklist.find((c) => c.key === "naver_cafe_no_markdown_escape");
+    expect(item?.status).toBe("pass");
+  });
+
+  it("naver_cafe: 본문에 localhost 링크가 있으면 blocked다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "질문 있어요",
+      postBody: "자세한 내용은 http://localhost:3000/articles/1 에서 확인하세요. " + "본문 내용입니다. ".repeat(30),
+    });
+
+    expect(result.status).toBe("blocked");
+    const item = result.checklist.find((c) => c.key === "naver_cafe_no_localhost_link");
+    expect(item?.status).toBe("blocked");
+  });
+
+  it("naver_cafe: 본문에 내부 관리 상태값(quality_status 등)이 포함되면 blocked다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "질문 있어요",
+      postBody: "현재 quality_status: ready 입니다. " + "본문 내용입니다. ".repeat(30),
+    });
+
+    expect(result.status).toBe("blocked");
+    const item = result.checklist.find((c) => c.key === "naver_cafe_no_internal_status_leak");
+    expect(item?.status).toBe("blocked");
+  });
+
+  it("naver_cafe: 질문이 2개 이상이면 naver_cafe_discussion_cue가 pass다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "질문 있어요",
+      postBody: "다들 변동금리 쓰시나요? 저만 이런가요? " + "본문 내용입니다. ".repeat(30),
+    });
+
+    const item = result.checklist.find((c) => c.key === "naver_cafe_discussion_cue");
+    expect(item?.status).toBe("pass");
+  });
+
+  it("naver_cafe: 질문이 하나도 없으면 naver_cafe_discussion_cue가 fail이다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "정보 공유",
+      postBody: "본문 내용입니다. ".repeat(30),
+    });
+
+    const item = result.checklist.find((c) => c.key === "naver_cafe_discussion_cue");
+    expect(item?.status).toBe("fail");
+  });
+
+  it("naver_cafe: 모든 기준을 만족하면(질문 2개 이상, markdown escape 없음, 내부 정보 없음) ready가 될 수 있다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "다들 이런 경험 있으신가요?",
+      postBody:
+        "요즘 금리 때문에 고민이 많으신 분들 계시죠? 저도 대출이 있어서 걱정입니다. " +
+        "본문 내용입니다. ".repeat(40) +
+        " 다들 어떻게 생각하세요? 비슷한 상황이신 분 계신가요?",
+    });
+
+    for (const key of [
+      "naver_cafe_no_markdown_escape",
+      "naver_cafe_no_localhost_link",
+      "naver_cafe_no_internal_status_leak",
+      "naver_cafe_discussion_cue",
+      "naver_cafe_promotional_language",
+    ]) {
+      const item = result.checklist.find((c) => c.key === key);
+      expect(item?.status).toBe("pass");
+    }
+  });
+
   it("naver_blog에서 특정 키워드가 과도하게 반복되면 warning이다", () => {
     const result = runSocialPostQualityGate({
       platform: "naver_blog",
