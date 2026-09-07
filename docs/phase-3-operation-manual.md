@@ -31,12 +31,20 @@
    메뉴)은
    [`phase-1-22-dashboard-top-nav-simplification.md`](./phase-1-22-dashboard-top-nav-simplification.md)
    참고.
-2. **`/articles/[id]`에서 기사 개요 확인** — 기사 본문, 상태, 하위
-   워크플로우(블로그/소셜/rewrite/성과/AB테스트) 진입점을 확인한다.
+2. **`/articles/[id]`에서 기사 개요 확인 + 플랫폼별 글 생성(Phase 3-21)** —
+   기사 본문, 상태, 하위 워크플로우(블로그/소셜/rewrite/성과/AB테스트)
+   진입점을 확인한다. 이 화면의 "플랫폼별 글 생성" 섹션에서 필요한
+   플랫폼만 체크해 바로 생성을 시작할 수 있다(기본 추천: WordPress
+   블로그/네이버 블로그/네이버 카페) — article은 여기서 최종 결과물이
+   아니라 플랫폼별 글을 만들기 위한 "출처 기반 원고 context"로만 쓰인다.
+   전체 플랫폼 생성은 API 사용량 경고 확인 후에만 실행되는 고급
+   옵션이다. 자세한 내용은
+   [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
+   참고.
 3. **`/articles/[id]/blog`에서 블로그 글 관리** — WordPress/Naver
-   Blog 등 블로그형 플랫폼용 글을 생성/검수한다.
+   Blog 등 블로그형 플랫폼용 글을 개별 재생성/검수한다.
 4. **`/articles/[id]/social`에서 SNS/커뮤니티 글 관리** — X/Threads/
-   Instagram/Naver Cafe 등 SNS·커뮤니티형 글을 생성/검수한다.
+   Instagram/Naver Cafe 등 SNS·커뮤니티형 글을 개별 재생성/검수한다.
 5. **quality check 실행** — 각 social post 카드의 "품질검사" 버튼.
    `quality_status`가 `ready`가 되어야 다음 단계로 진행할 수 있다.
 6. **approval 요청 및 승인** — "승인 요청" 버튼으로 검토를 요청하고,
@@ -488,4 +496,5 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 기사초안 재생성 무반응 방지 + article mode 전환 확인(Phase 2-22): [`phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md)
 - WordPress Draft 반영 승인 조건 명확화(Phase 2-23): [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
 - naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(Phase 3-20): [`phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md)
+- "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의(Phase 3-21): [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
 - 수익형 블로그 구조 강화(Phase 2-24, SEO/AEO/GEO/E-E-A-T/체류시간/모바일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)

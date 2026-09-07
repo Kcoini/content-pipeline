@@ -467,3 +467,48 @@ describe("archiveSocialPostAction (정적 소스 검사, wordpress_blog/naver_bl
     expect(fnBody).toContain("buildArticleSocialUrl(articleId)");
   });
 });
+
+describe("generateSelectedPlatformPostsAction (정적 소스 검사, Phase 3-21)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("export async function generateSelectedPlatformPostsAction"),
+    actionsSource.indexOf("export async function generateAllPlatformPostsAction")
+  );
+
+  it("generateSelectedPlatformPosts 서비스를 사용한다", () => {
+    expect(fnBody).toContain("generateSelectedPlatformPosts({");
+  });
+
+  it("체크박스로 선택된 platforms 배열과 toneMode를 formData에서 읽는다", () => {
+    expect(fnBody).toContain("parseSelectedPlatforms(formData)");
+    expect(fnBody).toContain("parseToneSelectionInputs(formData)");
+  });
+
+  it("무반응 금지: 결과가 있으면 항상 요약 메시지를, 플랫폼 미선택이면 오류 메시지를 표시한다", () => {
+    expect(fnBody).toContain('"error" in result');
+    expect(fnBody).toContain("formatPlatformGenerationSummary(result)");
+  });
+
+  it("실제 WordPress 공개 게시 함수를 호출하지 않는다", () => {
+    expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|publishWordPressPost/);
+  });
+});
+
+describe("generateAllPlatformPostsAction (정적 소스 검사, Phase 3-21: 고급 옵션 — 전체 플랫폼)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("export async function generateAllPlatformPostsAction"),
+    actionsSource.indexOf("/** Multi-platform Writing 목록을 새로고침한다")
+  );
+
+  it("generateAllPlatformPosts 서비스를 사용한다", () => {
+    expect(fnBody).toContain("generateAllPlatformPosts({");
+  });
+
+  it("confirmed=true가 아니면 실제 생성을 시도하지 않고 안내만 반환한다", () => {
+    expect(fnBody).toContain('formData.get("confirmed") === "true"');
+    expect(fnBody).toContain("!confirmed");
+  });
+
+  it("실제 WordPress 공개 게시 함수를 호출하지 않는다", () => {
+    expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|publishWordPressPost/);
+  });
+});

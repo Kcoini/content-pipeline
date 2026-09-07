@@ -6,6 +6,16 @@ import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
 import { getLogsByArticleId } from "@/lib/harness/logger";
 import { getPublishLogsByArticleId } from "@/lib/repositories/publish-repository";
 import { buildArticleContentSummary } from "@/lib/social/article-content-summary-service";
+import { listSocialPostsByArticle } from "@/lib/repositories/social-posts-repository";
+import { buildArticleOverviewUrl } from "@/lib/navigation/article-deep-links";
+import { SOCIAL_PLATFORMS } from "@/lib/social/social-platform-types";
+import {
+  PLATFORM_LABELS,
+  PLATFORM_SHORT_DESCRIPTIONS,
+  PLATFORM_COST_LEVELS,
+  getRecommendedPlatforms,
+} from "@/lib/social/platform-generation-recommendations";
+import { PlatformSelectionCheckboxes } from "@/components/articles/platform-selection-checkboxes";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
 import type { ArticleStatus } from "@/lib/types/domain";
 import {
@@ -45,6 +55,8 @@ import {
   saveLocalFeaturedImageAction,
   saveExistingWordPressMediaSourceAction,
   waiveArticleWordPressFeaturedImageAction,
+  generateSelectedPlatformPostsAction,
+  generateAllPlatformPostsAction,
 } from "./actions";
 import {
   ARTICLE_FEATURED_IMAGE_WAIVER_REASONS,
@@ -357,7 +369,7 @@ export default async function ArticleDetailPage({
     );
   }
 
-  const [theme, sources, latestEval, logs, wordpressLogs, contentSummary] = await Promise.all([
+  const [theme, sources, latestEval, logs, wordpressLogs, contentSummary, existingSocialPosts] = await Promise.all([
     getThemeById(article.themeId),
     getSourcesByArticleId(article.id),
     getLatestEvalByArticleId(article.id),
@@ -367,7 +379,21 @@ export default async function ArticleDetailPage({
     // 놓칠 수 있으므로, wordpress target은 항상 별도로 조회한다.
     getPublishLogsByArticleId(article.id, 5, WORDPRESS_TARGET),
     buildArticleContentSummary(article.id),
+    // Phase 3-21: "플랫폼별 글 생성" 섹션에서 플랫폼별로 이미 생성된 글이
+    // 있는지 확인하기 위해 조회한다(체크박스 기본 선택/상태 표시용).
+    listSocialPostsByArticle(article.id),
   ]);
+
+  const existingPlatforms = new Set(existingSocialPosts.map((post) => post.platform));
+  const recommendedPlatforms = new Set(getRecommendedPlatforms());
+  const platformSelectionOptions = SOCIAL_PLATFORMS.map((platform) => ({
+    value: platform,
+    label: PLATFORM_LABELS[platform],
+    description: PLATFORM_SHORT_DESCRIPTIONS[platform],
+    costLevel: PLATFORM_COST_LEVELS[platform],
+    statusLabel: existingPlatforms.has(platform) ? "이미 생성됨 (건너뜀 — 재생성은 아래 관리 화면에서)" : "아직 생성되지 않음",
+    recommended: recommendedPlatforms.has(platform),
+  }));
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -2327,6 +2353,65 @@ export default async function ArticleDetailPage({
         </div>
 
         {/* Phase 3-16: 기사 개요 — 생성된 콘텐츠 요약 + 하위 페이지 이동 */}
+        {/* Phase 3-21: "테마 → 출처 → 플랫폼별 글 생성 → 검토/승인 → 게시
+            준비" 흐름을 사용자 경험상 되살리기 위한 섹션. article은
+            여기서 최종 목적지가 아니라, 아래 플랫폼별 글 생성을 위한
+            출처 기반 원고 context로만 쓰인다. */}
+        <section className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">플랫폼별 글 생성</h2>
+          <p className="mt-1 break-keep text-xs text-zinc-500">
+            필요한 플랫폼만 선택해 글을 생성할 수 있습니다. 전체 생성은 API 사용량이 늘어날 수 있으므로 필요한
+            플랫폼만 선택하는 것을 권장합니다. 이 article은 각 플랫폼 글을 만들기 위한 출처 기반 원고 context로
+            사용됩니다.
+          </p>
+
+          <form action={generateSelectedPlatformPostsAction} className="mt-3">
+            <input type="hidden" name="articleId" value={article.id} />
+            <input type="hidden" name="returnTo" value={buildArticleOverviewUrl(article.id)} />
+            <input type="hidden" name="toneMode" value="auto_recommended" />
+
+            <PlatformSelectionCheckboxes options={platformSelectionOptions} />
+
+            <p className="mt-2 text-[11px] text-zinc-400">
+              문체 설정: 추천 문체 자동 적용(기본값) — 플랫폼마다 어울리는 문체가 자동으로 적용됩니다.
+            </p>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+              >
+                선택한 플랫폼 글 생성
+              </button>
+              <span className="text-[11px] text-zinc-400">
+                이미 생성된 플랫폼은 자동으로 건너뜁니다(조용히 덮어쓰지 않습니다). 재생성은 블로그/SNS 관리
+                화면에서 개별로 진행하세요.
+              </span>
+            </div>
+          </form>
+
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-zinc-500">고급 옵션: 전체 플랫폼 글 생성</summary>
+            <form action={generateAllPlatformPostsAction} className="mt-2">
+              <input type="hidden" name="articleId" value={article.id} />
+              <input type="hidden" name="returnTo" value={buildArticleOverviewUrl(article.id)} />
+              <input type="hidden" name="toneMode" value="auto_recommended" />
+              <input type="hidden" name="confirmed" value="true" />
+              <ConfirmSubmitButton
+                confirmMessage={[
+                  "전체 플랫폼 글을 생성하면 WordPress 블로그, 네이버 블로그, 네이버 카페, X, Threads, Instagram 글을 한 번에 생성합니다.",
+                  "긴 블로그 글과 카드형 글이 포함될 경우 API 사용량이 증가할 수 있습니다.",
+                  "필요한 플랫폼만 선택해서 생성하는 것을 권장합니다.",
+                  "그래도 전체 생성하시겠습니까?",
+                ].join("\n\n")}
+                className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                전체 플랫폼 글 생성
+              </ConfirmSubmitButton>
+            </form>
+          </details>
+        </section>
+
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">생성된 콘텐츠 요약</h2>
           {!contentSummary ? (

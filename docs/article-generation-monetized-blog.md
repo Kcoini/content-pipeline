@@ -578,6 +578,17 @@ Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절�
 참고 — 이 개선은 `monetized_blog`(article mode)와 `wordpress_blog`
 (social post platform) 양쪽 프롬프트에 모두 적용됐다.
 
+## article context로서의 역할 (Phase 3-21)
+
+사용자 화면에서는 `monetized_blog`를 포함한 모든 article mode를
+"최종 게시물"이 아니라 **출처 기반 원고 context**로 안내한다 — article
+은 WordPress 블로그/네이버 블로그/네이버 카페/X/Threads/Instagram 글을
+만들기 위한 기반 자료로 쓰인다. `monetized_blog`는 그중 "수익형
+블로그에 적합한 article context"로 정리된다. 내부 구조(article_mode
+컬럼, 상태 모델)는 변경하지 않았다. 상세는
+[`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
+참고.
+
 ## 관련 문서
 
 - 운영 매뉴얼: [`phase-3-operation-manual.md`](./phase-3-operation-manual.md)
@@ -586,4 +597,5 @@ Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절�
 - 기사초안 재생성 무반응 방지: [`phase-2-22-article-generation-regeneration-confirmation.md`](./phase-2-22-article-generation-regeneration-confirmation.md)
 - WordPress Draft 반영 승인 조건 명확화: [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
 - 수익형 블로그 구조 강화(요약 박스/표/체크리스트/FAQ/기준일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
+- "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의: [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
 - 프롬프트 요약: [`../prompts/articles/monetized-blog.md`](../prompts/articles/monetized-blog.md)

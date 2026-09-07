@@ -343,6 +343,14 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   저장 전/표시 전/export 전 모든 지점에 일관되게 적용한다. 실제 사례:
   `lib/social/naver-cafe-plain-text-sanitizer.ts`
   (`docs/phase-3-20-naver-cafe-plain-text-cleanup.md` 참고).
+- **"전체 생성"/"전체 게시"처럼 API 사용량이나 비용이 커질 수 있는
+  일괄 작업은 메인 버튼으로 두지 않는다.** 기본 흐름은 항상 "필요한
+  항목만 선택"이며, 전체 처리는 고급 옵션(secondary/outline 버튼, 접힌
+  섹션)으로 제공하고 실행 전 확인 모달로 비용/영향 범위를 안내한다.
+  플랫폼(어디에 올릴 글인가)과 문체/톤(어떤 방식으로 말할 것인가)도
+  서로 다른 축으로 분리해서 선택하게 한다 — 기본값은 "추천 값 자동
+  적용"이다. 실제 사례: `app/articles/[id]/page.tsx`의 "플랫폼별 글
+  생성" 섹션 (`docs/phase-3-21-platform-generation-flow.md` 참고).
 
 ## 관련 문서
 
@@ -360,6 +368,7 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md) — article 고급 기능 WordPress 게시 준비 자동화(여러 클릭 → 자동 실행 1회 + 검토/승인)
 - [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스 HTML/표/체크리스트/FAQ 4개/기준일 안내)
 - [`docs/phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md) — naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(관리 정보 accordion)
+- [`docs/phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md) — "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의(선택/전체 생성, 추천 플랫폼/문체)
 
 ## 섹션 12. 준비 단계 자동화 규칙
 

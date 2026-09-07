@@ -75,6 +75,13 @@ import {
 } from "@/lib/social/social-post-service";
 import { generateSocialDraft } from "@/lib/social/social-draft-generation-service";
 import {
+  generateSelectedPlatformPosts,
+  generateAllPlatformPosts,
+  type ToneSelectionMode,
+} from "@/lib/social/multi-platform-generation-service";
+import type { PlatformGenerationSummary } from "@/lib/social/multi-platform-generation-service";
+import { isToneSelectionMode } from "@/lib/social/tone-selection-mode";
+import {
   requestApproval as requestSocialPostApprovalService,
   approveSocialPost as approveSocialPostService,
   rejectSocialPost as rejectSocialPostService,
@@ -121,7 +128,16 @@ import {
 import { decideAbTestWinner } from "@/lib/social/social-ab-test-comparison-service";
 import { isAbTestPrimaryMetric } from "@/lib/social/social-ab-test-service";
 import { buildArticleAbTestsUrl } from "@/lib/navigation/article-deep-links";
-import { isSocialPlatform, isToneStyle, type ThreadItem, type CardItem, type SocialPost } from "@/lib/social/social-platform-types";
+import {
+  isSocialPlatform,
+  isToneStyle,
+  SOCIAL_PLATFORMS,
+  type ThreadItem,
+  type CardItem,
+  type SocialPost,
+  type SocialPlatform,
+  type ToneStyle,
+} from "@/lib/social/social-platform-types";
 import { getPlatformGroup } from "@/lib/social/content-type-classifier";
 import { getSafeReturnTo } from "@/lib/navigation/return-to";
 import {
@@ -1745,6 +1761,118 @@ export async function generateSocialDraftAction(formData: FormData): Promise<voi
 
   // Phase 3-17: 생성된 social post의 platform에 맞는 deep link(하이라이트 포함)로 돌아간다.
   redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, createdSocialPost, platformRaw), message, isError);
+}
+
+/** PlatformGenerationSummary를 사람이 읽는 한 줄 요약으로 바꾼다("무반응 금지" 원칙 — 항상 결과를 보여준다). */
+function formatPlatformGenerationSummary(summary: PlatformGenerationSummary): string {
+  const parts = summary.results.map((r) => {
+    const label =
+      r.status === "generated" ? "생성 완료" : r.status === "skipped_existing" ? "이미 생성됨 — 건너뜀" : `생성 실패 — ${r.message}`;
+    return `${r.platform}: ${label}`;
+  });
+  return `플랫폼별 글 생성 결과 — ${parts.join(" / ")}`;
+}
+
+function parseSelectedPlatforms(formData: FormData): SocialPlatform[] {
+  return formData
+    .getAll("platforms")
+    .map((value) => String(value))
+    .filter(isSocialPlatform);
+}
+
+function parseToneSelectionInputs(formData: FormData): {
+  toneMode: ToneSelectionMode;
+  uniformToneStyle?: ToneStyle;
+  toneStylesByPlatform?: Partial<Record<SocialPlatform, ToneStyle>>;
+} {
+  const toneModeRaw = formData.get("toneMode");
+  const toneMode: ToneSelectionMode = isToneSelectionMode(toneModeRaw) ? toneModeRaw : "auto_recommended";
+
+  const uniformToneStyleRaw = formData.get("uniformToneStyle");
+  const uniformToneStyle = isToneStyle(uniformToneStyleRaw) ? uniformToneStyleRaw : undefined;
+
+  const toneStylesByPlatform: Partial<Record<SocialPlatform, ToneStyle>> = {};
+  for (const platform of SOCIAL_PLATFORMS) {
+    const value = formData.get(`toneStyle_${platform}`);
+    if (isToneStyle(value)) toneStylesByPlatform[platform] = value;
+  }
+
+  return { toneMode, uniformToneStyle, toneStylesByPlatform };
+}
+
+/**
+ * Phase 3-21: 사용자가 체크박스로 선택한 플랫폼만 글을 생성한다("선택한
+ * 플랫폼 글 생성" 메인 버튼). article context(원본 article)는 이미
+ * 존재한다고 가정한다 — article이 아직 없으면(draft 미생성) 이 action
+ * 이전에 "출처 기반 원고 context 준비" 단계(기존 기사 초안 생성)를 먼저
+ * 완료해야 한다는 안내를 반환한다. 이미 생성된 플랫폼은 조용히
+ * 덮어쓰지 않고 건너뛴다. 실제 WordPress 공개 게시는 호출하지 않는다.
+ */
+export async function generateSelectedPlatformPostsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const platforms = parseSelectedPlatforms(formData);
+  const { toneMode, uniformToneStyle, toneStylesByPlatform } = parseToneSelectionInputs(formData);
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await generateSelectedPlatformPosts({
+      articleId,
+      platforms,
+      toneMode,
+      uniformToneStyle,
+      toneStylesByPlatform,
+    });
+    if ("error" in result) {
+      message = result.error;
+      isError = true;
+    } else {
+      message = formatPlatformGenerationSummary(result);
+      isError = result.generatedCount === 0 && result.failedCount > 0;
+    }
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleOverviewUrl(articleId), message, isError);
+}
+
+/**
+ * Phase 3-21: 전체 플랫폼(wordpress_blog/naver_blog/naver_cafe/x/threads/
+ * instagram) 글을 한 번에 생성한다. 이 action은 고급 옵션이며, 반드시
+ * 화면의 확인 모달(비용 경고)을 거친 뒤에만 호출되어야 한다 —
+ * `confirmed=true`가 없으면 실행하지 않고 안내만 반환한다. 이미 생성된
+ * 플랫폼은 기본적으로 건너뛴다. 실제 WordPress 공개 게시는 호출하지 않는다.
+ */
+export async function generateAllPlatformPostsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const confirmed = formData.get("confirmed") === "true";
+  const { toneMode, uniformToneStyle, toneStylesByPlatform } = parseToneSelectionInputs(formData);
+
+  let message: string;
+  let isError: boolean;
+
+  if (!confirmed) {
+    message = "전체 플랫폼 글 생성은 비용 경고 확인 후에만 실행됩니다. 확인 모달에서 '전체 생성'을 눌러주세요.";
+    isError = true;
+    revalidateArticleWorkflowPaths(articleId);
+    redirectToSafeTarget(formData, buildArticleOverviewUrl(articleId), message, isError);
+  }
+
+  try {
+    const result = await generateAllPlatformPosts({ articleId, toneMode, uniformToneStyle, toneStylesByPlatform });
+    message = formatPlatformGenerationSummary(result);
+    isError = result.generatedCount === 0 && result.failedCount > 0;
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleOverviewUrl(articleId), message, isError);
 }
 
 /** Multi-platform Writing 목록을 새로고침한다 (별도 API 호출 없이 페이지만 다시 렌더링). */

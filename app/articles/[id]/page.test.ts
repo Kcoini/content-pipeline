@@ -12,9 +12,13 @@ describe("article overview page (정적 소스 검사)", () => {
     expect(pageSource).not.toContain("post.caption");
   });
 
-  it("social_posts 전체 목록을 더 이상 직접 렌더링하지 않는다 (하위 페이지로 이동)", () => {
-    expect(pageSource).not.toContain("listSocialPostsByArticle");
+  it("social_posts 개별 글의 상세 내용(본문/제목 등)을 직접 렌더링하지 않는다 (하위 페이지로 이동)", () => {
+    // Phase 3-21: listSocialPostsByArticle 자체는 "플랫폼별 글 생성" 섹션에서
+    // 플랫폼별 기존 생성 여부만 확인하는 용도로 다시 쓰인다 — 개별 글의
+    // 제목/본문을 여기서 렌더링하지 않는 한 기존 원칙(하위 페이지로 상세
+    // 이동)과 충돌하지 않는다.
     expect(pageSource).not.toContain("Multi-platform Writing");
+    expect(pageSource).not.toContain("post.postTitle");
   });
 
   it("하위 페이지(blog/social/rewrite/performance)로 이동하는 링크를 포함한다", () => {
@@ -195,5 +199,51 @@ describe("원본 article WordPress 전송: Markdown→HTML 안내/재변환 (정
     const block = pageSource.slice(start, end);
     expect(block).toContain("공개");
     expect(block).toContain("WordPress 관리자 화면");
+  });
+});
+
+describe("플랫폼별 글 생성 섹션 (정적 소스 검사, Phase 3-21)", () => {
+  it("선택한 플랫폼 글 생성/전체 플랫폼 글 생성 action을 사용한다", () => {
+    expect(pageSource).toContain("generateSelectedPlatformPostsAction");
+    expect(pageSource).toContain("generateAllPlatformPostsAction");
+  });
+
+  it("전체 플랫폼 글 생성은 고급 옵션(<details>)이며 확인 모달(ConfirmSubmitButton)을 거친다", () => {
+    const start = pageSource.indexOf("고급 옵션: 전체 플랫폼 글 생성");
+    expect(start).toBeGreaterThan(-1);
+    const block = pageSource.slice(start, start + 800);
+    expect(block).toContain("ConfirmSubmitButton");
+    expect(block).toContain("confirmMessage");
+    expect(block).toContain("API 사용량이 증가할 수 있습니다");
+  });
+
+  it("선택한 플랫폼 글 생성이 메인(primary) 버튼이고, 전체 생성은 secondary/outline 스타일이다", () => {
+    const selectedButtonStart = pageSource.indexOf("선택한 플랫폼 글 생성");
+    const selectedButtonBlock = pageSource.slice(Math.max(0, selectedButtonStart - 300), selectedButtonStart);
+    expect(selectedButtonBlock).toContain("bg-indigo-600");
+
+    const advancedSectionStart = pageSource.indexOf("고급 옵션: 전체 플랫폼 글 생성");
+    const confirmBlockStart = pageSource.indexOf("<ConfirmSubmitButton", advancedSectionStart);
+    const confirmBlockEnd = pageSource.indexOf("</ConfirmSubmitButton>", confirmBlockStart);
+    const confirmBlock = pageSource.slice(confirmBlockStart, confirmBlockEnd);
+    expect(confirmBlock).toContain("전체 플랫폼 글 생성");
+    expect(confirmBlock).not.toContain("bg-indigo-600");
+  });
+
+  it("이미 생성된 플랫폼이 있어도 건너뛴다는 안내가 있다(조용히 덮어쓰지 않는다)", () => {
+    expect(pageSource).toContain("이미 생성된 플랫폼은 자동으로 건너뜁니다(조용히 덮어쓰지 않습니다)");
+  });
+
+  it("PlatformSelectionCheckboxes에 비용 수준/추천 여부/기존 생성 상태를 전달한다", () => {
+    expect(pageSource).toContain("PlatformSelectionCheckboxes");
+    expect(pageSource).toContain("costLevel: PLATFORM_COST_LEVELS[platform]");
+    expect(pageSource).toContain("recommended: recommendedPlatforms.has(platform)");
+    expect(pageSource).toContain("existingPlatforms.has(platform)");
+  });
+
+  it("article은 플랫폼 글 생성을 위한 원고 context로 안내되고, article mode를 과하게 강조하지 않는다", () => {
+    const start = pageSource.indexOf("플랫폼별 글 생성</h2>");
+    const block = pageSource.slice(start, start + 600);
+    expect(block).toContain("출처 기반 원고 context");
   });
 });

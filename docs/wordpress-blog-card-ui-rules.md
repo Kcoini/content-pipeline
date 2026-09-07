@@ -195,6 +195,17 @@ wordpress_blog 카드의 quality gate는 아래 항목을 "가산"(warning,
 [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
 참고.
 
+## 플랫폼별 글 생성 흐름과의 관계 (Phase 3-21)
+
+wordpress_blog 카드는 여전히 `/articles/[id]/blog`에서 개별로
+생성/재생성/검수한다(이 문서의 구조 규칙 그대로 적용). 다만
+`/articles/[id]` 개요 페이지의 새 "플랫폼별 글 생성" 섹션에서 여러
+플랫폼과 함께 처음 생성을 시작할 수도 있다 — 내부적으로는 동일한
+`generateSocialDraft()`를 호출하므로 카드 구조/UI 규칙은 그대로다.
+상세는
+[`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
+참고.
+
 ## 관련 문서
 
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 문서의 근거가 되는 프로젝트 전체 규칙
@@ -202,3 +213,4 @@ wordpress_blog 카드의 quality gate는 아래 항목을 "가산"(warning,
 - [`docs/ui-audit-wordpress-blog-card.md`](./ui-audit-wordpress-blog-card.md) — 현재 구현이 이 규칙을 얼마나 만족하는지 점검한 결과
 - [`docs/article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md) — Step 1~7/체크리스트 구현 상세
 - [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스/표/체크리스트/FAQ/기준일)
+- [`docs/phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md) — "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의

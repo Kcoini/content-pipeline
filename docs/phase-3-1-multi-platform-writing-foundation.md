@@ -233,3 +233,4 @@ article 상세 페이지의 "Multi-platform Writing" 섹션에서:
 ## 관련 문서
 
 - naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(Phase 3-20): [`phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md)
+- "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의(Phase 3-21): [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)

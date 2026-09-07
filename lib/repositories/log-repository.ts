@@ -418,7 +418,21 @@ export type LogEventType =
   | "article_generation_mode_change_detected"
   | "article_generation_regeneration_requested"
   | "article_generation_regeneration_started"
-  | "article_generation_failed";
+  | "article_generation_failed"
+  // Phase 3-21: "테마 → 출처 → 플랫폼별 글 생성" 흐름 — 개별/선택/전체
+  // 플랫폼 글 생성 요청과 결과를 기록한다.
+  | "platform_generation_single_requested"
+  | "platform_generation_selected_requested"
+  | "platform_generation_all_requested"
+  | "platform_generation_cost_warning_shown"
+  | "platform_generation_article_context_created"
+  | "platform_generation_started"
+  | "platform_generation_completed"
+  | "platform_generation_skipped_existing"
+  | "platform_generation_failed"
+  | "platform_generation_tone_auto_selected"
+  | "platform_generation_tone_manual_selected"
+  | "platform_generation_public_publish_blocked";
 
 export type LogStatus = "success" | "failed" | "info";
 
