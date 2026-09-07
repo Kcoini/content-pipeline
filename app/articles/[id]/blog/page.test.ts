@@ -1062,3 +1062,20 @@ describe("wordpress_blog 카드 가독성 개선 (정적 소스 검사)", () => 
     expect(pageSource).toContain("ConfirmSubmitButton");
   });
 });
+
+describe("진행 단계 표시 + 카드 상태 요약 (정적 소스 검사, Phase 3-22)", () => {
+  it("ContentProgressSteps를 사용한다", () => {
+    expect(pageSource).toContain("ContentProgressSteps");
+  });
+
+  it("raw 상태값 나열 대신 getUserFacingStatus/getNextRecommendedAction 요약을 먼저 보여준다", () => {
+    expect(pageSource).toContain("getUserFacingStatus(post)");
+    expect(pageSource).toContain("getNextRecommendedAction(post)");
+    expect(pageSource).toContain("다음 작업:");
+  });
+
+  it("원문 상태값은 '상세 상태 보기' 접힘 영역 안에 남아 있다(제거하지 않음)", () => {
+    expect(pageSource).toContain("상세 상태 보기 (관리자용, 기본 접힘)");
+    expect(pageSource).toMatch(/quality: \{post\.qualityStatus\}/);
+  });
+});

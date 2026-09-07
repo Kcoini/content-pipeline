@@ -206,6 +206,17 @@ wordpress_blog 카드는 여전히 `/articles/[id]/blog`에서 개별로
 [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
 참고.
 
+## 카드 상태 요약과 진행 단계 표시 (Phase 3-22)
+
+wordpress_blog 카드 상단의 원문 상태값 나열(`quality: ... · approval: ...`)은
+`getUserFacingStatus`/`getNextRecommendedAction`(`lib/social/
+social-post-user-facing-status.ts`) 기반의 한 줄 요약으로 바뀌었다.
+원문 상태값은 삭제하지 않고 "상세 상태 보기" 접힘 안으로 옮겼다. 화면
+상단에는 `ContentProgressSteps`(테마 선택 → 출처 입력 → 글 생성 →
+검토/승인 → 게시 준비) 공통 진행 표시가 추가됐다. 상세는
+[`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
+참고.
+
 ## 관련 문서
 
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 문서의 근거가 되는 프로젝트 전체 규칙
@@ -214,3 +225,5 @@ wordpress_blog 카드는 여전히 `/articles/[id]/blog`에서 개별로
 - [`docs/article-blog-wordpress-workflow.md`](./article-blog-wordpress-workflow.md) — Step 1~7/체크리스트 구현 상세
 - [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스/표/체크리스트/FAQ/기준일)
 - [`docs/phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md) — "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의
+- [`docs/phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md) — 사용자 플랫폼 UI "행동 중심" 정리
+- [`docs/phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md) — 대시보드 "작업 흐름 중심 화면" 재구성

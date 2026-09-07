@@ -51,6 +51,43 @@ describe("article social page pagination (정적 소스 검사, Phase 3-18)", ()
   });
 });
 
+describe("카드 상태 요약/주요 버튼 강조 (정적 소스 검사, Phase 3-22)", () => {
+  it("raw 상태값을 그대로 나열하지 않고 getUserFacingStatus/getNextRecommendedAction을 사용한다", () => {
+    expect(pageSource).toContain("getUserFacingStatus(post)");
+    expect(pageSource).toContain("getNextRecommendedAction(post)");
+    expect(pageSource).toContain("다음 작업:");
+  });
+
+  it("raw 상태값(quality/approval/export 등)은 '상세 상태 보기' 접힘 안에만 있다", () => {
+    const detailsStart = pageSource.indexOf("상세 상태 보기 / 보조 작업");
+    expect(detailsStart).toBeGreaterThan(-1);
+    const beforeDetails = pageSource.slice(0, detailsStart);
+    // 카드 상단 요약 영역에는 "quality: {post.qualityStatus}" 같은 raw 나열이 없어야 한다.
+    expect(beforeDetails).not.toMatch(/quality: \{post\.qualityStatus\}/);
+  });
+
+  it("승인(approveSocialPostAction) 버튼이 SNS/커뮤니티 카드에도 있다(이전에는 blog 카드에만 있었음)", () => {
+    expect(pageSource).toContain("approveSocialPostAction");
+  });
+
+  it("현재 상태에 맞는 버튼 하나만 primary 스타일(bg-indigo-600)로 강조한다", () => {
+    expect(pageSource).toContain("nextAction.kind === \"quality_check\" ? primaryClass : secondaryClass");
+    expect(pageSource).toContain("nextAction.kind === \"review\" ? primaryClass : secondaryClass");
+    expect(pageSource).toContain("nextAction.kind === \"approve\" ? primaryClass : secondaryClass");
+    expect(pageSource).toContain("nextAction.kind === \"export\" ? primaryClass : secondaryClass");
+  });
+
+  it("Publishing Guard/Dry-run/Handoff/체크리스트 등 보조 작업은 접힘 영역 안으로 옮겨졌다", () => {
+    const detailsStart = pageSource.indexOf("상세 상태 보기 / 보조 작업");
+    const detailsEnd = pageSource.indexOf("게시 결과 기록 / Metrics 입력", detailsStart);
+    const detailsBlock = pageSource.slice(detailsStart, detailsEnd);
+    expect(detailsBlock).toContain("Publishing Guard 실행");
+    expect(detailsBlock).toContain("Dry-run 생성");
+    expect(detailsBlock).toContain("Handoff 완료");
+    expect(detailsBlock).toContain("게시 체크리스트 준비");
+  });
+});
+
 describe("naver_cafe 등 본문형 플랫폼 미리보기 (정적 소스 검사, Phase 3-19)", () => {
   it("목록 카드 본문 미리보기는 getSocialPostDisplayBody를 사용한다(caption만 보지 않는다)", () => {
     expect(pageSource).toContain("getSocialPostDisplayBody");

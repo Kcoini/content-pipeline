@@ -247,3 +247,11 @@ describe("플랫폼별 글 생성 섹션 (정적 소스 검사, Phase 3-21)", ()
     expect(block).toContain("출처 기반 원고 context");
   });
 });
+
+describe("진행 단계 표시 (정적 소스 검사, Phase 3-22)", () => {
+  it("ContentProgressSteps를 사용하고, draft/reviewed 상태에 따라 current를 계산한다", () => {
+    expect(pageSource).toContain("ContentProgressSteps");
+    expect(pageSource).toContain("isDraft");
+    expect(pageSource).toMatch(/existingSocialPosts\.some\(\(post\) => post\.approvalStatus === "approved"\)/);
+  });
+});

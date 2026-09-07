@@ -111,9 +111,17 @@ export async function archiveTheme(themeId: string): Promise<Theme> {
 export interface ThemeRelatedCounts {
   sourceCount: number;
   articleCount: number;
+  /** Phase 3-23-3: 테마 목록에서 동일 제목 테마도 구분할 수 있도록 추가한 진행 단계 정보. */
+  socialPostCount: number;
+  approvedSocialPostCount: number;
 }
 
-/** 테마 삭제 확인 모달에 표시할 연관 데이터 개수(출처/기사, 활성 상태 기준)를 센다. */
+/**
+ * 테마 삭제 확인 모달과 대시보드 테마 목록에 표시할 연관 데이터 개수를
+ * 센다(출처/기사 개수는 활성 상태 기준). Phase 3-23-3: 동일 제목 테마도
+ * 진행 단계로 구분할 수 있도록, 이 테마의 최신 article에 연결된
+ * social_posts 개수/승인 개수도 함께 조회한다(article이 없으면 0).
+ */
 export async function getThemeRelatedCounts(themeId: string): Promise<ThemeRelatedCounts> {
   const supabase = createServerSupabaseClient();
 
@@ -129,8 +137,45 @@ export async function getThemeRelatedCounts(themeId: string): Promise<ThemeRelat
     throw new Error(`기사 개수 조회에 실패했습니다: ${articlesResult.error.message}`);
   }
 
+  const { data: latestArticle, error: latestArticleError } = await supabase
+    .from("articles")
+    .select("id")
+    .eq("theme_id", themeId)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestArticleError) {
+    throw new Error(`최신 기사 조회에 실패했습니다: ${latestArticleError.message}`);
+  }
+
+  let socialPostCount = 0;
+  let approvedSocialPostCount = 0;
+  const latestArticleId = (latestArticle as { id?: string } | null)?.id;
+  if (latestArticleId) {
+    const [socialPostsResult, approvedResult] = await Promise.all([
+      supabase.from("social_posts").select("id", { count: "exact", head: true }).eq("article_id", latestArticleId),
+      supabase
+        .from("social_posts")
+        .select("id", { count: "exact", head: true })
+        .eq("article_id", latestArticleId)
+        .eq("approval_status", "approved"),
+    ]);
+    if (socialPostsResult.error) {
+      throw new Error(`플랫폼 글 개수 조회에 실패했습니다: ${socialPostsResult.error.message}`);
+    }
+    if (approvedResult.error) {
+      throw new Error(`승인된 플랫폼 글 개수 조회에 실패했습니다: ${approvedResult.error.message}`);
+    }
+    socialPostCount = socialPostsResult.count ?? 0;
+    approvedSocialPostCount = approvedResult.count ?? 0;
+  }
+
   return {
     sourceCount: sourcesResult.count ?? 0,
     articleCount: articlesResult.count ?? 0,
+    socialPostCount,
+    approvedSocialPostCount,
   };
 }

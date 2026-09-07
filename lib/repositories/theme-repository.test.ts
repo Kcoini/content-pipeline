@@ -17,6 +17,7 @@ function makeChain(result: { data: unknown; error: unknown; count?: number | nul
   chain.eq = vi.fn(self);
   chain.is = vi.fn(self);
   chain.order = vi.fn(self);
+  chain.limit = vi.fn(self);
   chain.maybeSingle = vi.fn(() => Promise.resolve(result));
   chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve);
   return chain;
@@ -112,14 +113,52 @@ describe("archiveTheme", () => {
 });
 
 describe("getThemeRelatedCounts", () => {
-  it("연결된 출처/기사 개수를 반환한다", async () => {
+  it("연결된 출처/기사 개수와 최신 기사의 플랫폼 글/승인 개수를 반환한다 (Phase 3-23-3)", async () => {
     const sourcesChain = makeChain({ data: null, error: null, count: 5 });
-    const articlesChain = makeChain({ data: null, error: null, count: 2 });
-    const from = vi.fn((table: string) => (table === "sources" ? sourcesChain : articlesChain));
+    const articlesCountChain = makeChain({ data: null, error: null, count: 2 });
+    const articlesLatestChain = makeChain({ data: { id: "article-1" }, error: null });
+    const socialPostsTotalChain = makeChain({ data: null, error: null, count: 4 });
+    const socialPostsApprovedChain = makeChain({ data: null, error: null, count: 1 });
+
+    let articlesCallCount = 0;
+    let socialPostsCallCount = 0;
+    const from = vi.fn((table: string) => {
+      if (table === "sources") return sourcesChain;
+      if (table === "articles") {
+        articlesCallCount += 1;
+        return articlesCallCount === 1 ? articlesCountChain : articlesLatestChain;
+      }
+      if (table === "social_posts") {
+        socialPostsCallCount += 1;
+        return socialPostsCallCount === 1 ? socialPostsTotalChain : socialPostsApprovedChain;
+      }
+      throw new Error(`unexpected table: ${table}`);
+    });
     createServerSupabaseClient.mockReturnValue({ from });
 
     const counts = await getThemeRelatedCounts("theme-1");
 
-    expect(counts).toEqual({ sourceCount: 5, articleCount: 2 });
+    expect(counts).toEqual({ sourceCount: 5, articleCount: 2, socialPostCount: 4, approvedSocialPostCount: 1 });
+  });
+
+  it("이 테마에 article이 없으면 플랫폼 글 개수는 0이다", async () => {
+    const sourcesChain = makeChain({ data: null, error: null, count: 0 });
+    const articlesCountChain = makeChain({ data: null, error: null, count: 0 });
+    const articlesLatestChain = makeChain({ data: null, error: null });
+
+    let articlesCallCount = 0;
+    const from = vi.fn((table: string) => {
+      if (table === "sources") return sourcesChain;
+      if (table === "articles") {
+        articlesCallCount += 1;
+        return articlesCallCount === 1 ? articlesCountChain : articlesLatestChain;
+      }
+      throw new Error(`unexpected table: ${table}`);
+    });
+    createServerSupabaseClient.mockReturnValue({ from });
+
+    const counts = await getThemeRelatedCounts("theme-1");
+
+    expect(counts).toEqual({ sourceCount: 0, articleCount: 0, socialPostCount: 0, approvedSocialPostCount: 0 });
   });
 });

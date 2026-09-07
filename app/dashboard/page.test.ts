@@ -4,6 +4,16 @@ import path from "node:path";
 
 const pageSource = readFileSync(path.join(__dirname, "page.tsx"), "utf8");
 const actionsSource = readFileSync(path.join(__dirname, "actions.ts"), "utf8");
+// Phase 3-23-2: "현재 상태 / 다음 작업" 카드의 문구는 page.tsx에 직접
+// 하드코딩되어 있지 않고 lib/dashboard/dashboard-workflow-presentation.ts로
+// 옮겨졌다(단일 출처화). 그 파일 자체의 동작은
+// lib/dashboard/dashboard-workflow-presentation.test.ts에서 이미 검증하므로,
+// 여기서는 page.tsx가 그 함수들을 실제로 사용해서 렌더링하는지만 정적으로
+// 확인한다.
+const workflowPresentationSource = readFileSync(
+  path.join(__dirname, "..", "..", "lib", "dashboard", "dashboard-workflow-presentation.ts"),
+  "utf8"
+);
 // Phase 1-23: 테마 목록/검색/삭제 UI는 좌측 사이드바 컴포넌트로 옮겨졌다.
 const themeSearchListSource = readFileSync(
   path.join(__dirname, "..", "..", "components", "dashboard", "theme-search-list.tsx"),
@@ -79,22 +89,72 @@ describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정�
 
   it("현재 선택된 테마는 ThemeSearchList에서 aria-current와 강조 스타일로 표시된다", () => {
     expect(themeSearchListSource).toContain('aria-current={isSelected ? "page" : undefined}');
-    expect(themeSearchListSource).toContain("bg-zinc-900 font-medium text-white");
+    expect(themeSearchListSource).toContain("bg-zinc-900 text-white");
+    expect(themeSearchListSource).toContain("font-medium text-white");
   });
 
-  it("선택된 테마 요약 카드에 출처 개수/조건 충족/기사 작성 가능 여부가 표시된다", () => {
+  it("선택된 테마 요약 카드에는 출처 개수/조건 충족 여부만 표시하고, 다른 판단(기사 작성 가능 여부 등)은 중복 표시하지 않는다 (Phase 3-23-2)", () => {
     expect(pageSource).toMatch(/출처 \{sources\.length\}개 등록됨/);
     expect(pageSource).toContain('{sourceStatus.isReady ? "조건 충족" : "출처 부족"}');
-    expect(pageSource).toMatch(/기사 작성 가능/);
+    // "기사 작성 가능/불가"는 workflowState 기반 상태 카드와 중복/모순될 수
+    // 있어 제거했다 — 실제 JSX 출력에는 이 문구가 없어야 한다(설명용
+    // 주석에는 남아있을 수 있으므로, 렌더링되는 실제 <p> 줄만 좁혀서 검사).
+    const summaryLineMatch = pageSource.match(/출처 \{sources\.length\}개 등록됨[\s\S]{0,150}<\/p>/);
+    expect(summaryLineMatch).not.toBeNull();
+    expect(summaryLineMatch![0]).not.toContain("기사 작성 가능");
+    expect(summaryLineMatch![0]).not.toContain("기사 작성 불가");
   });
 
-  it("다음 작업 카드가 상태(needs_source/ready_to_generate/article_exists)에 맞는 문구와 버튼을 표시한다", () => {
-    expect(pageSource).toContain('nextActionState === "article_exists"');
-    expect(pageSource).toContain("이 테마로 생성된 기사가 있습니다.");
-    expect(pageSource).toContain('nextActionState === "ready_to_generate"');
-    expect(pageSource).toContain("출처 조건이 충족되어 기사 초안을 생성할 수 있습니다.");
-    expect(pageSource).toContain('nextActionState === "needs_source"');
-    expect(pageSource).toMatch(/기사 작성을 위해 출처가 \{.*\}개 더 필요합니다\./);
+  it("현재 상태/다음 작업 카드는 workflowState 하나만으로 문구·색상·CTA를 계산하는 단일 helper(getDashboardStatusSummary/getWorkflowStateTone)를 사용한다 (Phase 3-23-2)", () => {
+    // page.tsx 자체에는 상태별 문구를 하드코딩하지 않는다 — 두 상태 체계가
+    // 공존해 모순된 안내를 내던 문제(Phase 3-23-2에서 발견)를 막기 위해
+    // 문구 계산을 lib/dashboard/dashboard-workflow-presentation.ts로
+    // 단일화했다. 예전에 있던 resolveNextActionState/nextActionState는
+    // 완전히 제거되어 더 이상 페이지에 존재하지 않는다.
+    // 코드 주석에는 "예전에 nextActionState가 있었다"는 설명이 남아있을 수
+    // 있으므로, 실제로 변수를 선언/참조하는 살아있는 코드가 없는지만 본다.
+    expect(pageSource).not.toMatch(/const nextActionState/);
+    expect(pageSource).not.toMatch(/nextActionState\s*(===|!==|\?)/);
+    expect(pageSource).not.toContain("resolveNextActionState");
+    expect(pageSource).toContain("getDashboardStatusSummary(workflowState");
+    expect(pageSource).toContain("getWorkflowStateTone(workflowState)");
+    expect(pageSource).toContain("statusSummary.primaryActionHref");
+    expect(pageSource).toContain("statusSummary.primaryActionLabel");
+
+    // 문구 자체(각 상태의 정확한 안내/버튼 라벨)는 helper 쪽에서 보장한다.
+    expect(workflowPresentationSource).toContain("아직 출처가 없습니다.");
+    expect(workflowPresentationSource).toContain("출처 추가하기");
+    expect(workflowPresentationSource).toContain("출처가 준비되었습니다");
+    expect(workflowPresentationSource).toContain("WordPress 블로그, 네이버 블로그, 네이버 카페 글을 생성하세요.");
+    expect(workflowPresentationSource).toContain("선택한 플랫폼 글 생성");
+    expect(workflowPresentationSource).toContain("글 내용을 검토하세요.");
+    expect(workflowPresentationSource).toContain("검토할 글 보기");
+    expect(workflowPresentationSource).toContain("WordPress Draft 반영 또는 수동 export를 진행하세요.");
+    expect(workflowPresentationSource).toContain("게시 준비하기");
+  });
+
+  it("현재 상태/다음 작업 카드는 workflowState별 색상 톤(getWorkflowStateTone)을 적용한다 — 모든 상태가 파란색으로 고정되어 있지 않다 (Phase 3-23-2)", () => {
+    expect(pageSource).toContain("workflowTone.containerClassName");
+    expect(pageSource).toContain("workflowTone.headingClassName");
+    expect(pageSource).toContain("workflowTone.bodyClassName");
+    expect(pageSource).toContain("workflowTone.badgeClassName");
+  });
+
+  it("대시보드에 '플랫폼별 글 생성' 섹션이 핵심 영역으로 존재한다 (Phase 3-23)", () => {
+    expect(pageSource).toContain('id="platform-generation"');
+    expect(pageSource).toContain("플랫폼별 글 생성");
+    expect(pageSource).toContain("PlatformSelectionCheckboxes");
+    expect(pageSource).toContain("generateSelectedPlatformPostsAction");
+    expect(pageSource).toContain("generateAllPlatformPostsAction");
+  });
+
+  it("계약 검사 결과/기사 본문 미리보기/파이프라인 로그는 '상세 관리' 접힘 영역에 있다 (Phase 3-23)", () => {
+    const detailsIndex = pageSource.indexOf("상세 관리 (계약 검사 결과");
+    expect(detailsIndex).toBeGreaterThan(0);
+    const contractIndex = pageSource.indexOf("ContractCheckResult", detailsIndex);
+    const logIndex = pageSource.indexOf("파이프라인 로그 (실행 이력)", detailsIndex);
+    expect(contractIndex).toBeGreaterThan(detailsIndex);
+    expect(logIndex).toBeGreaterThan(detailsIndex);
   });
 
   it("출처 상태 요약이 출처 등록 폼보다 먼저 표시된다", () => {
@@ -104,8 +164,10 @@ describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정�
     expect(formIndex).toBeGreaterThan(statusIndex);
   });
 
-  it("출처 등록 폼은 <details>로 기본 접힘이고, URL 외 필드는 중첩된 접기 영역(추가 정보 입력) 안에 있다", () => {
-    expect(pageSource).toMatch(/<details className="group" open=\{Boolean\(sourceError\)\}>/);
+  it("출처 등록 폼은 <details>로 기본 접힘이고(단 출처가 부족한 현재 단계이거나 오류가 있으면 펼쳐진다), URL 외 필드는 중첩된 접기 영역(추가 정보 입력) 안에 있다 (Phase 3-23-2)", () => {
+    expect(pageSource).toMatch(
+      /<details className="group mt-3" open=\{Boolean\(sourceError\) \|\| sectionExpansion\.sourceAddExpanded\}>/
+    );
     expect(pageSource).toContain("추가 정보 입력 (선택)");
     const detailMatch = pageSource.match(/추가 정보 입력 \(선택\)[\s\S]*?<\/details>/);
     expect(detailMatch).not.toBeNull();
@@ -200,12 +262,17 @@ describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22
     expect(pageSource).toContain("이미 이 테마로 생성된 기사초안이 있습니다.");
   });
 
-  it("disabled 버튼에는 이유를 표시한다(출처 부족/이미 초안 존재)", () => {
+  it("disabled 버튼에는 이유를 표시한다(출처 부족)", () => {
     const start = pageSource.indexOf('disabled={sources.length < MIN_SOURCE_COUNT}');
     const end = pageSource.indexOf("</form>", start);
     const block = pageSource.slice(start, end);
     expect(block).toContain("출처가 부족합니다");
-    expect(block).toContain("이미 생성된 초안이 있습니다");
+  });
+
+  it("이미 초안이 있으면 라디오 폼 대신 '원고 생성 완료' 요약과 재생성 옵션 토글을 보여준다 (Phase 3-23-4)", () => {
+    expect(pageSource).toContain("원고 생성 완료");
+    expect(pageSource).toContain("재생성 옵션");
+    expect(pageSource).toContain("기사 초안 재생성");
   });
 
   it("생성 성공/실패 메시지를 TransientNotice로 표시한다", () => {
@@ -216,5 +283,105 @@ describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22
   it("wordpress_blog 생성 흐름과 article mode monetized_blog를 혼동하지 않는다 (actions.ts는 article 생성 전용)", () => {
     expect(actionsSource).not.toContain("wordpress_blog");
     expect(actionsSource).not.toContain("createWordPressDraftFromBlogPostAction");
+  });
+
+  it("화면 상단에 진행 단계 표시(ContentProgressSteps)가 있다 (Phase 3-22)", () => {
+    expect(pageSource).toContain("ContentProgressSteps");
+  });
+});
+
+describe("dashboard 상태 판단 통합 및 섹션 접힘 (정적 소스 검사, Phase 3-23-2)", () => {
+  it("출처 추가/플랫폼 생성 폼은 getDashboardSectionExpansion 결과로 펼침/접힘이 결정되고, 현재 단계가 아닌 관리 영역은 별도 접힘 영역으로 옮겨진다 (Phase 3-23-4)", () => {
+    expect(pageSource).toContain("getDashboardSectionExpansion(workflowState)");
+    expect(pageSource).toContain("getDashboardCurrentStepArea(workflowState)");
+    expect(pageSource).toMatch(
+      /<details className="group mt-3" open=\{Boolean\(sourceError\) \|\| sectionExpansion\.sourceAddExpanded\}>/
+    );
+    expect(pageSource).toMatch(/<details className="mt-3" open=\{sectionExpansion\.platformGenerationExpanded\}>/);
+    // 출처 목록은 이제 상태와 무관하게 항상 "전체 출처 보기" 토글 뒤로 접힌다.
+    expect(pageSource).toContain("전체 출처 보기");
+    // 현재 단계가 아닌 세 관리 영역(출처/원고/플랫폼)은 "다른 단계 관리 보기" 접힘 영역에 모인다.
+    expect(pageSource).toContain("다른 단계 관리 보기");
+    expect(pageSource).toContain('currentStepArea !== "source" && sourceManagementBlock');
+    expect(pageSource).toContain('currentStepArea !== "draft" && draftManagementBlock');
+    expect(pageSource).toContain('currentStepArea !== "platform" && platformManagementBlock');
+  });
+
+  it("workflowState가 ready_for_publish_prep이면 '게시 준비' 섹션이 다른 관리 영역보다 먼저 표시된다 (Phase 3-23-4)", () => {
+    const publishPrepIndex = pageSource.indexOf('workflowState === "ready_for_publish_prep" && article');
+    const renderIndex = pageSource.indexOf("{publishPrepSection}");
+    const sourceBlockRenderIndex = pageSource.indexOf('{currentStepArea === "source" && sourceManagementBlock}');
+    expect(publishPrepIndex).toBeGreaterThan(0);
+    expect(renderIndex).toBeGreaterThan(0);
+    expect(renderIndex).toBeLessThan(sourceBlockRenderIndex);
+    expect(pageSource).toContain("WordPress Draft 반영");
+    expect(pageSource).toContain("수동 export 보기");
+  });
+
+  it("'관련 기사 URL 수집' CTA가 테마 요약 카드와 상태 카드에 중복 렌더링되지 않는다(하드코딩된 Link는 상태 카드 쪽 helper에만 있다)", () => {
+    const literalLinkCount = (pageSource.match(/href=\{`\/themes\/\$\{selectedTheme\.id\}`\}/g) ?? []).length;
+    expect(literalLinkCount).toBe(0); // 페이지에는 테마 URL 하드코딩 링크가 없다 — statusSummary.secondaryActionHref로만 렌더링된다.
+    expect(pageSource).toContain("statusSummary.secondaryActionHref");
+  });
+
+  it("모바일 전용 방향 표현('왼쪽에서')이 사용자에게 보이는 문구에는 없다", () => {
+    // 코드 주석 설명에는 남아 있을 수 있으나, 실제 안내 문구로는 쓰지 않는다.
+    expect(pageSource).not.toMatch(/왼쪽에서 테마를 먼저 생성하세요/);
+  });
+
+  it("article! non-null assertion을 사용하지 않는다 — article이 없을 때도 안전하게 렌더링된다", () => {
+    expect(pageSource).not.toMatch(/article!\./);
+    expect(pageSource).not.toMatch(/article!\[/);
+  });
+
+  it("출처 기반 원고 섹션은 heading(<h2>)을 가진 섹션이다(한 줄 텍스트로 축소되지 않는다) (Phase 3-23-4)", () => {
+    const match = pageSource.match(/<h2 className="text-sm font-semibold text-zinc-700">출처 기반 원고<\/h2>/);
+    expect(match).not.toBeNull();
+    expect(pageSource).toContain("원고 보기");
+  });
+
+  it("#generate-draft, #platform-generation, #theme-list 앵커 대상은 tabIndex={-1}로 포커스 가능하다(접근성)", () => {
+    expect(pageSource).toMatch(/id="generate-draft"\s+tabIndex=\{-1\}/);
+    expect(pageSource).toMatch(/id="platform-generation"\s+tabIndex=\{-1\}/);
+    expect(pageSource).toMatch(/id="theme-list"\s+tabIndex=\{-1\}/);
+  });
+
+  it("대시보드에서 플랫폼별 글 생성을 실행해도 결과 확인을 위해 /articles/[id]로 강제 이동하지 않는다 — returnTo가 대시보드 자기 자신이다", () => {
+    expect(pageSource).not.toContain("buildArticleOverviewUrl");
+    expect(pageSource).toContain("dashboardPlatformGenerationReturnTo");
+    expect(pageSource).toMatch(/name="returnTo" value=\{dashboardPlatformGenerationReturnTo\}/);
+  });
+
+  it("대시보드에서 실행한 플랫폼 글 생성 결과 메시지(publishMessage)를 대시보드 안에서 표시한다", () => {
+    expect(pageSource).toContain("publishMessage");
+    expect(pageSource).toContain("platformGenerationMessage");
+    expect(pageSource).toContain("플랫폼 글 생성 결과");
+  });
+});
+
+describe("dashboard 플랫폼 카드 / 출처 목록 축소 / 새 테마 축소 (정적 소스 검사, Phase 3-23-4)", () => {
+  it("플랫폼별 글 생성 영역은 각 플랫폼마다 상태/다음 작업/예상 비용/주요 버튼 1개를 보여주는 카드로 구성된다", () => {
+    expect(pageSource).toContain("platformCards");
+    expect(pageSource).toMatch(/상태: \{card\.statusLabel\}/);
+    expect(pageSource).toMatch(/다음 작업: \{card\.nextActionLabel\}/);
+    expect(pageSource).toMatch(/예상 비용: \{COST_LEVEL_LABELS\[card\.costLevel\]\}/);
+    expect(pageSource).toContain("글 생성하기");
+    expect(pageSource).toContain("글 검토하기");
+  });
+
+  it("전체 플랫폼 글 생성은 여전히 고급 옵션(접힘) 안에 있고, 비용 경고 확인 모달(ConfirmSubmitButton)이 유지된다", () => {
+    expect(pageSource).toContain("고급 옵션: 전체 플랫폼 글 생성");
+    expect(pageSource).toContain("ConfirmSubmitButton");
+    expect(pageSource).toContain("confirmMessage");
+    expect(pageSource).toContain("그래도 전체 생성하시겠습니까?");
+  });
+
+  it("출처 목록은 기본적으로 전체를 펼치지 않고, 최근 출처 미리보기 + '전체 출처 보기' 토글로 구성된다", () => {
+    expect(pageSource).toContain("recentSources");
+    expect(pageSource).toContain("전체 출처 보기 ({sources.length}개)");
+  });
+
+  it("새 테마 입력은 기본적으로 '+ 새 테마' 버튼만 보이도록 축소되어 있다(이미 만족됨)", () => {
+    expect(pageSource).toMatch(/<span className="group-open:hidden">\+ 새 테마<\/span>/);
   });
 });

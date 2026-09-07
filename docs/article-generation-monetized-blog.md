@@ -598,4 +598,6 @@ Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절�
 - WordPress Draft 반영 승인 조건 명확화: [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
 - 수익형 블로그 구조 강화(요약 박스/표/체크리스트/FAQ/기준일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
 - "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의: [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
+- 사용자 플랫폼 UI "행동 중심" 정리(진행 단계/상태 문구 번역): [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
+- 대시보드 "작업 흐름 중심 화면" 재구성(플랫폼별 글 생성 섹션 신설): [`phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md)
 - 프롬프트 요약: [`../prompts/articles/monetized-blog.md`](../prompts/articles/monetized-blog.md)

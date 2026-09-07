@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractDomain, summarizeSourceStatus, resolveNextActionState } from "./source-display";
+import { extractDomain, summarizeSourceStatus, resolveDashboardWorkflowState } from "./source-display";
 
 describe("extractDomain", () => {
   it("URL에서 도메인만 추출한다", () => {
@@ -53,19 +53,59 @@ describe("summarizeSourceStatus", () => {
   });
 });
 
-describe("resolveNextActionState", () => {
-  it("기사가 이미 있으면 article_exists를 반환한다(출처 부족 여부와 무관)", () => {
-    expect(resolveNextActionState(0, 3, true)).toBe("article_exists");
-    expect(resolveNextActionState(5, 3, true)).toBe("article_exists");
+// Phase 3-23-2: 대시보드 상태 판단은 이 함수 하나로 통합되었다
+// (예전에 있던 resolveNextActionState/NextActionState는 서로 모순된
+// 안내를 낼 수 있어 제거했다 — 더 이상 이 모듈에 존재하지 않는다).
+describe("resolveDashboardWorkflowState (Phase 3-23 / 3-23-2)", () => {
+  const base = {
+    hasTheme: true,
+    sourceCount: 0,
+    minRequired: 3,
+    hasArticle: false,
+    socialPostCount: 0,
+    approvedSocialPostCount: 0,
+  };
+
+  it("선택된 테마가 없으면 다른 값과 무관하게 needs_theme를 반환한다", () => {
+    expect(resolveDashboardWorkflowState({ ...base, hasTheme: false })).toBe("needs_theme");
+    expect(
+      resolveDashboardWorkflowState({
+        ...base,
+        hasTheme: false,
+        hasArticle: true,
+        socialPostCount: 5,
+        approvedSocialPostCount: 1,
+      })
+    ).toBe("needs_theme");
   });
 
-  it("기사가 없고 출처가 최소 개수 이상이면 ready_to_generate를 반환한다", () => {
-    expect(resolveNextActionState(3, 3, false)).toBe("ready_to_generate");
-    expect(resolveNextActionState(5, 3, false)).toBe("ready_to_generate");
+  it("기사가 없고 출처가 부족하면 needs_source를 반환한다", () => {
+    expect(resolveDashboardWorkflowState({ ...base, sourceCount: 1 })).toBe("needs_source");
   });
 
-  it("기사가 없고 출처가 최소 개수 미만이면 needs_source를 반환한다", () => {
-    expect(resolveNextActionState(0, 3, false)).toBe("needs_source");
-    expect(resolveNextActionState(2, 3, false)).toBe("needs_source");
+  it("기사가 없고 출처가 충분하면 ready_to_generate를 반환한다", () => {
+    expect(resolveDashboardWorkflowState({ ...base, sourceCount: 3 })).toBe("ready_to_generate");
+  });
+
+  it("기사가 있고 플랫폼 글이 없으면 needs_platform_posts를 반환한다", () => {
+    expect(resolveDashboardWorkflowState({ ...base, sourceCount: 3, hasArticle: true })).toBe("needs_platform_posts");
+  });
+
+  it("플랫폼 글이 있지만 승인된 것이 없으면 needs_review를 반환한다", () => {
+    expect(
+      resolveDashboardWorkflowState({ ...base, sourceCount: 3, hasArticle: true, socialPostCount: 2 })
+    ).toBe("needs_review");
+  });
+
+  it("승인된 플랫폼 글이 하나라도 있으면 ready_for_publish_prep을 반환한다", () => {
+    expect(
+      resolveDashboardWorkflowState({
+        ...base,
+        sourceCount: 3,
+        hasArticle: true,
+        socialPostCount: 3,
+        approvedSocialPostCount: 1,
+      })
+    ).toBe("ready_for_publish_prep");
   });
 });

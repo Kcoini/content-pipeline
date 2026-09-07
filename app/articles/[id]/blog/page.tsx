@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { buildArticleBlogPageData } from "@/lib/social/article-blog-page-service";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
+import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
+import { getUserFacingStatus, getNextRecommendedAction } from "@/lib/social/social-post-user-facing-status";
 import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-badge";
 import { WordPressFeaturedImageFilePicker } from "@/components/social/wordpress-featured-image-file-picker";
 import { CopyUrlButton } from "@/components/social/copy-url-button";
@@ -276,6 +278,16 @@ export default async function ArticleBlogPage({
           ← 기사 개요로
         </Link>
 
+        <ContentProgressSteps
+          current={
+            posts.length === 0
+              ? "generate"
+              : posts.some((p) => p.approvalStatus === "approved")
+                ? "publish_ready"
+                : "review"
+          }
+        />
+
         <ArticleWorkflowNavigation articleId={id} active="blog" returnTo={returnTo} />
 
         {/* "선택한 항목을 강조 표시했습니다." 같은 확인 메시지는 표시하지 않는다 —
@@ -405,10 +417,19 @@ export default async function ArticleBlogPage({
                     )}
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || "(제목 없음)"}</p>
                     <p className="mt-1 text-zinc-500">{(post.excerpt || post.postBody || "").slice(0, 140) || "(본문 없음)"}{(post.excerpt || post.postBody || "").length > 140 ? "…" : ""}</p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      quality: {post.qualityStatus} · approval: {post.approvalStatus} · publish: {post.publishStatus} · export: {post.exportStatus} ·
-                      manual_post: {post.manualPostStatus}
+                    {/* Phase 3-22: raw 상태값 나열 대신 사용자 친화적 한 줄 요약 +
+                        다음 작업을 먼저 보여준다. 원문 상태값은 아래 "상세 상태
+                        보기" 접힘 영역에서 계속 확인할 수 있다(제거하지 않음). */}
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {getUserFacingStatus(post)} · 다음 작업: <span className="font-medium">{getNextRecommendedAction(post).label}</span>
                     </p>
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[11px] text-zinc-400">상세 상태 보기 (관리자용, 기본 접힘)</summary>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        quality: {post.qualityStatus} · approval: {post.approvalStatus} · publish: {post.publishStatus} · export: {post.exportStatus} ·
+                        manual_post: {post.manualPostStatus}
+                      </p>
+                    </details>
                     <p className="mt-1 text-[11px] text-zinc-400">
                       API 게시 준비: <ApiReadinessBadge status={checkPlatformApiReadiness(post.platform).status} />{" "}
                       <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="text-indigo-700 hover:underline">

@@ -234,3 +234,7 @@ article 상세 페이지의 "Multi-platform Writing" 섹션에서:
 
 - naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(Phase 3-20): [`phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md)
 - "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의(Phase 3-21): [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
+- 사용자 플랫폼 UI를 "행동 중심"으로 정리(Phase 3-22): [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
+- 대시보드를 "작업 흐름 중심 화면"으로 재구성(Phase 3-23): [`phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md)
+- 대시보드 상태 판단 통합 + 잔여 UI 결함 수정(Phase 3-23-2): [`phase-3-23-2-dashboard-workflow-state-unification.md`](./phase-3-23-2-dashboard-workflow-state-unification.md)
+- 대시보드 "현재 단계 스포트라이트 + 접힘 이력" 구조 재구성(Phase 3-23-4, 게시 준비 섹션 신설/플랫폼 카드/출처 목록 축소/테마 목록 구분): [`phase-3-23-4-dashboard-current-step-spotlight.md`](./phase-3-23-4-dashboard-current-step-spotlight.md)

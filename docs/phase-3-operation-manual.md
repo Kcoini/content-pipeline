@@ -45,6 +45,18 @@
    Blog 등 블로그형 플랫폼용 글을 개별 재생성/검수한다.
 4. **`/articles/[id]/social`에서 SNS/커뮤니티 글 관리** — X/Threads/
    Instagram/Naver Cafe 등 SNS·커뮤니티형 글을 개별 재생성/검수한다.
+
+> **Phase 3-22**: `/dashboard`, `/articles/[id]`, `/articles/[id]/blog`,
+> `/articles/[id]/social` 상단에는 "테마 선택 → 출처 입력 → 글 생성 →
+> 검토/승인 → 게시 준비" 5단계 진행 표시가 공통으로 나온다(`/performance`,
+> `/rewrite`는 별도 작업이라 이 표시에 포함하지 않는다). 각 social post
+> 카드에는 `quality_status`/`approval_status` 같은 원문 상태값 대신
+> "현재 검토가 필요합니다 · 다음 작업: 승인하기"처럼 사람이 읽는 문구와,
+> 지금 눌러야 할 버튼 하나만 강조 표시한다. 원문 상태값과 Publishing
+> Guard/Dry-run/Handoff 등 보조 작업은 "상세 상태 보기" 접힘 안으로
+> 옮겼을 뿐 삭제하지 않았다. 자세한 내용은
+> [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
+> 참고.
 5. **quality check 실행** — 각 social post 카드의 "품질검사" 버튼.
    `quality_status`가 `ready`가 되어야 다음 단계로 진행할 수 있다.
 6. **approval 요청 및 승인** — "승인 요청" 버튼으로 검토를 요청하고,
@@ -497,4 +509,6 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - WordPress Draft 반영 승인 조건 명확화(Phase 2-23): [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md)
 - naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(Phase 3-20): [`phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md)
 - "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의(Phase 3-21): [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
+- 사용자 플랫폼 UI를 "행동 중심"으로 정리(Phase 3-22, 진행 단계 표시/상태 문구 번역/카드당 주요 버튼 하나): [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
+- 대시보드를 "작업 흐름 중심 화면"으로 재구성(Phase 3-23, 현재 상태/다음 작업 카드 확장 + 대시보드 내 플랫폼별 글 생성 섹션 신설): [`phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md)
 - 수익형 블로그 구조 강화(Phase 2-24, SEO/AEO/GEO/E-E-A-T/체류시간/모바일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)

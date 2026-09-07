@@ -23,4 +23,10 @@ describe("ThemeSearchList (정적 소스 검사, Phase 1-23)", () => {
   it("삭제 버튼은 작고 옅은 색으로 우측 보조 영역에 둔다(강하게 보이지 않게)", () => {
     expect(componentSource).toMatch(/text-\[10px\] font-medium text-zinc-400/);
   });
+
+  it("동일 제목 테마를 구분할 수 있도록 출처 수/진행 단계/등록일을 부제목으로 표시한다 (Phase 3-23-3)", () => {
+    expect(componentSource).toContain("stageLabel");
+    expect(componentSource).toContain("dateLabel");
+    expect(componentSource).toMatch(/출처 \{sourceCount\} · \{stageLabel\} · \{dateLabel\}/);
+  });
 });

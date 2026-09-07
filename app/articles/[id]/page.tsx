@@ -16,6 +16,7 @@ import {
   getRecommendedPlatforms,
 } from "@/lib/social/platform-generation-recommendations";
 import { PlatformSelectionCheckboxes } from "@/components/articles/platform-selection-checkboxes";
+import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
 import type { ArticleStatus } from "@/lib/types/domain";
 import {
@@ -412,6 +413,18 @@ export default async function ArticleDetailPage({
         <Link href="/articles" className="text-sm text-zinc-500 hover:underline">
           ← 기사 목록으로
         </Link>
+
+        <ContentProgressSteps
+          current={
+            isDraft
+              ? "generate"
+              : existingSocialPosts.some((post) => post.approvalStatus === "approved")
+                ? "publish_ready"
+                : existingSocialPosts.length > 0
+                  ? "review"
+                  : "generate"
+          }
+        />
 
         <ArticleWorkflowNavigation articleId={article.id} active="overview" />
 

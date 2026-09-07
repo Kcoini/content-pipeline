@@ -18,11 +18,14 @@ import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-c
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
 import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-types";
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
+import { getUserFacingStatus, getNextRecommendedAction } from "@/lib/social/social-post-user-facing-status";
+import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import {
   generatePlaceholderSocialPostAction,
   generateSocialDraftAction,
   runSocialPostQualityGateAction,
   requestSocialPostApprovalAction,
+  approveSocialPostAction,
   generateManualExportAction,
   runPlatformPublishingGuardAction,
   createPlatformPublishDryRunAction,
@@ -97,6 +100,16 @@ export default async function ArticleSocialPage({
         <Link href={`/articles/${id}`} className="text-sm text-zinc-500 hover:underline">
           ← 기사 개요로
         </Link>
+
+        <ContentProgressSteps
+          current={
+            posts.length === 0
+              ? "generate"
+              : posts.some((p) => p.approvalStatus === "approved")
+                ? "publish_ready"
+                : "review"
+          }
+        />
 
         <ArticleWorkflowNavigation articleId={id} active="social" returnTo={returnTo} />
 
@@ -213,103 +226,132 @@ export default async function ArticleSocialPage({
                           지원 필드(PLATFORM_WRITING_CONFIGS)를 기준으로 올바른 필드를 고른다. */}
                       {getSocialPostDisplayBody(post).slice(0, 140) || "(본문 없음)"}
                     </p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      quality: {post.qualityStatus} · approval: {post.approvalStatus} · export: {post.exportStatus} · guard:{" "}
-                      {post.platformPublishGuardStatus} · dry-run: {post.platformPublishDryRunStatus} · handoff: {post.handoffStatus} · manual_post:{" "}
-                      {post.manualPostStatus}
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      API 게시 준비: <ApiReadinessBadge status={checkPlatformApiReadiness(post.platform).status} />{" "}
-                      <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
-                        상세에서 확인 →
-                      </a>
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      performance: {post.performanceStatus} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
-                        <>
-                          ·{" "}
-                          <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                            게시글 열기
-                          </a>
-                        </>
-                      )}
+                    {/* Phase 3-22: raw 상태값을 그대로 나열하지 않고, 사용자 친화적
+                        한 줄 요약 + "다음 작업"을 먼저 보여준다. 개발자용 원문
+                        상태값/API readiness/성과는 "상세 상태 보기" 접힘 안으로
+                        옮겼다. */}
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {getUserFacingStatus(post)} · 다음 작업: <span className="font-medium">{getNextRecommendedAction(post).label}</span>
                     </p>
 
                     <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
                       <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
                         상세 보기 →
                       </a>
-                      <a href={buildMetricsDeepLink(article.id, post.id, selfReturnTo)} className="text-amber-700 hover:underline">
-                        성과 보기 →
-                      </a>
-                      {post.isRewriteVersion && (
-                        <a href={buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
-                          Rewrite 관리에서 보기 →
-                        </a>
-                      )}
                       <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
                         기사 개요 →
                       </a>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <form action={runSocialPostQualityGateAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          품질검사
-                        </button>
-                      </form>
-                      <form action={requestSocialPostApprovalAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
-                          승인 요청
-                        </button>
-                      </form>
-                      <form action={generateManualExportAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
-                          Manual Export
-                        </button>
-                      </form>
-                      <form action={runPlatformPublishingGuardAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          Publishing Guard 실행
-                        </button>
-                      </form>
-                      <form action={createPlatformPublishDryRunAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          Dry-run 생성
-                        </button>
-                      </form>
-                      <form action={completePlatformExportHandoffAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          Handoff 완료
-                        </button>
-                      </form>
-                      <form action={prepareManualPostingRecordAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          게시 체크리스트 준비
-                        </button>
-                      </form>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {(() => {
+                        const nextAction = getNextRecommendedAction(post);
+                        const primaryClass = "rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500";
+                        const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+                        return (
+                          <>
+                            <form action={runSocialPostQualityGateAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input type="hidden" name="returnTo" value={selfReturnTo} />
+                              <button type="submit" className={nextAction.kind === "quality_check" ? primaryClass : secondaryClass}>
+                                품질검사
+                              </button>
+                            </form>
+                            <form action={requestSocialPostApprovalAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input type="hidden" name="returnTo" value={selfReturnTo} />
+                              <button type="submit" className={nextAction.kind === "review" ? primaryClass : secondaryClass}>
+                                승인 요청
+                              </button>
+                            </form>
+                            <form action={approveSocialPostAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input type="hidden" name="returnTo" value={selfReturnTo} />
+                              <button type="submit" className={nextAction.kind === "approve" ? primaryClass : secondaryClass}>
+                                승인
+                              </button>
+                            </form>
+                            <form action={generateManualExportAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input type="hidden" name="returnTo" value={selfReturnTo} />
+                              <button type="submit" className={nextAction.kind === "export" ? primaryClass : secondaryClass}>
+                                Manual Export
+                              </button>
+                            </form>
+                          </>
+                        );
+                      })()}
                     </div>
+
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[11px] text-zinc-400">상세 상태 보기 / 보조 작업 (관리자용, 기본 접힘)</summary>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        quality: {post.qualityStatus} · approval: {post.approvalStatus} · export: {post.exportStatus} · guard:{" "}
+                        {post.platformPublishGuardStatus} · dry-run: {post.platformPublishDryRunStatus} · handoff: {post.handoffStatus} · manual_post:{" "}
+                        {post.manualPostStatus}
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        API 게시 준비: <ApiReadinessBadge status={checkPlatformApiReadiness(post.platform).status} />
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        performance: {post.performanceStatus} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
+                          <>
+                            ·{" "}
+                            <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              게시글 열기
+                            </a>
+                          </>
+                        )}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                        <a href={buildMetricsDeepLink(article.id, post.id, selfReturnTo)} className="text-amber-700 hover:underline">
+                          성과 보기 →
+                        </a>
+                        {post.isRewriteVersion && (
+                          <a href={buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
+                            Rewrite 관리에서 보기 →
+                          </a>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        <form action={runPlatformPublishingGuardAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            Publishing Guard 실행
+                          </button>
+                        </form>
+                        <form action={createPlatformPublishDryRunAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            Dry-run 생성
+                          </button>
+                        </form>
+                        <form action={completePlatformExportHandoffAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            Handoff 완료
+                          </button>
+                        </form>
+                        <form action={prepareManualPostingRecordAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            게시 체크리스트 준비
+                          </button>
+                        </form>
+                      </div>
+                    </details>
 
                     <details className="mt-2">
                       <summary className="cursor-pointer text-[11px] text-zinc-400">게시 결과 기록 / Metrics 입력</summary>

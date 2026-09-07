@@ -36,9 +36,17 @@ describe("isSafeInternalReturnTo / getSafeReturnTo", () => {
     expect(isSafeInternalReturnTo("data:text/html,<script>alert(1)</script>")).toBe(false);
   });
 
-  it("허용 목록에 없는 내부 경로도 차단한다", () => {
-    expect(isSafeInternalReturnTo("/dashboard")).toBe(false);
+  it("허용 목록에 없는 내부 경로는 차단한다", () => {
     expect(isSafeInternalReturnTo("/articles/123/unknown")).toBe(false);
+    expect(isSafeInternalReturnTo("/dashboard/automation-safety")).toBe(false);
+    expect(isSafeInternalReturnTo("/dashboardfoo")).toBe(false);
+  });
+
+  it("Phase 3-23-2: /dashboard 루트 경로(query/hash 포함)를 허용한다", () => {
+    expect(isSafeInternalReturnTo("/dashboard")).toBe(true);
+    expect(isSafeInternalReturnTo("/dashboard?themeId=abc")).toBe(true);
+    expect(isSafeInternalReturnTo("/dashboard#platform-generation")).toBe(true);
+    expect(isSafeInternalReturnTo("/dashboard?themeId=abc#platform-generation")).toBe(true);
   });
 
   it("빈 값이면 false를 반환한다", () => {

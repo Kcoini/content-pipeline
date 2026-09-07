@@ -13,6 +13,10 @@ export interface ThemeListEntry {
   theme: Theme;
   articleCount: number;
   sourceCount: number;
+  /** Phase 3-23-3: 동일 제목 테마도 구분할 수 있도록 추가한 진행 단계 라벨(예: "승인 1"/"검토 대기"/"생성 전"). */
+  stageLabel: string;
+  /** 등록일(YYYY-MM-DD 등, 이미 포맷된 문자열). theme.createdAt 기준 — DB에 별도 수정일 컬럼을 추가하지 않았다. */
+  dateLabel: string;
 }
 
 export interface ThemeSearchListProps {
@@ -44,7 +48,7 @@ export function ThemeSearchList({ items, selectedThemeId, archiveAction }: Theme
         <p className="mt-2 text-xs text-zinc-500">검색 결과가 없습니다.</p>
       ) : (
         <ul className="mt-2 flex flex-col gap-1">
-          {filtered.map(({ theme, articleCount, sourceCount }) => {
+          {filtered.map(({ theme, articleCount, sourceCount, stageLabel, dateLabel }) => {
             const isSelected = selectedThemeId === theme.id;
             const confirmMessage = [
               "이 테마를 삭제하시겠습니까?",
@@ -59,14 +63,21 @@ export function ThemeSearchList({ items, selectedThemeId, archiveAction }: Theme
                 key={theme.id}
                 className={`flex items-center gap-1 rounded ${isSelected ? "border-l-4 border-zinc-900 bg-zinc-50" : ""}`}
               >
+                {/* Phase 3-23-3: 제목만 보여주면 동일 제목 테마를 구분할 수
+                    없었다 — 출처 수/진행 단계/등록일을 부제목으로 추가한다. */}
                 <a
                   href={`/dashboard?themeId=${theme.id}`}
                   aria-current={isSelected ? "page" : undefined}
-                  className={`block min-w-0 flex-1 break-keep rounded px-2 py-1 text-sm ${
-                    isSelected ? "bg-zinc-900 font-medium text-white" : "text-zinc-700 hover:bg-zinc-100"
+                  className={`block min-w-0 flex-1 rounded px-2 py-1 ${
+                    isSelected ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"
                   }`}
                 >
-                  {theme.title}
+                  <span className={`block break-keep text-sm ${isSelected ? "font-medium text-white" : "text-zinc-800"}`}>
+                    {theme.title}
+                  </span>
+                  <span className={`block text-[11px] ${isSelected ? "text-zinc-300" : "text-zinc-500"}`}>
+                    출처 {sourceCount} · {stageLabel} · {dateLabel}
+                  </span>
                 </a>
                 <form action={archiveAction}>
                   <input type="hidden" name="themeId" value={theme.id} />

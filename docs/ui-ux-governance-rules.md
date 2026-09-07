@@ -351,6 +351,18 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   서로 다른 축으로 분리해서 선택하게 한다 — 기본값은 "추천 값 자동
   적용"이다. 실제 사례: `app/articles/[id]/page.tsx`의 "플랫폼별 글
   생성" 섹션 (`docs/phase-3-21-platform-generation-flow.md` 참고).
+- **내부 상태값(quality_status/approval_status/export_status 등)을
+  화면에 그대로 나열하지 않는다.** 사용자가 이해할 수 있는 한 줄
+  문구("현재 검토가 필요합니다")로 바꾸고, 지금 눌러야 할 버튼 하나만
+  강조(primary 스타일)하며 나머지는 secondary로 낮춘다. 원문 상태값과
+  보조 작업(Publishing Guard/Dry-run/Handoff 등)은 "상세 상태 보기"
+  접힘 안으로 옮기되 삭제하지 않는다. 콘텐츠 생성 흐름 화면
+  (테마/원고/블로그/SNS) 상단에는 "테마 선택 → 출처 입력 → 글 생성 →
+  검토/승인 → 게시 준비" 5단계 진행 표시를 공통으로 둔다(성과/rewrite
+  화면은 별도 작업이라 이 표시에서 제외한다). 실제 사례:
+  `lib/social/social-post-user-facing-status.ts`,
+  `components/articles/content-progress-steps.tsx`
+  (`docs/phase-3-22-user-facing-status-simplification.md` 참고).
 
 ## 관련 문서
 
@@ -369,6 +381,39 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - [`docs/phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md) — 수익형 블로그 구조 강화(요약 박스 HTML/표/체크리스트/FAQ 4개/기준일 안내)
 - [`docs/phase-3-20-naver-cafe-plain-text-cleanup.md`](./phase-3-20-naver-cafe-plain-text-cleanup.md) — naver_cafe plain text 정리 + 게시용 본문/관리 정보 분리(관리 정보 accordion)
 - [`docs/phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md) — "테마 → 출처 → 플랫폼별 글 생성" 흐름 재정의(선택/전체 생성, 추천 플랫폼/문체)
+- [`docs/phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md) — 사용자 플랫폼 UI를 "행동 중심"으로 정리(진행 단계 표시, 상태 문구 번역, 카드당 주요 버튼 하나)
+- [`docs/phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md) — 대시보드를 "작업 흐름 중심 화면"으로 재구성(현재 상태/다음 작업 카드 확장, 대시보드 내 플랫폼별 글 생성 섹션 신설, 4순위 정보 접힘 이동)
+- [`docs/phase-3-23-2-dashboard-workflow-state-unification.md`](./phase-3-23-2-dashboard-workflow-state-unification.md) — 대시보드 상태 판단을 workflowState 하나로 통합, 이전 단계 섹션 접힘, 대시보드 내 플랫폼 생성 결과 표시, 중복 CTA 제거, 색상 체계/접근성/article! 제거
+- [`docs/phase-3-23-4-dashboard-current-step-spotlight.md`](./phase-3-23-4-dashboard-current-step-spotlight.md) — 대시보드를 "현재 단계 스포트라이트 + 다른 단계 접힘" 구조로 재구성, 게시 준비 섹션 신설, 플랫폼별 글 생성 카드화, 출처 목록/새 초안 폼 축소, 테마 목록 구분(출처/단계/날짜)
+
+**현재 단계 스포트라이트 원칙(Phase 3-23-4, 반드시 준수)**:
+- 화면에는 항상 "지금 사용자가 봐야 하는 현재 단계" 관리 영역 하나만
+  크게 펼쳐서 보여준다(`getDashboardCurrentStepArea`). 나머지 관리
+  영역은 삭제하지 않고 하나의 접힘 accordion으로 모은다.
+- 목록류 정보(출처 목록 등)는 워크플로 상태와 무관하게 항상 기본
+  압축(개수 + 최근 1~2개 미리보기 + "전체 보기" 토글)으로 표시한다.
+- 이미 결과물이 있는 조작 폼(예: 이미 초안이 있을 때의 기사 생성
+  라디오)은 기본 숨김이고, 사용자가 명시적으로 펼쳐야 다시 보인다.
+- 비용이 늘어날 수 있는 일괄/전체 실행 옵션은 항상 접힘(고급 옵션)
+  안에 두고, 실행 전 확인 모달을 유지한다.
+
+**대시보드 상태 판단 원칙(Phase 3-23-2, 반드시 준수)**:
+- 대시보드의 상태 판단 기준은 `resolveDashboardWorkflowState`(과 그 결과인
+  `DashboardWorkflowState`) 하나뿐이어야 한다. 이와 별도로 중복되는 상태
+  판단 함수/변수(예전의 `resolveNextActionState`류)를 새로 만들지 않는다.
+- "현재 상태 / 다음 작업" 카드의 문구/색상/CTA는 반드시
+  `lib/dashboard/dashboard-workflow-presentation.ts`의 순수 함수
+  (`getDashboardStatusSummary`/`getWorkflowStateTone`/
+  `getDashboardSectionExpansion`)를 거쳐서만 렌더링한다. 페이지 컴포넌트에
+  상태별 문구를 하드코딩하지 않는다.
+- 현재 단계 이전 섹션(이미 끝난 작업의 조작용 폼/목록)은 삭제하지 않고
+  `<details open={...}>`로 감싸 기본 접힘 처리한다.
+- 화면 안에서 실행한 액션의 결과는 원칙적으로 같은 화면으로 돌아와
+  확인할 수 있어야 한다(`returnTo` allowlist는 필요한 만큼만, 내부
+  경로로만 넓힌다 — `lib/navigation/return-to.ts` 참고).
+- 같은 의미의 CTA를 한 화면에 두 번 강조하지 않는다.
+- 앵커(`#...`)로 이동하는 대상 요소는 `tabIndex={-1}`을 부여해 키보드/
+  스크린리더 사용자도 이동을 인지할 수 있게 한다.
 
 ## 섹션 12. 준비 단계 자동화 규칙
 
