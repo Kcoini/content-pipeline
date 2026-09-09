@@ -4,6 +4,16 @@
 // not_published/dry_run/blocked까지만 사용한다. 협박/공포조장/허위단정/
 // 광고클릭유도/과장수익표현이 quality gate에서 발견된 경우(blocked/fail
 // checklist 항목) 승인을 차단한다.
+//
+// Phase 3-25: "사람이 모든 항목을 직접 검사"하는 방식에서 "자동 검토
+// 결과를 보고 최종 판단하는 편집자"로 역할을 바꾸기 위해, 승인 가능
+// 조건을 checklist 항목 단위로 재정의했다 — quality_status가 정확히
+// 'ready'가 아니어도(예: 'needs_revision'), 실제 checklist에 blocked/fail
+// 항목이 하나도 없다면(경고 수준의 "확인 필요"만 있는 상태) 승인을
+// 막지 않는다. blocked/fail 항목이 있으면(안전/구조상 실제 문제) 여전히
+// 승인을 막는다 — 자동 검토가 사람의 최종 승인을 대체하지는 않지만,
+// "통과/확인 필요"까지는 사람이 확인 후 바로 승인할 수 있어야 한다는
+// 것이 이번 변경의 핵심이다.
 
 import {
   getSocialPostById,
@@ -69,12 +79,16 @@ function checkApprovable(post: SocialPost): string | null {
   if (post.publishStatus === "blocked") return "publish_status가 blocked 상태여서 승인할 수 없습니다.";
   if (post.publishStatus === "published") return "이미 게시된 social post는 다시 승인할 수 없습니다.";
   if (post.approvalStatus === "approved") return "이미 승인된 social post입니다.";
+  if (post.qualityStatus === "not_checked") return "아직 자동 검토를 실행하지 않아 승인할 수 없습니다. 먼저 자동 검토(quality gate)를 실행하세요.";
   if (post.qualityStatus === "blocked") return "quality_status가 blocked 상태여서 승인할 수 없습니다.";
-  if (post.qualityStatus !== "ready") return `quality_status가 'ready'가 아니어서(${post.qualityStatus}) 승인할 수 없습니다.`;
+  if (post.qualityStatus === "failed") return "자동 검토 실행이 실패한 상태여서 승인할 수 없습니다. 자동 검토를 다시 실행하세요.";
   if (!hasAnyContent(post)) return "저장된 콘텐츠가 없어 승인할 수 없습니다.";
   if (hasBlockingChecklistItems(post)) {
     return "quality gate 결과에 협박/공포조장/광고클릭유도/과장수익 등 차단 사유가 남아 있어 승인할 수 없습니다.";
   }
+  // Phase 3-25: 남은 경우(qualityStatus가 'ready'이거나, 'needs_revision'
+  // 이라도 blocked/fail 항목이 없는 경우 — 즉 "확인 필요" 수준의 경고만
+  // 있는 경우)는 승인 가능하다. 최종 확인은 사람이 화면에서 직접 한다.
   return null;
 }
 
@@ -118,10 +132,14 @@ export async function requestApproval(socialPostId: string, notes?: string): Pro
 }
 
 /**
- * social post를 승인한다. quality_status='ready', publish_status가
- * blocked/published가 아님, approval_status가 approved가 아님, 콘텐츠
- * 존재, platform/tone_style 유효, quality gate에 blocked/fail 항목이
- * 없어야 승인할 수 있다.
+ * social post를 승인한다. quality_status가 'not_checked'/'blocked'/
+ * 'failed'가 아니고, publish_status가 blocked/published가 아니며,
+ * approval_status가 approved가 아니고, 콘텐츠가 존재하고, platform/
+ * tone_style이 유효하고, quality gate checklist에 blocked/fail 항목이
+ * 없어야 승인할 수 있다(Phase 3-25: quality_status가 정확히 'ready'가
+ * 아니어도 — 'needs_revision'이라도 — blocked/fail 항목만 없으면
+ * 승인할 수 있다. 경고 수준의 "확인 필요"는 사람이 확인 후 승인하면
+ * 된다).
  */
 export async function approveSocialPost(
   socialPostId: string,

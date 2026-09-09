@@ -49,6 +49,18 @@ describe("isSafeInternalReturnTo / getSafeReturnTo", () => {
     expect(isSafeInternalReturnTo("/dashboard?themeId=abc#platform-generation")).toBe(true);
   });
 
+  it("Phase 3-26: /social-posts/[id] 루트 경로(query/hash 포함)를 허용한다", () => {
+    expect(isSafeInternalReturnTo("/social-posts/abc")).toBe(true);
+    expect(isSafeInternalReturnTo("/social-posts/abc?tab=edit")).toBe(true);
+    expect(isSafeInternalReturnTo("/social-posts/abc#review")).toBe(true);
+    expect(isSafeInternalReturnTo("/social-posts/abc?tab=edit#review")).toBe(true);
+  });
+
+  it("/social-posts의 하위 경로(id 이후 추가 세그먼트)는 차단한다", () => {
+    expect(isSafeInternalReturnTo("/social-posts/abc/extra")).toBe(false);
+    expect(isSafeInternalReturnTo("/social-posts")).toBe(false);
+  });
+
   it("빈 값이면 false를 반환한다", () => {
     expect(isSafeInternalReturnTo("")).toBe(false);
     expect(isSafeInternalReturnTo(null)).toBe(false);

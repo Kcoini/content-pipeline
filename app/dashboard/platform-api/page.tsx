@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listPlatformApiCapabilities, getPlatformApiModeLabel } from "@/lib/social/platform-api-capabilities";
 import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
+import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,11 @@ export default function PlatformApiDashboardPage() {
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Platform API Readiness</h1>
+            {/* Phase 3-24: 영어 제목을 한국어로 바꾸고, 이 화면에서 할 수
+                있는 일을 한 문장으로 안내한다. */}
+            <h1 className="text-2xl font-bold">플랫폼 API 준비 상태</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              플랫폼별 API 게시 준비 상태입니다 — 실제 게시가 아니라 준비 단계 확인용입니다.
+              각 플랫폼의 API 게시 준비 상태를 확인합니다. 실제 공개 게시를 자동 실행하지 않습니다.
             </p>
           </div>
           <Link href="/dashboard" className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100">
@@ -30,29 +33,29 @@ export default function PlatformApiDashboardPage() {
           <p>이 화면은 실제 API 게시가 아니라 API 게시 준비 상태 확인입니다.</p>
           <p>현재 자동 게시 기능은 비활성화되어 있습니다.</p>
           <p>토큰이나 API key 값은 화면에 표시하지 않습니다 — 설정 이름과 상태만 표시합니다.</p>
-          <p>수동 Export/Handoff 흐름은 계속 사용할 수 있습니다.</p>
+          <p>수동 export/수동 게시 준비 흐름은 계속 사용할 수 있습니다.</p>
         </div>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Platform Capability Matrix</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">플랫폼별 기능 지원 현황</h2>
           <div className="mt-2 overflow-x-auto">
             <table className="w-full min-w-[880px] text-left text-xs">
               <thead>
                 <tr className="text-zinc-500">
-                  <th className="pr-3 py-1">platform</th>
-                  <th className="pr-3 py-1">capability</th>
-                  <th className="pr-3 py-1">feature flag</th>
-                  <th className="pr-3 py-1">readiness</th>
-                  <th className="pr-3 py-1">dry-run 지원</th>
-                  <th className="pr-3 py-1">실제 게시 지원(capability상)</th>
-                  <th className="pr-3 py-1">fallback mode</th>
+                  <th className="pr-3 py-1">플랫폼</th>
+                  <th className="pr-3 py-1">지원 방식</th>
+                  <th className="pr-3 py-1">기능 플래그</th>
+                  <th className="pr-3 py-1">준비 상태</th>
+                  <th className="pr-3 py-1">게시 전 미리보기 지원</th>
+                  <th className="pr-3 py-1">실제 게시 지원(기능상)</th>
+                  <th className="pr-3 py-1">대체 모드</th>
                   <th className="pr-3 py-1">설정 누락</th>
                 </tr>
               </thead>
               <tbody className="text-zinc-700">
                 {rows.map(({ capability, readiness }) => (
                   <tr key={capability.platform} className="border-t border-zinc-100">
-                    <td className="pr-3 py-1 font-mono">{capability.platform}</td>
+                    <td className="pr-3 py-1 font-medium">{PLATFORM_LABELS[capability.platform]}</td>
                     <td className="pr-3 py-1">{getPlatformApiModeLabel(capability.currentMode)}</td>
                     <td className="pr-3 py-1">
                       {readiness.publishEnabled ? "활성화" : "비활성화"}
@@ -73,11 +76,11 @@ export default function PlatformApiDashboardPage() {
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Notes / Warnings</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">참고 사항 / 주의 사항</h2>
           <ul className="mt-2 flex flex-col gap-3 text-xs">
             {rows.map(({ capability, readiness }) => (
               <li key={capability.platform} className="rounded border border-zinc-200 p-2">
-                <p className="font-medium text-zinc-700">{capability.platform}</p>
+                <p className="font-medium text-zinc-700">{PLATFORM_LABELS[capability.platform]}</p>
                 <p className="mt-1 text-zinc-500">{capability.notes}</p>
                 {readiness.blockers.length > 0 && (
                   <ul className="mt-1 list-inside list-disc text-red-600">

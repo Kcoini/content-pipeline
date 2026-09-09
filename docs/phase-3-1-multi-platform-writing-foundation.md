@@ -238,3 +238,6 @@ article 상세 페이지의 "Multi-platform Writing" 섹션에서:
 - 대시보드를 "작업 흐름 중심 화면"으로 재구성(Phase 3-23): [`phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md)
 - 대시보드 상태 판단 통합 + 잔여 UI 결함 수정(Phase 3-23-2): [`phase-3-23-2-dashboard-workflow-state-unification.md`](./phase-3-23-2-dashboard-workflow-state-unification.md)
 - 대시보드 "현재 단계 스포트라이트 + 접힘 이력" 구조 재구성(Phase 3-23-4, 게시 준비 섹션 신설/플랫폼 카드/출처 목록 축소/테마 목록 구분): [`phase-3-23-4-dashboard-current-step-spotlight.md`](./phase-3-23-4-dashboard-current-step-spotlight.md)
+- 페이지 간 UX 일관성 — raw enum/DB 컬럼명/영어 제목 정리(Phase 3-24): [`phase-3-24-cross-page-ux-consistency.md`](./phase-3-24-cross-page-ux-consistency.md)
+- 검토를 "자동 검토 + 사람은 편집자" 흐름으로 전환(Phase 3-25, 통과/확인 필요/수정 필요/차단 리포트, 승인 게이트 완화): [`phase-3-25-auto-review-editor-workflow.md`](./phase-3-25-auto-review-editor-workflow.md)
+- `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26, 게시용 미리보기/수정하기/내부 원문 보기 3탭, 플랫폼별 게시용 미리보기, 최종 승인 패널): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)

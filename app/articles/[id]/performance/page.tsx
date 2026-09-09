@@ -102,20 +102,23 @@ export default async function ArticlePerformancePage({
         <ArticleWorkflowNavigation articleId={id} active="performance" returnTo={returnTo} />
 
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <p>성과 페이지입니다. 수동 입력된 metrics를 기반으로 성과와 rewrite 효과를 비교합니다.</p>
-          <p>performance_score는 내부 비교용 참고 지표입니다 — 절대적인 마케팅 성공 지표가 아닙니다.</p>
-          <p>rewrite comparison은 동일 조건의 A/B 테스트가 아니므로 참고 지표로만 사용하세요.</p>
+          <p>성과 페이지입니다. 수동으로 입력한 조회수/클릭/반응을 바탕으로 성과와 재작성 효과를 비교합니다.</p>
+          <p>
+            성과 점수는 조회수, 클릭, 반응 등 여러 지표를 비교하기 쉽게 환산한 참고 점수입니다. 실제 수익이나 검색
+            순위를 보장하지 않습니다.
+          </p>
+          <p>원본과 재작성 글 비교는 동일 조건의 비교 실험이 아니므로 참고 지표로만 사용하세요.</p>
         </div>
 
         {targetPostId && <DeepLinkNotice targetId={targetPostId} found={postTargetFound} />}
         {postTargetOnDifferentPage && (
           <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
-            선택한 항목이 Recent Metrics의 현재 page에 없습니다.{" "}
+            선택한 항목이 최근 성과 기록의 현재 페이지에 없습니다.{" "}
             <a
               href={`${basePath}?${new URLSearchParams({ ...currentSearchParams, page: String(metricsTargetPage) }).toString()}`}
               className="underline"
             >
-              해당 항목이 있는 {metricsTargetPage} page로 이동 →
+              해당 항목이 있는 {metricsTargetPage}페이지로 이동 →
             </a>
           </div>
         )}
@@ -125,33 +128,34 @@ export default async function ArticlePerformancePage({
           <h1 className="text-lg font-semibold">{article.title}</h1>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
             <Link href={`/articles/${id}/blog`} className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
-              Metrics 입력하러 블로그로
+              성과 입력하러 블로그로
             </Link>
             <Link href={`/articles/${id}/social`} className="rounded border border-purple-300 bg-purple-50 px-2 py-1 font-medium text-purple-700 hover:bg-purple-100">
-              Metrics 입력하러 SNS로
+              성과 입력하러 SNS로
             </Link>
             <Link href={`/articles/${id}/rewrite`} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
-              Low performance 글 개선 제안으로 이동
+              반응 저조 글 개선 제안으로 이동
             </Link>
           </div>
         </section>
 
         <SocialPerformanceSummaryCards summary={dashboard.summary} bestPlatform={dashboard.bestPlatform} bestToneStyle={dashboard.bestToneStyle} />
 
+        {/* Phase 3-24: 영어로 되어 있던 섹션 제목들을 한국어로 바꿨다. */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Chart Overview</h2>
-          <p className="mt-1 text-[11px] text-zinc-500">이 기사의 social post만 대상으로 한 차트입니다 — 수동 입력된 metrics 기반입니다.</p>
+          <h2 className="text-sm font-semibold text-zinc-700">성과 요약</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">이 기사의 SNS/블로그 글만 대상으로 한 차트입니다 — 수동으로 입력한 성과 지표 기반입니다.</p>
           <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartSection title="Platform Performance" description="플랫폼별 평균 performance_score">
+            <ChartSection title="플랫폼별 성과" description="플랫폼별 평균 성과 점수">
               <PlatformPerformanceChart data={charts.platformPerformanceChart} />
             </ChartSection>
-            <ChartSection title="Tone Performance" description="tone_style별 평균 performance_score">
+            <ChartSection title="문체별 성과" description="문체별 평균 성과 점수">
               <TonePerformanceChart data={charts.tonePerformanceChart} />
             </ChartSection>
-            <ChartSection title="Metrics Trend" description="월별/일별 views·clicks·performance_score 추세" note="실시간 분석이 아니라 summary용 추세입니다.">
+            <ChartSection title="성과 추이" description="월별/일별 조회수·클릭·성과 점수 추세" note="실시간 분석이 아니라 요약용 추세입니다.">
               <MetricsTrendChart data={charts.metricsTrendChart} />
             </ChartSection>
-            <ChartSection title="Original vs Rewrite Comparison" description="이 기사의 원본 vs rewrite 성과 비교 분포" note="동일 조건의 A/B 테스트가 아닙니다.">
+            <ChartSection title="원본과 재작성 글 비교" description="이 기사의 원본 vs 재작성 글 성과 비교 분포" note="동일 조건의 비교 실험이 아닙니다.">
               <RewriteComparisonChart data={charts.rewriteComparisonChart} />
             </ChartSection>
           </div>
@@ -166,30 +170,30 @@ export default async function ArticlePerformancePage({
         <MetricsMissingPostsTable posts={dashboard.metricsMissingPosts} />
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Original vs Rewrite 성과 비교 실행</h2>
-          <p className="mt-1 text-[11px] text-zinc-500">rewrite version을 선택해 원본과의 성과 비교를 실행합니다.</p>
+          <h2 className="text-sm font-semibold text-zinc-700">원본과 재작성 글 성과 비교 실행</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">재작성 버전을 선택해 원본과의 성과 비교를 실행합니다.</p>
           {dashboard.summary.rewriteVersionsCount === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">이 기사에는 아직 rewrite version이 없습니다.</p>
+            <p className="mt-2 text-xs text-zinc-500">이 기사에는 아직 재작성 버전이 없습니다.</p>
           ) : (
             <form action={compareRewritePerformanceAction} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
               <input type="hidden" name="articleId" value={article.id} />
               {/* Phase 3-17: 비교 결과가 생성되면 action이 comparisonId로 이 페이지에 강조 이동시킨다(없으면 이 페이지 기본값). */}
               <input type="hidden" name="returnTo" value={selfReturnTo} />
-              <input name="socialPostId" placeholder="rewrite social_post id" className="rounded border border-zinc-300 px-2 py-1" required />
+              <input name="socialPostId" placeholder="재작성 버전 글 id" className="rounded border border-zinc-300 px-2 py-1" required />
               <button type="submit" className="rounded border border-purple-300 bg-purple-50 px-2 py-1 font-medium text-purple-700 hover:bg-purple-100">
                 성과 비교 실행
               </button>
             </form>
           )}
           <p className="mt-2 text-[11px] text-zinc-500">
-            비교 대상 rewrite version을 먼저 확인하려면{" "}
+            비교 대상 재작성 버전을 먼저 확인하려면{" "}
             {dashboard.rewritePerformanceSummary.bestRewriteSocialPostId ? (
               <a href={buildRewriteVersionDeepLink(article.id, dashboard.rewritePerformanceSummary.bestRewriteSocialPostId, selfReturnTo)} className="text-indigo-700 hover:underline">
-                Rewrite 관리에서 보기 →
+                재작성 관리에서 보기 →
               </a>
             ) : (
               <Link href={`/articles/${id}/rewrite`} className="text-indigo-700 hover:underline">
-                Rewrite 관리로 이동 →
+                재작성 관리로 이동 →
               </Link>
             )}
           </p>
@@ -204,7 +208,7 @@ export default async function ArticlePerformancePage({
                 })}
                 className="text-purple-700 hover:underline"
               >
-                A/B test로 관리 →
+                글 반응 비교로 관리 →
               </a>
             </p>
           )}

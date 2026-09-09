@@ -24,6 +24,16 @@
 - [ ] "확인 필요" 항목에 **설명과 action**이 있는가?
 - [ ] 영어/한국어 혼용 버튼명이 정리되었는가?
 - [ ] **naver_blog에 WordPress 전용 UI**가 잘못 표시되지 않는가?
+- [ ] **raw enum**(platform/tone_style 등)이 select option이나 배지에
+      그대로 노출되지 않는가(`PLATFORM_LABELS`/`TONE_STYLE_CONFIGS` 사용)?
+- [ ] **raw DB column name**(`is_rewrite_version`, `parent_social_post_id`
+      등)이 화면 라벨로 그대로 쓰이지 않는가(`describeStatusField` 사용)?
+- [ ] 내부 상태값(quality_status 등)이 `describeStatusValue`로 변환되어
+      표시되는가(Phase 3-24: `lib/social/status-labels.ts`)?
+- [ ] 페이지 제목(`<h1>`)과 섹션 제목(`<h2>`)이 영어가 아니라 한국어인가
+      (`Content Dashboard`, `A/B Test`, `Chart Overview` 같은 표현 금지)?
+- [ ] `placeholder`/`dry-run`/`handoff`/`readiness` 같은 개발자 용어가
+      사용자 친화적 한국어로 바뀌었는가?
 
 ## 사용 방법
 
@@ -45,3 +55,4 @@
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 체크리스트의 근거가 되는 전체 규칙
 - [`docs/wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md) — wordpress_blog 카드에 이 체크리스트를 적용한 구체적인 구조
 - [`docs/ui-audit-wordpress-blog-card.md`](./ui-audit-wordpress-blog-card.md) — 이 체크리스트로 wordpress_blog 카드를 점검한 결과 예시
+- [`docs/phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md) — 이 체크리스트를 `/social-posts/[id]`(단일 글 최종 검토·수정·승인 화면)에 적용한 사례

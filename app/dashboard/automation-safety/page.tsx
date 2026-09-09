@@ -21,17 +21,18 @@ const STATUS_BADGE_CLASS: Record<AutomationSafetyStatus, string> = {
   failed: "border-red-300 bg-red-50 text-red-700",
 };
 
+// Phase 3-24: 카테고리 라벨을 영어에서 한국어로 바꿨다.
 const CATEGORY_LABEL: Record<AutomationSafetyCategory, string> = {
-  feature_flags: "Feature Flags",
-  approval_gates: "Approval Gates",
-  publish_guards: "Publish Guards",
-  api_publish: "API Publish",
-  logging_security: "Logging Security",
-  content_safety: "Content Safety",
-  data_integrity: "Data Integrity",
-  rollback: "Rollback / Recovery",
-  manual_workflow: "Manual Workflow",
-  environment: "Environment",
+  feature_flags: "기능 플래그",
+  approval_gates: "승인 게이트",
+  publish_guards: "게시 가드",
+  api_publish: "API 게시",
+  logging_security: "로깅 보안",
+  content_safety: "콘텐츠 안전",
+  data_integrity: "데이터 무결성",
+  rollback: "롤백 / 복구",
+  manual_workflow: "수동 작업 흐름",
+  environment: "환경 설정",
 };
 
 function StatusBadge({ status }: { status: AutomationSafetyStatus }) {
@@ -50,9 +51,12 @@ export default async function AutomationSafetyPage() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Automation Safety Review</h1>
+            {/* Phase 3-24: 영어 제목을 한국어로 바꾸고, 이 화면에서 할 수
+                있는 일을 한 문장으로 안내한다. */}
+            <h1 className="text-2xl font-bold">자동화 안전 점검</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              실제 API 게시나 자동화 확장 전, 승인 게이트/게시 가드/로깅 보안/금지 콘텐츠 규칙을 점검합니다.
+              자동화 기능이 공개 게시나 민감정보 노출로 이어지지 않도록 점검합니다. 실제 API 게시나 자동화 확장 전,
+              승인 게이트/게시 가드/로깅 보안/금지 콘텐츠 규칙을 점검합니다.
             </p>
           </div>
           <Link href="/dashboard" className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100">
@@ -74,15 +78,15 @@ export default async function AutomationSafetyPage() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-zinc-500">blocker (critical)</p>
+            <p className="text-xs text-zinc-500">차단 필요(심각)</p>
             <p className="mt-1 text-lg font-semibold text-red-700">{result.blockers.length}</p>
           </div>
           <div>
-            <p className="text-xs text-zinc-500">warning</p>
+            <p className="text-xs text-zinc-500">주의</p>
             <p className="mt-1 text-lg font-semibold text-amber-700">{result.warnings.length}</p>
           </div>
           <div>
-            <p className="text-xs text-zinc-500">checked at</p>
+            <p className="text-xs text-zinc-500">점검 시각</p>
             <p className="mt-1 text-xs text-zinc-600">{result.checkedAt}</p>
           </div>
           <p className="flex-1 text-sm text-zinc-600">{result.summary}</p>
@@ -133,7 +137,7 @@ export default async function AutomationSafetyPage() {
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Checklist</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">점검 체크리스트</h2>
           <ul className="mt-2 flex flex-col gap-1 text-xs">
             {result.checklist.map((item) => (
               <li key={item.id} className="rounded border border-zinc-100 px-2 py-1">
@@ -146,7 +150,7 @@ export default async function AutomationSafetyPage() {
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Findings</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">발견된 문제</h2>
           {result.findings.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-500">발견된 문제가 없습니다.</p>
           ) : (
@@ -170,7 +174,7 @@ export default async function AutomationSafetyPage() {
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Recommendations</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">권장 조치</h2>
           {result.recommendations.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-500">추가 권장 조치가 없습니다.</p>
           ) : (

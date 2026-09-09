@@ -39,3 +39,19 @@ describe("automation safety review dashboard page (정적 소스 검사, Phase 3
     expect(actionsSource).not.toMatch(/update|insert|delete/i);
   });
 });
+
+describe("automation safety review dashboard page 한국어 제목 (정적 소스 검사, Phase 3-24)", () => {
+  it("h1 제목이 한국어다(영어 'Automation Safety Review'가 아니다)", () => {
+    expect(pageSource).not.toContain("Automation Safety Review");
+    expect(pageSource).toMatch(/<h1 className="text-2xl font-bold">자동화 안전 점검<\/h1>/);
+  });
+
+  it("이 화면에서 할 수 있는 일을 한 문장으로 안내한다", () => {
+    expect(pageSource).toContain("자동화 기능이 공개 게시나 민감정보 노출로 이어지지 않도록 점검합니다.");
+  });
+
+  it("카테고리 라벨이 한국어다", () => {
+    expect(pageSource).toContain('feature_flags: "기능 플래그"');
+    expect(pageSource).not.toContain('feature_flags: "Feature Flags"');
+  });
+});

@@ -26,6 +26,18 @@ import {
   prepareRewriteReexportAction,
   generateRewriteReexportPayloadAction,
 } from "../actions";
+import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
+import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
+import {
+  getRewriteSuggestionNextAction,
+  getRewriteVersionNextAction,
+  describeRequestReapprovalDisabledReason,
+  describeApproveReapprovalDisabledReason,
+  describePrepareReexportDisabledReason,
+  describeGenerateReexportDisabledReason,
+  describeCompareDisabledReason,
+} from "@/lib/social/rewrite-version-user-facing-status";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +113,7 @@ export default async function ArticleRewritePage({
         <ArticleWorkflowNavigation articleId={id} active="rewrite" returnTo={returnTo} />
 
         <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
-          Rewrite 관리 페이지입니다. 개선 제안, 개선 버전, 비교, 재승인, 재Export 흐름을 관리합니다. 이 페이지에서도 자동 게시는 하지 않습니다.
+          재작성 관리 페이지입니다. 개선 제안, 개선 버전, 비교, 재승인, 재내보내기 흐름을 관리합니다. 이 페이지에서도 자동 게시는 하지 않습니다.
           특정 글이나 비교 결과로 이동하면 해당 카드가 강조 표시됩니다.
         </div>
 
@@ -156,6 +168,16 @@ export default async function ArticleRewritePage({
               {suggestions.map((s) => {
                 const selfReturnTo = selfReturnToForSuggestion(s.id);
                 const originalPost = originalPosts.find((p) => p.id === s.socialPostId);
+                const nextAction = getRewriteSuggestionNextAction(s);
+                const primaryClass = "rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100";
+                const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+                const applyDisabled = s.suggestionStatus !== "approved" || s.applicationStatus === "applied";
+                const applyDisabledReason =
+                  s.applicationStatus === "applied"
+                    ? "이미 적용된 제안입니다."
+                    : s.suggestionStatus !== "approved"
+                      ? "이 제안을 먼저 승인해야 적용할 수 있습니다."
+                      : null;
                 return (
                   <li
                     key={s.id}
@@ -163,16 +185,24 @@ export default async function ArticleRewritePage({
                     className={`rounded border border-zinc-200 p-2 ${getHighlightClassName(s.id, targetSuggestionId)}`}
                   >
                     <p className="font-medium text-zinc-700">
-                      원본: {originalTitleById.get(s.socialPostId) ?? s.socialPostId} ({s.platform}/{s.toneStyle})
+                      원본: {originalTitleById.get(s.socialPostId) ?? s.socialPostId} (
+                      {PLATFORM_LABELS[s.platform]}/{TONE_STYLE_CONFIGS[s.toneStyle].label})
                     </p>
-                    <p className="mt-1 text-[11px] text-zinc-500">
-                      suggestion_status: {s.suggestionStatus} · application_status: {s.applicationStatus}
+                    {/* Phase 3-24: raw enum(suggestion_status/application_status)을
+                        직접 노출하지 않는다 — 사용자 친화적 한 줄 요약 + 다음
+                        작업만 먼저 보여주고, 원문 상태값은 "내부 상태값 보기"
+                        접힘 안에 둔다. */}
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {describeStatusValue(s.suggestionStatus)} · 적용: {describeStatusValue(s.applicationStatus)}
                       {s.appliedSocialPostId && (
                         <>
                           {" "}
-                          · applied →{" "}
-                          <a href={buildArticleRewriteUrl(article.id, { rewriteVersionId: s.appliedSocialPostId, highlight: s.appliedSocialPostId })} className="text-blue-600 hover:underline">
-                            {s.appliedSocialPostId}
+                          ·{" "}
+                          <a
+                            href={buildArticleRewriteUrl(article.id, { rewriteVersionId: s.appliedSocialPostId, highlight: s.appliedSocialPostId })}
+                            className="text-blue-600 hover:underline"
+                          >
+                            적용된 버전 보기 →
                           </a>
                         </>
                       )}
@@ -191,12 +221,12 @@ export default async function ArticleRewritePage({
                         </a>
                       </div>
                     )}
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <form action={approveRewriteSuggestionAction}>
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="suggestionId" value={s.id} />
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
+                        <button type="submit" className={nextAction.kind === "approve_suggestion" ? primaryClass : secondaryClass}>
                           개선 제안 승인
                         </button>
                       </form>
@@ -216,12 +246,15 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button
                           type="submit"
-                          disabled={s.suggestionStatus !== "approved" || s.applicationStatus === "applied"}
-                          className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={applyDisabled}
+                          title={applyDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "apply_suggestion" ? primaryClass : secondaryClass} disabled:cursor-not-allowed disabled:opacity-50`}
                         >
                           개선안 적용
                         </button>
                       </form>
+                      {/* Phase 3-24: disabled 버튼에는 반드시 이유를 표시한다(hover title뿐 아니라 항상 보이는 텍스트로도). */}
+                      {applyDisabledReason && <span className="text-[11px] text-zinc-400">{applyDisabledReason}</span>}
                     </div>
                   </li>
                 );
@@ -232,15 +265,29 @@ export default async function ArticleRewritePage({
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">
-            <ContentGroupBadge group="rewrite" /> Rewrite Versions ({rewriteVersions.length})
+            <ContentGroupBadge group="rewrite" /> 재작성 버전 ({rewriteVersions.length})
           </h2>
           {rewriteVersions.length === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">아직 생성된 rewrite version이 없습니다.</p>
+            <p className="mt-2 text-xs text-zinc-500">아직 생성된 재작성 버전이 없습니다.</p>
           ) : (
             <ul className="mt-2 flex flex-col gap-3 text-xs">
               {rewriteVersions.map((v) => {
                 const selfReturnTo = selfReturnToForVersion(v.id);
                 const isComparisonHighlighted = Boolean(targetComparisonId) && v.latestVersionComparisonId === targetComparisonId;
+                const hasComparisonTarget = Boolean(v.parentSocialPostId || v.rewriteAppliedFromSocialPostId);
+                const nextAction = getRewriteVersionNextAction({
+                  rewriteReapprovalStatus: v.rewriteReapprovalStatus,
+                  rewriteReexportStatus: v.rewriteReexportStatus,
+                  hasComparisonTarget,
+                });
+                const primaryClass = "rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100";
+                const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+                const disabledClass = "disabled:cursor-not-allowed disabled:opacity-50";
+                const compareDisabledReason = describeCompareDisabledReason(hasComparisonTarget);
+                const requestReapprovalDisabledReason = describeRequestReapprovalDisabledReason(v.rewriteReapprovalStatus);
+                const approveReapprovalDisabledReason = describeApproveReapprovalDisabledReason(v.rewriteReapprovalStatus);
+                const prepareReexportDisabledReason = describePrepareReexportDisabledReason(v.rewriteReapprovalStatus);
+                const generateReexportDisabledReason = describeGenerateReexportDisabledReason(v.rewriteReapprovalStatus);
                 return (
                   <li
                     key={v.id}
@@ -248,25 +295,18 @@ export default async function ArticleRewritePage({
                     className={`rounded border border-indigo-200 p-3 ${getHighlightClassName(v.id, targetVersionId) || (isComparisonHighlighted ? "ring-2 ring-indigo-500 ring-offset-2" : "")}`}
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{v.platform}</span>
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">v{v.versionNumber}</span>
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-600">{v.versionStatus}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600">{PLATFORM_LABELS[v.platform]}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600">버전 {v.versionNumber}</span>
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-600">{describeStatusValue(v.versionStatus)}</span>
                       {v.recommendedForRepost && <InfoBadge label="재게시 추천" />}
                     </div>
                     <p className="mt-1 font-medium text-zinc-700">{v.postTitle || v.caption || "(제목 없음)"}</p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      root: {v.rootSocialPostId ?? "-"} · parent: {v.parentSocialPostId ?? "-"}
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      version 비교: {v.versionComparisonStatus}
-                      {v.versionComparisonScore != null ? ` (${v.versionComparisonScore})` : ""}
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      재승인: {v.rewriteReapprovalStatus} · 재export: {v.rewriteReexportStatus} · workflow: {v.rewriteRepublishWorkflowStatus}
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      성과 비교: {v.rewritePerformanceComparisonStatus}
-                      {v.rewritePerformanceWinner ? ` · winner: ${v.rewritePerformanceWinner}` : ""}
+                    {/* Phase 3-24: raw 상태값(재승인/재export/workflow/버전비교 등)을
+                        카드 본문에 직접 노출하지 않는다 — 사용자 친화적 한 줄
+                        요약 + 다음 작업만 먼저 보여주고, 원문 상태값/내부 id는
+                        "내부 상태값 보기" 접힘 안에 둔다. */}
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {describeStatusValue(v.rewriteReapprovalStatus)} · 다음 작업: <span className="font-medium">{nextAction.label}</span>
                     </p>
 
                     <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
@@ -286,7 +326,7 @@ export default async function ArticleRewritePage({
                           href={buildArticleAbTestsUrl(article.id, { originalSocialPostId: v.parentSocialPostId, rewriteSocialPostId: v.id, returnTo: selfReturnTo })}
                           className="text-purple-700 hover:underline"
                         >
-                          A/B test draft 만들기 →
+                          비교 실험 만들기 →
                         </a>
                       )}
                       <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
@@ -294,15 +334,7 @@ export default async function ArticleRewritePage({
                       </a>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <form action={recheckRewriteVersionQualityAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={v.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          Version Quality Recheck
-                        </button>
-                      </form>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <form action={compareRewriteVersionAction}>
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="socialPostId" value={v.id} />
@@ -310,10 +342,11 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button
                           type="submit"
-                          disabled={!v.parentSocialPostId && !v.rewriteAppliedFromSocialPostId}
-                          className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={compareDisabledReason !== null}
+                          title={compareDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "compare" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
-                          원본과 Rewrite 비교
+                          원본과 비교
                         </button>
                       </form>
                       <form action={requestRewriteReapprovalAction}>
@@ -322,8 +355,9 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button
                           type="submit"
-                          disabled={v.rewriteReapprovalStatus !== "not_requested"}
-                          className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={requestReapprovalDisabledReason !== null}
+                          title={requestReapprovalDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "request_reapproval" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
                           재승인 요청
                         </button>
@@ -334,10 +368,11 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button
                           type="submit"
-                          disabled={v.rewriteReapprovalStatus !== "pending_review"}
-                          className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={approveReapprovalDisabledReason !== null}
+                          title={approveReapprovalDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "approve_reapproval" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
-                          재승인 승인
+                          재승인 승인하기
                         </button>
                       </form>
                       <form action={prepareRewriteReexportAction}>
@@ -346,10 +381,11 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button
                           type="submit"
-                          disabled={v.rewriteReapprovalStatus !== "approved"}
-                          className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={prepareReexportDisabledReason !== null}
+                          title={prepareReexportDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "prepare_reexport" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
-                          재Export 준비
+                          재내보내기 준비
                         </button>
                       </form>
                       <form action={generateRewriteReexportPayloadAction}>
@@ -358,19 +394,64 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button
                           type="submit"
-                          disabled={v.rewriteReapprovalStatus !== "approved"}
-                          className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={generateReexportDisabledReason !== null}
+                          title={generateReexportDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "generate_reexport" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
-                          재Export 생성
+                          재내보내기 만들기
                         </button>
                       </form>
                       <a
                         href={buildMetricsDeepLink(article.id, v.id, selfReturnTo)}
-                        className="rounded border border-amber-300 bg-amber-50 px-2 py-1 font-medium text-amber-700 hover:bg-amber-100"
+                        className={nextAction.kind === "view_performance" ? primaryClass : secondaryClass}
                       >
-                        추천 버전 성과 열기
+                        성과 보기
                       </a>
                     </div>
+                    {/* Phase 3-24: disabled 버튼 이유는 hover title뿐 아니라
+                        항상 보이는 텍스트로도 알려준다(카드 안에 여러 버튼이
+                        있어 어떤 버튼의 이유인지 헷갈리지 않도록 라벨을
+                        붙인다). */}
+                    {(requestReapprovalDisabledReason || approveReapprovalDisabledReason || prepareReexportDisabledReason || generateReexportDisabledReason || compareDisabledReason) && (
+                      <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-zinc-400">
+                        {compareDisabledReason && <li>원본과 비교: {compareDisabledReason}</li>}
+                        {requestReapprovalDisabledReason && <li>재승인 요청: {requestReapprovalDisabledReason}</li>}
+                        {approveReapprovalDisabledReason && <li>재승인 승인하기: {approveReapprovalDisabledReason}</li>}
+                        {prepareReexportDisabledReason && <li>재내보내기 준비: {prepareReexportDisabledReason}</li>}
+                        {generateReexportDisabledReason && <li>재내보내기 만들기: {generateReexportDisabledReason}</li>}
+                      </ul>
+                    )}
+
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[11px] text-zinc-400">내부 상태값 보기 (관리자용, 기본 접힘)</summary>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        {describeStatusField("versionNumber")}: {v.versionNumber} · {describeStatusField("rootSocialPostId")}:{" "}
+                        {v.rootSocialPostId ?? "-"} · {describeStatusField("parentSocialPostId")}: {v.parentSocialPostId ?? "-"}
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        {describeStatusField("versionComparisonStatus")}: {describeStatusValue(v.versionComparisonStatus)}
+                        {v.versionComparisonScore != null ? ` (점수 ${v.versionComparisonScore})` : ""}
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        {describeStatusField("rewriteReapprovalStatus")}: {describeStatusValue(v.rewriteReapprovalStatus)} ·{" "}
+                        {describeStatusField("rewriteReexportStatus")}: {describeStatusValue(v.rewriteReexportStatus)} ·{" "}
+                        {describeStatusField("rewriteRepublishWorkflowStatus")}: {describeStatusValue(v.rewriteRepublishWorkflowStatus)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        성과 비교: {describeStatusValue(v.rewritePerformanceComparisonStatus)}
+                        {v.rewritePerformanceWinner ? ` · 더 좋은 쪽: ${describeStatusValue(v.rewritePerformanceWinner)}` : ""}
+                      </p>
+                      <div className="mt-2">
+                        <form action={recheckRewriteVersionQualityAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={v.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            버전 품질 재검사
+                          </button>
+                        </form>
+                      </div>
+                    </details>
                   </li>
                 );
               })}

@@ -103,8 +103,50 @@ describe("approveSocialPost", () => {
     expect(approveSocialPostInRepository).toHaveBeenCalledWith("social-post-1", "editor", null);
   });
 
-  it("quality_status가 needs_revision이면 승인을 거부한다", async () => {
-    getSocialPostById.mockResolvedValue(makeSocialPost({ qualityStatus: "needs_revision" }));
+  it("Phase 3-25: quality_status가 needs_revision이어도 checklist에 blocked/fail 항목이 없으면(경고만 있으면) 승인을 허용한다", async () => {
+    // "확인 필요" 수준(경고만 있는 needs_revision)은 사람이 화면에서
+    // 확인한 뒤 바로 승인할 수 있어야 한다 — quality_status가 정확히
+    // 'ready'가 아니라는 이유만으로 승인을 막지 않는다.
+    getSocialPostById.mockResolvedValue(
+      makeSocialPost({
+        qualityStatus: "needs_revision",
+        qualitySummary: { checklist: [{ key: "length_check", status: "warning" }] },
+      })
+    );
+    approveSocialPostInRepository.mockResolvedValue(makeSocialPost({ approvalStatus: "approved" }));
+
+    const result = await approveSocialPost("social-post-1", "editor");
+
+    expect(result.success).toBe(true);
+    expect(approveSocialPostInRepository).toHaveBeenCalled();
+  });
+
+  it("quality_status가 needs_revision이고 checklist에 fail 항목이 있으면(수정 필요) 승인을 거부한다", async () => {
+    getSocialPostById.mockResolvedValue(
+      makeSocialPost({
+        qualityStatus: "needs_revision",
+        qualitySummary: { checklist: [{ key: "wordpress_blog_body_depth", status: "fail" }] },
+      })
+    );
+
+    const result = await approveSocialPost("social-post-1", "editor");
+
+    expect(result.success).toBe(false);
+    expect(approveSocialPostInRepository).not.toHaveBeenCalled();
+  });
+
+  it("quality_status가 not_checked이면(아직 자동 검토 전) 승인을 거부한다", async () => {
+    getSocialPostById.mockResolvedValue(makeSocialPost({ qualityStatus: "not_checked", qualitySummary: {} }));
+
+    const result = await approveSocialPost("social-post-1", "editor");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("자동 검토");
+    expect(approveSocialPostInRepository).not.toHaveBeenCalled();
+  });
+
+  it("quality_status가 failed이면(자동 검토 실행 실패) 승인을 거부한다", async () => {
+    getSocialPostById.mockResolvedValue(makeSocialPost({ qualityStatus: "failed", qualitySummary: {} }));
 
     const result = await approveSocialPost("social-post-1", "editor");
 

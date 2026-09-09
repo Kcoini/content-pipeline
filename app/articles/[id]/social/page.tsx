@@ -20,6 +20,15 @@ import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-t
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import { getUserFacingStatus, getNextRecommendedAction } from "@/lib/social/social-post-user-facing-status";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
+import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
+import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
+import {
+  summarizeAutoReview,
+  describeAutoReviewRiskLevel,
+  describeApprovalReadiness,
+  describeAutoReviewNotRunYet,
+} from "@/lib/social/social-post-auto-review";
 import {
   generatePlaceholderSocialPostAction,
   generateSocialDraftAction,
@@ -133,40 +142,66 @@ export default async function ArticleSocialPage({
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h1 className="text-lg font-semibold">{article.title}</h1>
-          <p className="mt-1 text-xs text-zinc-500">article status: {article.status}</p>
+          {/* Phase 3-24: raw 상태값(article.status)을 그대로 노출하지 않는다. */}
+          <p className="mt-1 text-xs text-zinc-500">상태: {describeStatusValue(article.status)}</p>
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">SNS/커뮤니티 글 생성</h2>
-          <form action={generatePlaceholderSocialPostAction} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+          <p className="mt-1 text-[11px] text-zinc-500">
+            선택한 플랫폼과 문체에 맞춰 글을 생성합니다. 공개 게시는 하지 않습니다.
+          </p>
+          {/* Phase 3-24: platform/tone_style select가 raw enum("naver_cafe",
+              "explanatory" 등)을 그대로 노출하던 문제를 고쳤다 — value는
+              그대로 두고(서버 액션은 그대로 동작) 화면에 보이는 텍스트만
+              한국어 라벨로 바꿨다. */}
+          <form id="social-draft-form" action={generateSocialDraftAction} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
             <input type="hidden" name="articleId" value={article.id} />
             <label className="flex flex-col text-zinc-600">
-              platform
+              플랫폼
               <select name="platform" className="mt-1 rounded border border-zinc-300 px-2 py-1" required>
                 {SOCIAL_COMMUNITY_PLATFORMS.map((platform) => (
                   <option key={platform} value={platform}>
-                    {platform}
+                    {PLATFORM_LABELS[platform]}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex flex-col text-zinc-600">
-              tone_style
+              문체
               <select name="toneStyle" className="mt-1 rounded border border-zinc-300 px-2 py-1" required>
                 {TONE_STYLES.map((toneStyle) => (
                   <option key={toneStyle} value={toneStyle}>
-                    {toneStyle}
+                    {TONE_STYLE_CONFIGS[toneStyle].label}
                   </option>
                 ))}
               </select>
             </label>
-            <button type="submit" formAction={generateSocialDraftAction} className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-500">
-              SNS/커뮤니티 글 초안 생성
-            </button>
-            <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 font-medium text-white hover:bg-zinc-700">
-              placeholder 초안 생성
+            <button type="submit" className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-500">
+              선택한 플랫폼 글 생성
             </button>
           </form>
+
+          {/* Phase 3-24: 예전 placeholder(임시) 초안 버튼은 일반 사용자에게 의미가
+              불명확한 개발자용 기능이다 — 이름을 바꾸고 고급 옵션(기본
+              접힘)으로 옮겼다. 위 폼(social-draft-form)의 platform/문체
+              선택값을 그대로 재사용한다(form= 속성으로 연결). */}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-medium text-zinc-500">고급 옵션: 테스트용 임시 초안 만들기</summary>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              AI 생성 없이, 위에서 선택한 플랫폼/문체로 내용이 비어 있는 임시 초안만 만듭니다. 실제 글 작성이 아니라
+              화면 테스트용입니다.
+            </p>
+            <button
+              type="submit"
+              form="social-draft-form"
+              formAction={generatePlaceholderSocialPostAction}
+              className="mt-1 rounded border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              임시 초안 만들기
+            </button>
+          </details>
+
           <form method="get" className="mt-2">
             <label className="flex items-center gap-1 text-xs text-zinc-600">
               <input type="checkbox" name="includeRewriteVersions" value="true" defaultChecked={includeRewriteVersions} />
@@ -196,11 +231,11 @@ export default async function ArticleSocialPage({
                       <ContentGroupBadge
                         group={post.isRewriteVersion ? "rewrite" : classifyContentGroup({ kind: "social_post", platform: post.platform, isRewriteVersion: false })}
                       />
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.platform}</span>
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.toneStyle}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600">{PLATFORM_LABELS[post.platform]}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600">{TONE_STYLE_CONFIGS[post.toneStyle].label}</span>
                       {post.manualPostStatus === "posted" && <InfoBadge label="게시 완료" />}
-                      {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="Metrics 필요" />}
-                      {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="Low Performance" />}
+                      {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="성과 입력 필요" />}
+                      {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="반응 저조" />}
                       <form action={archiveSocialPostAction} className="ml-auto">
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="socialPostId" value={post.id} />
@@ -233,6 +268,61 @@ export default async function ArticleSocialPage({
                     <p className="mt-1 text-xs text-zinc-600">
                       {getUserFacingStatus(post)} · 다음 작업: <span className="font-medium">{getNextRecommendedAction(post).label}</span>
                     </p>
+
+                    {/* Phase 3-25: "사람이 모든 항목을 직접 검사"하는 대신
+                        "자동 검토 리포트를 보고 최종 판단"하도록, quality
+                        gate checklist(이미 저장돼 있음)를 통과/확인 필요/
+                        수정 필요/차단 리포트로 다시 계산해서 보여준다. DB에
+                        새로 쓰지 않는다 — 항상 현재 checklist로 다시
+                        계산한다. */}
+                    {(() => {
+                      const checklist = Array.isArray(post.qualitySummary?.checklist)
+                        ? (post.qualitySummary.checklist as unknown as { key: string; status: string; message: string }[])
+                        : null;
+                      if (post.qualityStatus === "not_checked" || !checklist) {
+                        return (
+                          <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
+                            {describeAutoReviewNotRunYet(post.qualityStatus)} 아래 &ldquo;품질검사&rdquo; 버튼으로 자동 검토를 실행하세요.
+                          </p>
+                        );
+                      }
+
+                      const review = summarizeAutoReview(checklist as never);
+                      const toneClass =
+                        review.overallStatus === "blocked"
+                          ? "border-red-200 bg-red-50 text-red-800"
+                          : review.overallStatus === "needs_fix"
+                            ? "border-orange-200 bg-orange-50 text-orange-800"
+                            : review.overallStatus === "needs_check"
+                              ? "border-amber-200 bg-amber-50 text-amber-800"
+                              : "border-green-200 bg-green-50 text-green-800";
+
+                      return (
+                        <div className={`mt-2 rounded border p-2 text-[11px] ${toneClass}`}>
+                          <div className="flex flex-wrap items-center justify-between gap-1">
+                            <p className="font-semibold">자동 검토 결과: {review.overallLabel}</p>
+                            <span className="rounded-full bg-white/60 px-1.5 py-0.5 font-medium">
+                              위험도 {describeAutoReviewRiskLevel(review.riskLevel)}
+                            </span>
+                          </div>
+                          <p className="mt-1">
+                            통과 {review.counts.passed}개 · 확인 필요 {review.counts.needsCheck}개 · 수정 필요{" "}
+                            {review.counts.needsFix}개 · 차단 {review.counts.blocked}개
+                          </p>
+                          <p className="mt-1">{describeApprovalReadiness(review)}</p>
+                          {review.issues.length > 0 && (
+                            <ul className="mt-1.5 flex flex-col gap-0.5">
+                              {review.issues.slice(0, 5).map((issue) => (
+                                <li key={issue.key}>
+                                  · [{issue.axisLabel}] {issue.message}
+                                </li>
+                              ))}
+                              {review.issues.length > 5 && <li>· 그 외 {review.issues.length - 5}건 (상세 상태 보기 참고)</li>}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
                       <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
@@ -279,7 +369,7 @@ export default async function ArticleSocialPage({
                               <input type="hidden" name="socialPostId" value={post.id} />
                               <input type="hidden" name="returnTo" value={selfReturnTo} />
                               <button type="submit" className={nextAction.kind === "export" ? primaryClass : secondaryClass}>
-                                Manual Export
+                                복사/export 준비
                               </button>
                             </form>
                           </>
@@ -290,15 +380,19 @@ export default async function ArticleSocialPage({
                     <details className="mt-2">
                       <summary className="cursor-pointer text-[11px] text-zinc-400">상세 상태 보기 / 보조 작업 (관리자용, 기본 접힘)</summary>
                       <p className="mt-1 text-[11px] text-zinc-400">
-                        quality: {post.qualityStatus} · approval: {post.approvalStatus} · export: {post.exportStatus} · guard:{" "}
-                        {post.platformPublishGuardStatus} · dry-run: {post.platformPublishDryRunStatus} · handoff: {post.handoffStatus} · manual_post:{" "}
-                        {post.manualPostStatus}
+                        {describeStatusField("quality_status")}: {describeStatusValue(post.qualityStatus)} ·{" "}
+                        {describeStatusField("approval_status")}: {describeStatusValue(post.approvalStatus)} ·{" "}
+                        {describeStatusField("export_status")}: {describeStatusValue(post.exportStatus)} ·{" "}
+                        {describeStatusField("platform_publish_guard_status")}: {describeStatusValue(post.platformPublishGuardStatus)} ·{" "}
+                        게시 전 미리보기: {describeStatusValue(post.platformPublishDryRunStatus)} ·{" "}
+                        {describeStatusField("handoff_status")}: {describeStatusValue(post.handoffStatus)} ·{" "}
+                        {describeStatusField("manual_post_status")}: {describeStatusValue(post.manualPostStatus)}
                       </p>
                       <p className="mt-1 text-[11px] text-zinc-400">
                         API 게시 준비: <ApiReadinessBadge status={checkPlatformApiReadiness(post.platform).status} />
                       </p>
                       <p className="mt-1 text-[11px] text-zinc-400">
-                        performance: {post.performanceStatus} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
+                        성과 측정 상태: {describeStatusValue(post.performanceStatus)} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
                           <>
                             ·{" "}
                             <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
@@ -313,7 +407,7 @@ export default async function ArticleSocialPage({
                         </a>
                         {post.isRewriteVersion && (
                           <a href={buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
-                            Rewrite 관리에서 보기 →
+                            재작성 관리에서 보기 →
                           </a>
                         )}
                       </div>
@@ -323,7 +417,7 @@ export default async function ArticleSocialPage({
                           <input type="hidden" name="socialPostId" value={post.id} />
                           <input type="hidden" name="returnTo" value={selfReturnTo} />
                           <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                            Publishing Guard 실행
+                            게시 준비 확인
                           </button>
                         </form>
                         <form action={createPlatformPublishDryRunAction}>
@@ -331,7 +425,7 @@ export default async function ArticleSocialPage({
                           <input type="hidden" name="socialPostId" value={post.id} />
                           <input type="hidden" name="returnTo" value={selfReturnTo} />
                           <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                            Dry-run 생성
+                            게시 전 미리보기 만들기
                           </button>
                         </form>
                         <form action={completePlatformExportHandoffAction}>
@@ -339,7 +433,7 @@ export default async function ArticleSocialPage({
                           <input type="hidden" name="socialPostId" value={post.id} />
                           <input type="hidden" name="returnTo" value={selfReturnTo} />
                           <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                            Handoff 완료
+                            수동 게시 준비 완료
                           </button>
                         </form>
                         <form action={prepareManualPostingRecordAction}>

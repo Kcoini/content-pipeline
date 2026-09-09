@@ -3,6 +3,10 @@
 // 자기 자신으로 돌아올 수 있도록 `/dashboard` 루트 경로를 허용 목록에
 // 추가했다(하위 경로는 여전히 허용하지 않는다 — query/hash로만 상태를
 // 표현한다).
+// Phase 3-26: `/social-posts/[id]`를 "단일 글 최종 검토·수정·승인 화면"으로
+// 만들면서, 이 페이지에서 실행하는 액션(자동 재검토/수정 저장/최종 승인)이
+// 다시 이 페이지로 돌아올 수 있도록 `/social-posts/[id]` 루트 경로도
+// 허용 목록에 추가했다(하위 경로는 존재하지 않으므로 허용하지 않는다).
 //
 // returnTo query parameter를 안전하게 검증/생성/부착하기 위한 순수 helper.
 // 이 파일의 어떤 함수도 실제로 redirect를 수행하지 않는다 — 문자열만
@@ -18,9 +22,10 @@
  * returnTo로 허용하는 내부 경로 패턴:
  * - /articles/[id](/blog|/social|/rewrite|/performance|/ab-tests)?(?query)(#hash)
  * - /dashboard(?query)(#hash) — 하위 경로(`/dashboard/xxx`)는 허용하지 않는다.
+ * - /social-posts/[id](?query)(#hash) — 하위 경로는 존재하지 않는다.
  */
 const SAFE_RETURN_TO_PATTERN =
-  /^\/(articles\/[^\/?#]+(\/(blog|social|rewrite|performance|ab-tests))?|dashboard)(\?[^\s]*)?(#[^\s]*)?$/;
+  /^\/(articles\/[^\/?#]+(\/(blog|social|rewrite|performance|ab-tests))?|dashboard|social-posts\/[^\/?#]+)(\?[^\s]*)?(#[^\s]*)?$/;
 
 /** 위험한 스킴/패턴이 값 어디에도 섞여 있지 않은지 확인한다 (인코딩 우회 방지를 위해 소문자로 비교). */
 function containsUnsafeScheme(value: string): boolean {
@@ -39,9 +44,9 @@ function containsUnsafeScheme(value: string): boolean {
  * - 반드시 `/`로 시작해야 하고 `//`(protocol-relative)로 시작하면 안 된다.
  * - http(s):, javascript:, data: 스킴을 포함하면 안 된다.
  * - `/articles/[id]`, `/articles/[id]/blog`, `/articles/[id]/social`,
- *   `/articles/[id]/rewrite`, `/articles/[id]/performance`, `/dashboard`
- *   형태만 허용한다(query/hash는 포함 가능). `/dashboard/xxx` 같은 하위
- *   경로는 허용하지 않는다.
+ *   `/articles/[id]/rewrite`, `/articles/[id]/performance`, `/dashboard`,
+ *   `/social-posts/[id]` 형태만 허용한다(query/hash는 포함 가능).
+ *   `/dashboard/xxx` 같은 하위 경로는 허용하지 않는다.
  */
 export function isSafeInternalReturnTo(value: string | null | undefined): value is string {
   if (typeof value !== "string") return false;

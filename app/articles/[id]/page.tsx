@@ -2441,11 +2441,11 @@ export default async function ArticleDetailPage({
                   <p className="font-semibold text-purple-700">{contentSummary.socialPostCount + contentSummary.communityPostCount}</p>
                 </div>
                 <div className="rounded border border-indigo-200 bg-indigo-50 p-2">
-                  <p className="text-[11px] text-indigo-700">Rewrite 버전</p>
+                  <p className="text-[11px] text-indigo-700">재작성 버전</p>
                   <p className="font-semibold text-indigo-700">{contentSummary.rewriteVersionCount}</p>
                 </div>
                 <div className="rounded border border-amber-200 bg-amber-50 p-2">
-                  <p className="text-[11px] text-amber-700">Low Performance</p>
+                  <p className="text-[11px] text-amber-700">반응 저조</p>
                   <p className="font-semibold text-amber-700">{contentSummary.lowPerformanceCount}</p>
                 </div>
               </div>

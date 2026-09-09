@@ -436,3 +436,88 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   옵션"으로 안내 문구만 바꾼다.
 - 실제 사례:
   [`docs/phase-2-20-article-wordpress-publish-preparation-automation.md`](./phase-2-20-article-wordpress-publish-preparation-automation.md).
+
+## 페이지 간 일관성 원칙 (Phase 3-24, 반드시 준수)
+
+`/dashboard`, `/articles/[id]/blog`, `/trends`처럼 이미 다듬어진 페이지가
+있어도, 그 패턴이 자동으로 다른 페이지에 퍼지지 않는다 — 새 페이지를
+만들거나 기존 페이지를 고칠 때마다 아래 원칙을 명시적으로 적용해야 한다
+(`docs/ui-review-agent-checklist.md`의 체크리스트로 기계적으로도 확인한다).
+
+1. **raw enum/DB 컬럼명을 기본 UI에 그대로 노출하지 않는다.** 플랫폼/
+   문체는 `lib/social/platform-generation-recommendations.ts`의
+   `PLATFORM_LABELS`와 `lib/social/tone-style-config.ts`의
+   `TONE_STYLE_CONFIGS[...].label`을 쓴다. 그 외 상태값/DB 필드명은
+   `lib/social/status-labels.ts`의 `describeStatusValue`/
+   `describeStatusField`를 쓴다 — 새 상태값이 필요하면 각 페이지에서
+   개별적으로 문자열을 나열하지 않고 이 파일 하나에 추가한다.
+2. **내부 상태값/로그/raw payload/DB 필드명은 "내부 상태값 보기" 또는
+   "상세 상태 보기" 접힘 영역 안에 둔다.** 접힘 안이라 해도 라벨은
+   1번 규칙대로 한국어로 바꾼다(숨겨져 있다고 raw 그대로 둬도 되는 것은
+   아니다).
+3. **disabled 버튼은 반드시 이유를 표시한다.** `title` 속성(hover)뿐
+   아니라 항상 보이는 텍스트로도 알려준다 — 하나의 카드에 disabled
+   버튼이 여러 개면 어떤 버튼의 이유인지 라벨을 붙여 구분한다(예:
+   "재승인 요청: 이미 재승인 요청이 진행 중입니다.").
+4. **`placeholder`/`dry-run`/`handoff`/`readiness`/`metrics` 같은
+   개발자 용어를 사용자 친화적 한국어로 바꾼다**(예: dry-run → 게시 전
+   미리보기, handoff → 수동 게시 준비, placeholder 초안 → 임시 초안).
+   완전히 없앨 수 없는 경우(예: "성과 입력"처럼 metrics의 의미를
+   대체하기 애매한 경우) 최소한 사용자 안내 문장에서는 원어를 쓰지
+   않는다.
+5. **페이지 제목(`<h1>`)과 섹션 제목(`<h2>`)은 한국어로 통일한다.**
+   "관리자/개발자용 화면이라 영어여도 된다"는 예외를 두지 않는다 —
+   `/dashboard/*` 서브 대시보드 6개도 예외가 아니다.
+6. **각 카드의 주요 버튼은 하나만 강조한다.** 상태별 다음 작업을
+   계산하는 `getXxxNextAction` 류 순수 함수(예:
+   `lib/social/social-post-user-facing-status.ts`,
+   `lib/social/rewrite-version-user-facing-status.ts`)를 만들어 그
+   결과로 `primaryClass`/`secondaryClass`를 나눈다 — 상태별로 매번
+   직접 조건문을 나열하지 않는다.
+7. 위 원칙을 페이지 전체에 한 번에 적용하기 부담스러우면, 최소한
+   **새로 만들거나 지금 수정 중인 페이지에는 반드시 적용**한다 — "좋은
+   패턴이 일부에만 있고 퍼지지 않는" 문제를 새로 만들지 않는다.
+
+실제 적용 사례(무엇이 왜 부족했고 어떻게 고쳤는지):
+[`docs/phase-3-24-cross-page-ux-consistency.md`](./phase-3-24-cross-page-ux-consistency.md).
+
+## 검토는 "자동 검토 + 사람은 편집자" 원칙 (Phase 3-25)
+
+글 생성 후 검토는 사람이 quality_status/approval_status 등 모든 raw
+상태값을 하나씩 직접 확인하는 방식이 아니라, 시스템이 먼저 자동
+검토하고(`lib/social/social-post-auto-review.ts`의 `summarizeAutoReview`)
+사람은 "통과/확인 필요/수정 필요/차단" 리포트와 게시용 본문을 확인한
+뒤 최종 승인하는 흐름을 따른다.
+
+- 승인 가능 여부는 raw `quality_status === 'ready'` 정확히 일치가
+  아니라, checklist에 blocked/fail 항목이 있는지로 판단한다(경고만
+  있는 "확인 필요"는 승인을 막지 않는다) —
+  `lib/social/social-post-approval-service.ts`의 `checkApprovable`.
+- 자동 검토 리포트는 항상 이미 저장된 quality gate checklist로부터
+  다시 계산하는 순수 함수로 만든다 — 검토 결과를 저장하는 새 테이블/
+  컬럼을 만들지 않는다.
+- 자동 검토가 통과해도 최종 승인은 여전히 사람이 버튼을 눌러야 한다
+  — 자동 검토는 승인을 대체하지 않는다.
+- 실제 적용 사례: [`docs/phase-3-25-auto-review-editor-workflow.md`](./phase-3-25-auto-review-editor-workflow.md).
+
+## 단일 글 최종 검토·수정·승인 화면 원칙 (Phase 3-26)
+
+`/social-posts/[id]`는 social_post 하나의 상세 정보를 보여주기만 하는
+읽기 전용 화면이 아니라 **단일 글을 최종 검토·수정·승인하는 화면**이다.
+같은 성격의 화면(글 하나를 확정하는 화면)을 만들 때는 다음 원칙을
+따른다.
+
+- 기본으로 보여주는 본문 화면은 항상 **게시용 미리보기**다(raw
+  markdown/HTML/JSON을 그대로 보여주지 않고, 실제 게시 형태에 가깝게
+  렌더링한다). 내부 원문(raw body/상태값)은 기본 노출하지 않고, 사용자가
+  명시적으로 선택해야 보이는 탭/접힘 안에 둔다.
+- 자동 검토 리포트는 반드시 수정 흐름과 연결한다 — 각 이슈에 "수정하기"
+  같은 다음 행동 링크가 있어야 한다.
+- 수정 후에는 재검토가 필요하다는 사실을 화면에 명확히 표시한다(가능하면
+  기존 서비스 로직이 이미 상태를 초기화하는지 먼저 확인하고, 새 상태
+  저장소를 만들기 전에 그 기존 동작을 표시만 하는 방법을 먼저 찾는다).
+- 자동 검토는 최종 승인을 대체하지 않는다 — 승인 버튼은 항상 사람이
+  직접 눌러야 한다.
+- 최종 승인 전에는 export/Draft 반영을 차단한다.
+- 자동 public publish는 이번에도, 앞으로도 추가하지 않는다.
+- 실제 적용 사례: [`docs/phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md).

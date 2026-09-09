@@ -383,8 +383,8 @@ export default async function ArticleBlogPage({
                       <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.platform}</span>
                       <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.toneStyle}</span>
                       {post.manualPostStatus === "posted" && <InfoBadge label="게시 완료" />}
-                      {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="Metrics 필요" />}
-                      {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="Low Performance" />}
+                      {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="성과 입력 필요" />}
+                      {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="반응 저조" />}
                       <form action={archiveSocialPostAction} className="ml-auto">
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="socialPostId" value={post.id} />

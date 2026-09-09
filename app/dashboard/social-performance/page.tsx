@@ -147,9 +147,12 @@ export default async function SocialPerformanceDashboardPage({
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Social Performance Dashboard</h1>
+            {/* Phase 3-24: 영어 제목을 한국어로 바꾸고, 이 화면에서 할 수
+                있는 일을 한 문장으로 안내한다. */}
+            <h1 className="text-2xl font-bold">소셜 성과 분석</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              이 대시보드는 수동 입력된 metrics를 기반으로 한 내부 비교용입니다.
+              네이버 카페, X, Threads, Instagram 등 여러 플랫폼 글의 반응을 비교합니다. 수동으로 입력한 조회수/클릭/반응
+              기반의 내부 비교용입니다.
             </p>
           </div>
           <Link href="/dashboard" className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100">
@@ -159,21 +162,21 @@ export default async function SocialPerformanceDashboardPage({
 
         <nav className="flex flex-wrap gap-2 text-xs">
           <Link href="/dashboard/content" className="rounded border border-zinc-300 bg-white px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-            Content Dashboard
+            콘텐츠 현황
           </Link>
           <Link href="/dashboard/blog" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
-            Blog Dashboard
+            블로그 현황
           </Link>
           <Link href="/dashboard/rewrite" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
-            Rewrite Dashboard
+            재작성 관리
           </Link>
         </nav>
 
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <p>metrics는 외부 API가 아니라 수동 입력값입니다.</p>
-          <p>performance_score는 내부 비교용 점수이며, 절대적인 마케팅 성공 지표가 아닙니다.</p>
-          <p>rewrite comparison은 동일 조건의 A/B 테스트가 아니므로 참고 지표로만 사용하세요.</p>
-          <p>이 화면을 조회하는 것만으로는 어떤 social_post 상태도 변경되지 않습니다.</p>
+          <p>성과 지표는 외부 API가 아니라 수동 입력값입니다.</p>
+          <p>성과 점수는 내부 비교용 점수이며, 절대적인 마케팅 성공 지표가 아닙니다.</p>
+          <p>재작성 글 비교는 동일 조건의 비교 실험이 아니므로 참고 지표로만 사용하세요.</p>
+          <p>이 화면을 조회하는 것만으로는 어떤 글의 상태도 변경되지 않습니다.</p>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs">
@@ -181,9 +184,9 @@ export default async function SocialPerformanceDashboardPage({
             { label: "전체 성과", href: "/dashboard/social-performance" },
             { label: "블로그", href: "/dashboard/social-performance?contentGroup=blog" },
             { label: "SNS/커뮤니티", href: "/dashboard/social-performance?contentGroup=social" },
-            { label: "Rewrite", href: "/dashboard/social-performance?contentGroup=rewrite" },
-            { label: "Metrics Missing", href: "/dashboard/social-performance?onlyMetricsMissing=true" },
-            { label: "Low Performance", href: "/dashboard/social-performance?onlyLowPerformance=true" },
+            { label: "재작성", href: "/dashboard/social-performance?contentGroup=rewrite" },
+            { label: "성과 입력 필요", href: "/dashboard/social-performance?onlyMetricsMissing=true" },
+            { label: "반응 저조", href: "/dashboard/social-performance?onlyLowPerformance=true" },
           ].map((tab) => (
             <a key={tab.label} href={tab.href} className="rounded-full border border-zinc-300 bg-white px-2.5 py-1 font-medium text-zinc-600 hover:bg-zinc-100">
               {tab.label}
@@ -196,31 +199,31 @@ export default async function SocialPerformanceDashboardPage({
         <SocialPerformanceSummaryCards summary={dashboard.summary} bestPlatform={dashboard.bestPlatform} bestToneStyle={dashboard.bestToneStyle} />
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">Chart Overview</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">성과 요약</h2>
           <p className="mt-1 text-[11px] text-zinc-500">
-            아래 차트는 모두 수동 입력된 metrics 기반이며, performance_score는 내부 비교용 참고 지표입니다.
+            아래 차트는 모두 수동으로 입력한 성과 지표 기반이며, 성과 점수는 내부 비교용 참고 지표입니다.
           </p>
 
           <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartSection title="Platform Performance" description="플랫폼별 평균 performance_score">
+            <ChartSection title="플랫폼별 성과" description="플랫폼별 평균 성과 점수">
               <PlatformPerformanceChart data={charts.platformPerformanceChart} />
             </ChartSection>
-            <ChartSection title="Metrics Trend" description="월별/일별 views·clicks·performance_score 추세" note="실시간 분석이 아니라 dashboard summary용 추세입니다.">
+            <ChartSection title="성과 추이" description="월별/일별 조회수·클릭·성과 점수 추세" note="실시간 분석이 아니라 요약용 추세입니다.">
               <MetricsTrendChart data={charts.metricsTrendChart} />
             </ChartSection>
-            <ChartSection title="Rewrite Comparison" description="original vs rewrite 성과 비교 분포" note="동일 조건의 A/B 테스트가 아닙니다.">
+            <ChartSection title="원본과 재작성 글 비교" description="원본 vs 재작성 글 성과 비교 분포" note="동일 조건의 비교 실험이 아닙니다.">
               <RewriteComparisonChart data={charts.rewriteComparisonChart} />
             </ChartSection>
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartSection title="Tone Performance" description="tone_style별 평균 performance_score" collapsible defaultOpen={false}>
+            <ChartSection title="문체별 성과" description="문체별 평균 성과 점수" collapsible defaultOpen={false}>
               <TonePerformanceChart data={charts.tonePerformanceChart} />
             </ChartSection>
-            <ChartSection title="Low Performance 분포" description="performance_status별 social post 개수" collapsible defaultOpen={false}>
+            <ChartSection title="반응 저조 분포" description="성과 측정 상태별 글 개수" collapsible defaultOpen={false}>
               <LowPerformanceChart data={charts.lowPerformanceChart} />
             </ChartSection>
-            <ChartSection title="Metrics Missing 현황" description="metrics 측정 완료 vs 미입력 비율" collapsible defaultOpen={false}>
+            <ChartSection title="성과 입력 현황" description="성과 측정 완료 vs 미입력 비율" collapsible defaultOpen={false}>
               <MetricsMissingChart data={charts.metricsMissingChart} />
             </ChartSection>
           </div>

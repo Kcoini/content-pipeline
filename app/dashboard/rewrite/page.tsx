@@ -6,6 +6,9 @@ import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-
 import { socialPostHref } from "@/components/social-performance-dashboard/badges";
 import { RewriteComparisonStatusBadge } from "@/components/social-performance-dashboard/badges";
 import { isSocialPlatform, type SocialPlatform, type SocialPerformanceStatus } from "@/lib/social/social-platform-types";
+import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
+import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -56,69 +59,72 @@ export default async function RewriteDashboardPage({
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Rewrite Dashboard</h1>
+            {/* Phase 3-24: 영어 제목을 한국어로 바꾸고, 이 화면에서 할 수
+                있는 일을 한 문장으로 안내한다. */}
+            <h1 className="text-2xl font-bold">재작성 관리</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Rewrite 버전은 원본을 덮어쓰지 않고 새 버전으로 생성된 개선 글입니다. 자동 재게시나 자동 원본 교체는 없습니다.
+              성과가 낮거나 개선이 필요한 글의 재작성 제안과 버전을 관리합니다. 재작성 버전은 원본을 덮어쓰지 않고
+              새 버전으로 생성된 개선 글입니다. 자동 재게시나 자동 원본 교체는 없습니다.
             </p>
           </div>
           <Link href="/dashboard/social-performance" className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100">
-            Social Performance Dashboard로
+            소셜 성과 분석으로
           </Link>
         </header>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <form method="get" className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-6">
             <label className="flex flex-col gap-1">
-              platform
+              플랫폼
               <select name="platform" defaultValue={platform ?? ""} className="rounded border border-zinc-300 px-2 py-1">
                 <option value="">전체</option>
                 {(["wordpress_blog", "naver_blog", "naver_cafe", "x", "threads", "instagram"] as SocialPlatform[]).map((p) => (
                   <option key={p} value={p}>
-                    {p}
+                    {PLATFORM_LABELS[p]}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              version_comparison_status
+              {describeStatusField("version_comparison_status")}
               <select name="versionComparisonStatus" defaultValue={versionComparisonStatus ?? ""} className="rounded border border-zinc-300 px-2 py-1">
                 <option value="">전체</option>
                 {["not_compared", "original_better", "rewrite_better", "similar", "needs_review", "blocked", "failed"].map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {describeStatusValue(s)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              rewrite_reapproval_status
+              {describeStatusField("rewrite_reapproval_status")}
               <select name="rewriteReapprovalStatus" defaultValue={rewriteReapprovalStatus ?? ""} className="rounded border border-zinc-300 px-2 py-1">
                 <option value="">전체</option>
                 {["not_requested", "pending_review", "approved", "rejected", "revoked", "blocked", "failed"].map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {describeStatusValue(s)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              rewrite_reexport_status
+              {describeStatusField("rewrite_reexport_status")}
               <select name="rewriteReexportStatus" defaultValue={rewriteReexportStatus ?? ""} className="rounded border border-zinc-300 px-2 py-1">
                 <option value="">전체</option>
                 {["not_started", "ready", "exported", "blocked", "failed"].map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {describeStatusValue(s)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              performance_status
+              {describeStatusField("performance_status")}
               <select name="performanceStatus" defaultValue={performanceStatus ?? ""} className="rounded border border-zinc-300 px-2 py-1">
                 <option value="">전체</option>
                 {["not_measured", "low", "average", "good", "excellent", "needs_review"].map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {describeStatusValue(s)}
                   </option>
                 ))}
               </select>
@@ -137,22 +143,22 @@ export default async function RewriteDashboardPage({
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">
-            <ContentGroupBadge group="rewrite" /> Rewrite Versions ({rewriteVersions.length})
+            <ContentGroupBadge group="rewrite" /> 재작성 버전 ({rewriteVersions.length})
           </h2>
           {rewriteVersions.length === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">조건에 맞는 rewrite version이 없습니다.</p>
+            <p className="mt-2 text-xs text-zinc-500">조건에 맞는 재작성 버전이 없습니다.</p>
           ) : (
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-xs">
                 <thead>
                   <tr className="text-zinc-500">
                     <th className="pr-3 py-1">글</th>
-                    <th className="pr-3 py-1">version</th>
-                    <th className="pr-3 py-1">root/parent</th>
-                    <th className="pr-3 py-1">version 비교</th>
-                    <th className="pr-3 py-1">재승인/재export</th>
+                    <th className="pr-3 py-1">버전</th>
+                    <th className="pr-3 py-1">원본/이전 버전</th>
+                    <th className="pr-3 py-1">버전 비교</th>
+                    <th className="pr-3 py-1">재승인/재내보내기</th>
                     <th className="pr-3 py-1">성과 비교</th>
-                    <th className="pr-3 py-1">score</th>
+                    <th className="pr-3 py-1">점수</th>
                     <th className="pr-3 py-1">안내</th>
                     <th className="pr-3 py-1">이동</th>
                   </tr>
@@ -162,24 +168,24 @@ export default async function RewriteDashboardPage({
                     <tr key={p.id} className="border-t border-zinc-100">
                       <td className="pr-3 py-1">
                         <p className="font-medium">{p.postTitle || p.caption || "(제목 없음)"}</p>
-                        <p className="text-[11px] text-zinc-400">{p.platform} · {p.toneStyle}</p>
+                        <p className="text-[11px] text-zinc-400">{PLATFORM_LABELS[p.platform]} · {TONE_STYLE_CONFIGS[p.toneStyle].label}</p>
                       </td>
                       <td className="pr-3 py-1">
-                        v{p.versionNumber} ({p.versionStatus})
+                        버전 {p.versionNumber} ({describeStatusValue(p.versionStatus)})
                       </td>
                       <td className="pr-3 py-1 font-mono text-[11px]">
                         {p.rootSocialPostId ?? "-"} / {p.parentSocialPostId ?? "-"}
                       </td>
                       <td className="pr-3 py-1">
-                        {p.versionComparisonStatus}
+                        {describeStatusValue(p.versionComparisonStatus)}
                         {p.versionComparisonScore != null ? ` (${p.versionComparisonScore})` : ""}
                       </td>
                       <td className="pr-3 py-1">
-                        {p.rewriteReapprovalStatus} / {p.rewriteReexportStatus}
+                        {describeStatusValue(p.rewriteReapprovalStatus)} / {describeStatusValue(p.rewriteReexportStatus)}
                       </td>
                       <td className="pr-3 py-1">
                         <RewriteComparisonStatusBadge status={p.rewritePerformanceComparisonStatus} />
-                        {p.rewritePerformanceWinner ? ` · winner: ${p.rewritePerformanceWinner}` : ""}
+                        {p.rewritePerformanceWinner ? ` · 더 좋은 쪽: ${describeStatusValue(p.rewritePerformanceWinner)}` : ""}
                       </td>
                       <td className="pr-3 py-1">{p.latestPerformanceScore ?? "-"}</td>
                       <td className="pr-3 py-1">{p.recommendedForRepost && <InfoBadge label="재게시 추천" />}</td>

@@ -1959,13 +1959,18 @@ export async function runSocialPostQualityGateAction(formData: FormData): Promis
   redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
-/** social post의 콘텐츠(제목/본문/캡션/해시태그/thread/card 등)를 수정한다 (Phase 3-4). */
+/**
+ * social post의 콘텐츠(제목/본문/캡션/해시태그/thread/card 등)를 수정한다 (Phase 3-4).
+ * Phase 3-26: `/social-posts/[id]`의 "수정하기" 탭에서도 이 action을 그대로
+ * 재사용할 수 있도록 returnTo를 지원하도록 바꿨다(redirectToSafeTarget).
+ */
 export async function editSocialPostAction(formData: FormData): Promise<void> {
   const articleId = String(formData.get("articleId") ?? "");
   const socialPostId = String(formData.get("socialPostId") ?? "");
 
   let message: string;
   let isError: boolean;
+  let socialPost: SocialPost | undefined;
 
   try {
     const postTitle = formData.get("postTitle");
@@ -2019,17 +2024,16 @@ export async function editSocialPostAction(formData: FormData): Promise<void> {
     });
     message = result.message;
     isError = !result.success;
+    socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
-  revalidatePath(`/articles/${articleId}`);
+  revalidateArticleWorkflowPaths(articleId);
+  revalidatePath(`/social-posts/${socialPostId}`);
 
-  const query = isError
-    ? `error=${encodeURIComponent(message)}`
-    : `publishMessage=${encodeURIComponent(message)}`;
-  redirect(`/articles/${articleId}?${query}`);
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
 }
 
 /** social post의 승인을 요청한다 (approval_status='pending_review'). */

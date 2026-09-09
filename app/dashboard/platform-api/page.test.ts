@@ -25,3 +25,15 @@ describe("platform API dashboard page (정적 소스 검사, Phase 3-21)", () =>
     expect(pageSource).not.toMatch(/action=\{.*[Pp]ublish.*Action\}/);
   });
 });
+
+describe("platform API dashboard page 한국어 제목/라벨 (정적 소스 검사, Phase 3-24)", () => {
+  it("h1 제목이 한국어다(영어 'Platform API Readiness'가 아니다)", () => {
+    expect(pageSource).not.toContain("Platform API Readiness");
+    expect(pageSource).toMatch(/<h1 className="text-2xl font-bold">플랫폼 API 준비 상태<\/h1>/);
+  });
+
+  it("플랫폼명을 raw enum이 아니라 PLATFORM_LABELS로 표시한다", () => {
+    expect(pageSource).toContain('import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations"');
+    expect(pageSource).toContain("PLATFORM_LABELS[capability.platform]");
+  });
+});
