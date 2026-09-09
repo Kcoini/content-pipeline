@@ -179,3 +179,147 @@ describe("getPlatformBrief (Phase 4-2)", () => {
     expect(wpBrief).not.toHaveProperty("cardTexts");
   });
 });
+
+describe("사실과 해석 분리 — factInterpretationSplit (Phase 3-27)", () => {
+  it("verifiedFacts 각각에 대응하는 해석 항목을 만든다", () => {
+    const article = makeArticle();
+    const sources = [
+      makeSource({ id: "source-1", keyPoints: ["기준금리가 3%로 인상되었다"] }),
+      makeSource({ id: "source-2", keyPoints: ["기준금리가 3%로 인상되었다"] }),
+    ];
+    const master = buildMasterManuscript(article, sources);
+
+    expect(master.factInterpretationSplit).toHaveLength(master.verifiedFacts.length);
+    const entry = master.factInterpretationSplit.find((f) => f.fact === "기준금리가 3%로 인상되었다");
+    expect(entry).toBeDefined();
+    expect(entry?.sourceIds.sort()).toEqual(["source-1", "source-2"]);
+    expect(typeof entry?.interpretation).toBe("string");
+  });
+
+  it("1개 출처에서만 확인된 사실은 caution이 채워진다", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource({ keyPoints: ["단독 사실"] })]);
+    const entry = master.factInterpretationSplit.find((f) => f.fact === "단독 사실");
+    expect(entry?.caution).not.toBe("");
+  });
+
+  it("해석이 사실을 그대로 복제한 단정문이 아니다(사실과 구분되는 안내 문구다)", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource({ keyPoints: ["핵심 사실 A"] })]);
+    const entry = master.factInterpretationSplit.find((f) => f.fact === "핵심 사실 A");
+    expect(entry?.interpretation).not.toBe("핵심 사실 A");
+  });
+});
+
+describe("장문 대응 — longFormSupport (Phase 3-27)", () => {
+  const master = buildMasterManuscript(makeArticle(), [makeSource(), makeSource({ id: "source-2" })]);
+
+  it("sectionPlan/evidenceMap/faqBank/tablesAndLists를 포함한다", () => {
+    expect(master.longFormSupport.sectionPlan.length).toBeGreaterThan(0);
+    expect(Array.isArray(master.longFormSupport.evidenceMap)).toBe(true);
+    expect(Array.isArray(master.longFormSupport.faqBank)).toBe(true);
+    expect(Array.isArray(master.longFormSupport.tablesAndLists)).toBe(true);
+  });
+
+  it("evidenceMap은 verifiedFacts와 동일한 claim/sourceIds 매핑을 담는다", () => {
+    expect(master.longFormSupport.evidenceMap).toHaveLength(master.verifiedFacts.length);
+    if (master.verifiedFacts.length > 0) {
+      expect(master.longFormSupport.evidenceMap[0].claim).toBe(master.verifiedFacts[0].fact);
+    }
+  });
+
+  it("newsArticleExpansion과 monetizedBlogExpansion을 모두 포함한다", () => {
+    expect(master.longFormSupport.newsArticleExpansion).toBeDefined();
+    expect(master.longFormSupport.newsArticleExpansion.fiveWOneH).toBeDefined();
+    expect(master.longFormSupport.monetizedBlogExpansion).toBeDefined();
+    expect(Array.isArray(master.longFormSupport.monetizedBlogExpansion.headingPlan)).toBe(true);
+  });
+
+  it("출처가 적으면 sourceSufficiency가 '부족'을 포함한다", () => {
+    const sparse = buildMasterManuscript(makeArticle(), [makeSource()]);
+    expect(sparse.longFormSupport.sourceSufficiency).toContain("부족");
+  });
+
+  it("출처가 5건 이상이면 recommendedLength가 장문을 권장한다", () => {
+    const many = Array.from({ length: 5 }, (_, i) => makeSource({ id: `s${i}`, keyPoints: [`사실 ${i}`] }));
+    const rich = buildMasterManuscript(makeArticle(), many);
+    expect(rich.longFormSupport.recommendedLength).toContain("장문");
+  });
+
+  it("examplesAndAnalogies는 근거 없는 예시를 지어내지 않고 빈 배열을 유지한다", () => {
+    expect(master.longFormSupport.examplesAndAnalogies).toEqual([]);
+  });
+});
+
+describe("EEAT/SEO/AEO/GEO/AGENT 대응 — optimizationSupport (Phase 3-27)", () => {
+  const master = buildMasterManuscript(
+    { ...makeArticle(), targetKeyword: "AI 투자", secondaryKeywords: ["반도체"] },
+    [makeSource({ publisher: "경제신문" }), makeSource({ id: "source-2", publisher: "경제신문" })]
+  );
+
+  it("eeatNotes/seoSupport/aeoSupport/geoSupport/agentReadiness를 모두 포함한다", () => {
+    expect(master.optimizationSupport.eeatNotes).toBeDefined();
+    expect(master.optimizationSupport.seoSupport).toBeDefined();
+    expect(master.optimizationSupport.aeoSupport).toBeDefined();
+    expect(master.optimizationSupport.geoSupport).toBeDefined();
+    expect(master.optimizationSupport.agentReadiness).toBeDefined();
+  });
+
+  it("seoSupport는 article의 targetKeyword/secondaryKeywords를 그대로 재사용한다", () => {
+    expect(master.optimizationSupport.seoSupport.primaryKeyword).toBe("AI 투자");
+    expect(master.optimizationSupport.seoSupport.secondaryKeywords).toEqual(["반도체"]);
+  });
+
+  it("geoSupport.keyFacts는 verifiedFacts와 같은 사실 목록이다", () => {
+    expect(master.optimizationSupport.geoSupport.keyFacts).toEqual(master.verifiedFacts.map((f) => f.fact));
+  });
+
+  it("agentReadiness.sourceMap은 sourceSummaries의 id/title/url만 담는다(원문 요약 텍스트는 포함하지 않는다)", () => {
+    for (const entry of master.optimizationSupport.agentReadiness.sourceMap) {
+      expect(entry).not.toHaveProperty("summary");
+      expect(entry).toHaveProperty("sourceId");
+      expect(entry).toHaveProperty("url");
+    }
+  });
+
+  it("eeatNotes.hasOfficialSource는 발행처 이름에 공식기관 키워드가 있을 때만 true다", () => {
+    const official = buildMasterManuscript(makeArticle(), [makeSource({ publisher: "기획재정부" })]);
+    const notOfficial = buildMasterManuscript(makeArticle(), [makeSource({ publisher: "블로거 A" })]);
+    expect(official.optimizationSupport.eeatNotes.hasOfficialSource).toBe(true);
+    expect(notOfficial.optimizationSupport.eeatNotes.hasOfficialSource).toBe(false);
+  });
+});
+
+describe("theme/titleCandidates 확장 필드 (Phase 3-27)", () => {
+  it("theme에 region/topicType이 포함된다", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource()]);
+    expect(master.theme.region).toBeDefined();
+    expect(master.theme.topicType).toBeDefined();
+  });
+
+  it("titleCandidates에 newsArticle 후보가 포함된다", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource()]);
+    expect(typeof master.titleCandidates.newsArticle).toBe("string");
+    expect(master.titleCandidates.newsArticle.length).toBeGreaterThan(0);
+  });
+
+  it("autoReviewCriteria에 확장된 검토 기준(evidenceMap, optimizationSupport 등)이 포함된다", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource()]);
+    expect(master.autoReviewCriteria.some((c) => c.includes("evidenceMap"))).toBe(true);
+    expect(master.autoReviewCriteria.some((c) => c.includes("optimizationSupport") || c.includes("SEO/AEO/GEO/AGENT"))).toBe(true);
+  });
+});
+
+describe("안전 원칙 — 확인 필요 사항과 확인된 사실의 분리 (Phase 3-27)", () => {
+  it("verificationNeeded는 verifiedFacts와 별도 배열이다(확인 필요 사항이 확인된 사실로 잘못 들어가지 않는다)", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource({ keyPoints: ["단독 출처 사실"] })]);
+    expect(master.verifiedFacts.map((f) => f.fact)).toContain("단독 출처 사실");
+    // verificationNeeded는 "확인 필요" 안내 문장이지, verifiedFacts의 fact 원문 그대로가 아니다.
+    expect(master.verificationNeeded).not.toContain("단독 출처 사실");
+    expect(master.verificationNeeded.some((v) => v.includes("단독 출처 사실"))).toBe(true);
+  });
+
+  it("prohibitedOrCarefulExpressions는 항상 포함되고 BASE_PROHIBITED_PATTERNS를 그대로 재사용한다", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource()]);
+    expect(master.prohibitedOrCarefulExpressions.prohibited.length).toBeGreaterThan(0);
+    expect(master.prohibitedOrCarefulExpressions.careful.length).toBeGreaterThan(0);
+  });
+});

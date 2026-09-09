@@ -15,12 +15,16 @@
 
 import type { Article, Source } from "@/lib/types/domain";
 import { BASE_PROHIBITED_PATTERNS } from "@/lib/social/platform-writing-config";
+import { getMasterManuscriptDirectionLabel } from "./article-modes";
 import type { SocialPlatform } from "@/lib/social/social-platform-types";
 import type {
   MasterManuscript,
   MasterManuscriptSourceSummary,
   MasterManuscriptVerifiedFact,
+  MasterManuscriptFactInterpretation,
   MasterManuscriptPlatformBriefs,
+  LongFormSupport,
+  OptimizationSupport,
 } from "./master-manuscript-types";
 
 /** 플랫폼별로 "주의해서 써야 하는" 표현(차단은 아니지만 확인이 필요한 수준). */
@@ -37,10 +41,15 @@ const MASTER_MANUSCRIPT_AUTO_REVIEW_CRITERIA: readonly string[] = [
   "출처가 있는가",
   "출처별 요약이 있는가",
   "확인된 사실과 해석이 분리되어 있는가",
+  "각 사실에 sourceId가 연결되어 있는가",
   "확인 필요 사항이 있는가",
-  "플랫폼별 brief가 생성되었는가",
   "금지/주의 표현이 포함되어 있는가",
+  "플랫폼별 brief가 생성되었는가",
+  "장문 글 설계도(longFormSupport)가 있는가",
+  "evidenceMap이 있는가",
+  "SEO/AEO/GEO/AGENT 재료(optimizationSupport)가 있는가",
   "출처 없는 수치 단정이 없는가",
+  "확인 필요 사항이 사실로 처리되지 않았는가",
   "플랫폼별 변환에 필요한 재료가 충분한가",
 ];
 
@@ -52,19 +61,42 @@ const MASTER_MANUSCRIPT_AUTO_REVIEW_CRITERIA: readonly string[] = [
 const MAX_SOURCE_SUMMARIES_IN_MASTER_MANUSCRIPT = 10;
 const MAX_VERIFIED_FACTS_IN_MASTER_MANUSCRIPT = 20;
 
+/**
+ * 출처별 "이 출처로 무엇을 말할 수 있는지"를 정리한다. 신뢰도/주의점은
+ * 주관적으로 판단하지 않고, 발행처·발행일이 실제로 채워져 있는지 같은
+ * 기계적으로 확인 가능한 조건만으로 계산한다.
+ */
 function buildSourceSummaries(sources: readonly Source[]): MasterManuscriptSourceSummary[] {
   return sources
     .filter((s) => s.summary.trim().length > 0 || s.keyPoints.length > 0)
     .slice(0, MAX_SOURCE_SUMMARIES_IN_MASTER_MANUSCRIPT)
-    .map((s) => ({
-      sourceId: s.id,
-      title: s.title || s.url,
-      publisher: s.publisher,
-      publishedAt: s.publishedAt,
-      url: s.url,
-      summary: s.summary,
-      supports: s.keyPoints,
-    }));
+    .map((s) => {
+      const cautions: string[] = [];
+      if (!s.publisher.trim()) cautions.push("발행처 정보가 없습니다 — 출처 신뢰도 확인이 필요합니다.");
+      if (!s.publishedAt.trim()) cautions.push("발행일 정보가 없습니다 — 최신 정보인지 확인이 필요합니다.");
+
+      const reliabilityNote =
+        s.publisher.trim() && s.publishedAt.trim()
+          ? "발행처와 발행일이 모두 확인됩니다."
+          : s.publisher.trim()
+            ? "발행처는 확인되지만 발행일이 없어 최신성 확인이 필요합니다."
+            : s.publishedAt.trim()
+              ? "발행일은 확인되지만 발행처가 없어 출처 신뢰도 확인이 필요합니다."
+              : "발행처/발행일이 모두 확인되지 않아 신뢰도 확인이 필요합니다.";
+
+      return {
+        sourceId: s.id,
+        title: s.title || s.url,
+        publisher: s.publisher,
+        publishedAt: s.publishedAt,
+        url: s.url,
+        summary: s.summary,
+        supports: s.keyPoints,
+        verifiedFacts: s.keyPoints,
+        cautions,
+        reliabilityNote,
+      };
+    });
 }
 
 /**
@@ -90,6 +122,178 @@ function buildVerifiedFacts(sources: readonly Source[]): MasterManuscriptVerifie
       sourceIds: Array.from(sourceIdSet),
       confidence: sourceIdSet.size >= 2 ? "high" : "medium",
     }));
+}
+
+/**
+ * verifiedFacts 각각에 "해석" 자리를 만들어 사실과 분리한다. rule-based
+ * 계산이라 실제로 통찰력 있는 해석을 쓸 수는 없다 — 대신 "이 사실이
+ * 무엇을 시사하는지는 플랫폼별 글 작성 시 사람이 채워야 한다"는
+ * 사실을 명시적으로 드러내는 초안만 만든다(없는 해석을 지어내지
+ * 않는다는 원칙을 지키기 위한 선택이다).
+ */
+function buildFactInterpretationSplit(
+  verifiedFacts: readonly MasterManuscriptVerifiedFact[]
+): MasterManuscriptFactInterpretation[] {
+  return verifiedFacts.map((f) => ({
+    fact: f.fact,
+    interpretation: `이 사실이 독자에게 어떤 의미인지는 아직 해설되지 않았습니다 — 플랫폼별 글 작성 시 배경/쟁점과 연결해 해석을 추가하세요.`,
+    sourceIds: f.sourceIds,
+    caution: f.confidence === "medium" ? "출처 1건에서만 확인된 사실이라 해석도 신중하게 다뤄야 합니다." : "",
+  }));
+}
+
+function buildLongFormSupport(
+  article: Article,
+  sourceSummaries: readonly MasterManuscriptSourceSummary[],
+  verifiedFacts: readonly MasterManuscriptVerifiedFact[],
+  supportingMessages: string[],
+  background: string,
+  verificationNeeded: readonly string[],
+  careful: readonly string[]
+): LongFormSupport {
+  const sufficiencyLevel = sourceSummaries.length >= 5 ? "충분" : sourceSummaries.length >= 3 ? "보통" : "부족";
+  const recommendedLength =
+    sourceSummaries.length >= 5
+      ? "장문(2,500~4,000자) — 출처가 충분해 깊이 있는 설명이 가능합니다."
+      : sourceSummaries.length >= 3
+        ? "중간 분량(1,200~2,000자) — 핵심 내용 위주로 정리하는 것을 권장합니다."
+        : "단문(800~1,200자) — 출처가 적어 무리하게 길게 쓰지 않는 것을 권장합니다.";
+
+  const sectionPlan = [
+    "도입 및 핵심 요약",
+    "배경 설명",
+    ...supportingMessages.map((m) => `핵심 내용: ${m}`),
+    ...(verificationNeeded.length > 0 ? ["확인 필요 사항"] : []),
+    "결론 및 정리",
+  ];
+
+  const evidenceMap = verifiedFacts.map((f) => ({ claim: f.fact, sourceIds: f.sourceIds }));
+
+  const expansionNotes = verificationNeeded.map((v) => `다음 내용은 배경/쟁점 설명에서 더 자세히 다루는 것을 권장합니다: ${v}`);
+
+  const tableCandidates = verifiedFacts.slice(0, 5).map((f) => f.fact);
+  const faqCandidates = verificationNeeded.map((v) => `확인이 필요합니다: ${v}`);
+
+  const newsArticleExpansion = {
+    angle: "사실 전달 · 중립적 설명",
+    titleCandidates: [article.title],
+    subtitleCandidates: supportingMessages.slice(0, 1),
+    leadCore: supportingMessages[0] ?? background,
+    fiveWOneH: {
+      who: "확인 필요",
+      when: article.createdAt.slice(0, 10),
+      where: "확인 필요",
+      what: supportingMessages[0] ?? article.title,
+      how: "확인 필요",
+      why: "확인 필요",
+    },
+    bodyStructure: sectionPlan,
+    background,
+    stakeholderPositions: [] as string[],
+    keyIssues: [] as string[],
+    futureChecks: [...verificationNeeded],
+    sourcesToUse: sourceSummaries.map((s) => s.sourceId),
+    expressionsToAvoid: [...careful],
+  };
+
+  const monetizedBlogExpansion = {
+    searchIntent: article.searchIntent,
+    audience: "일반 독자",
+    primaryKeyword: article.targetKeyword,
+    secondaryKeywords: [...article.secondaryKeywords],
+    titleCandidates: [article.seoTitle ?? article.title],
+    metaDescriptionCandidates: article.metaDescription ? [article.metaDescription] : [],
+    introDirection: `"${article.title}"를 찾는 독자가 무엇을 궁금해하는지로 도입부를 시작하는 것을 권장합니다.`,
+    headingPlan: sectionPlan,
+    summaryBoxPoints: supportingMessages,
+    comparisonTableCandidates: tableCandidates,
+    checklistCandidates: [...verificationNeeded],
+    faqCandidates,
+    cautionNotes: [...careful],
+    internalLinkCandidates: [] as string[],
+    adSlotCandidates: ["after_intro", "after_summary", "before_faq", "before_conclusion"],
+    dwellTimePoints: supportingMessages,
+    sourceCitationStyle: "출처명과 발행일을 본문 또는 참고 자료 섹션에 명시",
+  };
+
+  return {
+    recommendedLength,
+    sourceSufficiency: `${sufficiencyLevel} (출처 ${sourceSummaries.length}건)`,
+    sectionPlan,
+    paragraphPoints: supportingMessages,
+    evidenceMap,
+    expansionNotes,
+    examplesAndAnalogies: [],
+    tablesAndLists: tableCandidates,
+    faqBank: faqCandidates,
+    cautionBank: [...careful, ...verificationNeeded],
+    newsArticleExpansion,
+    monetizedBlogExpansion,
+  };
+}
+
+function buildOptimizationSupport(
+  article: Article,
+  sourceSummaries: readonly MasterManuscriptSourceSummary[],
+  verifiedFacts: readonly MasterManuscriptVerifiedFact[],
+  supportingMessages: string[],
+  background: string,
+  verificationNeeded: readonly string[],
+  mainMessage: string,
+  referenceDate: string
+): OptimizationSupport {
+  const trustedSources = sourceSummaries.filter((s) => s.publisher.trim()).map((s) => s.publisher);
+  const hasNumericFact = verifiedFacts.some((f) => /\d/.test(f.fact));
+
+  const keywords = [article.targetKeyword, ...article.secondaryKeywords].filter((k): k is string => Boolean(k));
+
+  return {
+    eeatNotes: {
+      trustedSources,
+      hasOfficialSource: trustedSources.some((p) => /(정부|청|부|공식|위원회|협회|공단)/.test(p)),
+      hasExpertSource: trustedSources.length > 0,
+      factInterpretationNote: "확인된 사실(factInterpretationSplit)과 해석을 항상 구분해서 사용하세요.",
+      needsReferenceDate: hasNumericFact,
+      limitations: [...verificationNeeded],
+      sourceGaps: sourceSummaries.length < 3 ? [`출처가 ${sourceSummaries.length}건뿐입니다 — 추가 확인을 권장합니다.`] : [],
+    },
+    seoSupport: {
+      primaryKeyword: article.targetKeyword,
+      secondaryKeywords: [...article.secondaryKeywords],
+      searchIntent: article.searchIntent,
+      readerQuestions: verificationNeeded.map((v) => `확인이 필요합니다: ${v}`),
+      headingIdeas: supportingMessages,
+      metaDescriptionIdeas: article.metaDescription ? [article.metaDescription] : [mainMessage.slice(0, 150)],
+      internalLinkIdeas: [],
+    },
+    aeoSupport: {
+      mainQuestion: `${article.title}란 무엇인가?`,
+      shortAnswer: mainMessage,
+      faqCandidates: verificationNeeded.map((v) => `확인이 필요합니다: ${v}`),
+      misunderstoodPoints: [...verificationNeeded],
+      answerSummary: mainMessage,
+      directAnswerCandidates: [...supportingMessages],
+    },
+    geoSupport: {
+      aiSummary: `${mainMessage} ${background}`.slice(0, 300),
+      keyFacts: verifiedFacts.map((f) => f.fact),
+      sourceBackedClaims: verifiedFacts.filter((f) => f.confidence === "high").map((f) => f.fact),
+      caveats: [...verificationNeeded],
+      referenceDate,
+      quotableSummary: mainMessage,
+      uncertaintyNotes: [...verificationNeeded],
+    },
+    agentReadiness: {
+      topic: article.title,
+      entityMap: keywords,
+      factList: verifiedFacts.map((f) => f.fact),
+      sourceMap: sourceSummaries.map((s) => ({ sourceId: s.sourceId, title: s.title, url: s.url })),
+      actionItems: [...verificationNeeded],
+      verificationChecklist: [...verificationNeeded],
+      nextActions: ["플랫폼별 글 생성", "자동 검토 실행", "사람 최종 승인"],
+      structuredSummary: mainMessage,
+    },
+  };
 }
 
 export function buildMasterManuscript(article: Article, sources: readonly Source[]): MasterManuscript {
@@ -155,23 +359,29 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
     },
   };
 
+  const referenceDate = article.createdAt.slice(0, 10);
+  const careful = [...CAREFUL_EXPRESSIONS];
+
   return {
     theme: {
       title: article.title,
       topic: article.title,
       audience: "일반 독자",
       purpose: "출처 기반 정보 전달",
-      referenceDate: article.createdAt.slice(0, 10),
+      referenceDate,
+      region: "확인 필요",
+      topicType: getMasterManuscriptDirectionLabel(article.articleMode),
     },
     sourceSummaries,
     verifiedFacts,
+    factInterpretationSplit: buildFactInterpretationSplit(verifiedFacts),
     mainMessage,
     supportingMessages,
     background,
     verificationNeeded,
     prohibitedOrCarefulExpressions: {
       prohibited: [...BASE_PROHIBITED_PATTERNS],
-      careful: [...CAREFUL_EXPRESSIONS],
+      careful,
     },
     titleCandidates: {
       neutral: article.title,
@@ -179,8 +389,28 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
       seo: article.seoTitle ?? article.title,
       socialHook: `${article.title}, 꼭 알아야 할 이유`,
       cafeQuestion: `${article.title}, 여러분의 생각은 어떠신가요?`,
+      newsArticle: article.title,
     },
     platformBriefs,
+    longFormSupport: buildLongFormSupport(
+      article,
+      sourceSummaries,
+      verifiedFacts,
+      supportingMessages,
+      background,
+      verificationNeeded,
+      careful
+    ),
+    optimizationSupport: buildOptimizationSupport(
+      article,
+      sourceSummaries,
+      verifiedFacts,
+      supportingMessages,
+      background,
+      verificationNeeded,
+      mainMessage,
+      referenceDate
+    ),
     autoReviewCriteria: [...MASTER_MANUSCRIPT_AUTO_REVIEW_CRITERIA],
     generatedFromMode: article.articleMode,
     builtAt: new Date().toISOString(),

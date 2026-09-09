@@ -170,3 +170,4 @@ not_checked/failed는 여전히 차단)를 추가했다.
 - [`phase-3-1-multi-platform-writing-foundation.md`](./phase-3-1-multi-platform-writing-foundation.md)
 - [`phase-3-24-cross-page-ux-consistency.md`](./phase-3-24-cross-page-ux-consistency.md)
 - [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md) — "마스터 원고 → 플랫폼별 글 생성" 구조 전환 1차. 이 문서의 "자동 검토는 최종 승인을 대체하지 않는다" 원칙은 마스터 원고 구조에서도 그대로 유지된다(플랫폼별 글 생성 이후 자동 검토·승인 흐름 자체는 바뀌지 않았다).
+- [`master-manuscript-generation-strategy.md`](./master-manuscript-generation-strategy.md) — 마스터 원고 자체에도 "확인 필요 사항"을 "확인된 사실"과 분리해서 담는 구조(`verificationNeeded`/`factInterpretationSplit`)를 추가했다. 이 파일(`summarizeAutoReview`)이 quality gate checklist를 다루는 방식과 같은 원칙(통과/확인 필요/수정 필요/차단을 뒤섞지 않는다)을 마스터 원고 데이터 구조에도 그대로 적용한 사례다.

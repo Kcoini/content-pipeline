@@ -156,3 +156,4 @@ news_article 카드에도 "이 글은 언론 기사형(스트레이트 기사) �
 - [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md) — 1차
 - [`phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md) — 2차
 - [`phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md) — 3차
+- [`master-manuscript-generation-strategy.md`](./master-manuscript-generation-strategy.md) — 4차 이후, 마스터 원고 자체의 깊이를 높인 후속 작업(사실/해석 분리, longFormSupport, optimizationSupport)

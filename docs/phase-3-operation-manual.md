@@ -540,3 +540,4 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - "마스터 원고 중심" 구조 전환 2차 — platformBrief 구조화(Phase 4-2, AI 재호출 없는 결정적 계산): [`phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md)
 - "마스터 원고 중심" 구조 전환 3차 — news_article(언론 기사) 플랫폼 추가(Phase 4-3): [`phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)
 - "마스터 원고 중심" 구조 전환 4차 — 비용 최적화 + 전체 페이지 반영(Phase 4-4, `/articles/[id]` 마스터 원고 정보 섹션 신설): [`phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)
+- 마스터 원고 생성 전략 고도화(사실/해석 분리, longFormSupport, optimizationSupport): [`master-manuscript-generation-strategy.md`](./master-manuscript-generation-strategy.md)
