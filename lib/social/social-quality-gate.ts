@@ -37,6 +37,9 @@ const PII_PATTERN = /\d{6}-\d{7}|\b010-\d{3,4}-\d{4}\b/;
 /** naver_cafe에서 특히 경계하는 홍보/도배성 표현. */
 const CAFE_PROMOTIONAL_PATTERNS = ["홍보합니다", "판매합니다", "문의주세요", "최저가", "지금 바로 구매"];
 
+/** news_article(언론 기사)에서 경계하는 출처 없는 단정적 전망 표현. */
+const NEWS_ARTICLE_ABSOLUTE_PREDICTION_PATTERNS = ["반드시 ~할 것이다", "틀림없이", "무조건 오른다", "무조건 내린다", "확실시된다"];
+
 // Phase 3-20: naver_cafe는 plain text 커뮤니티 글이어야 한다 — 아래
 // 기준은 lib/social/naver-cafe-plain-text-sanitizer.ts가 저장/표시/export
 // 시점에 실제로 정리하는 대상과 동일한 패턴이다(정리되지 않은 원본이
@@ -616,6 +619,38 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
           )
         );
 
+        break;
+      }
+
+      case "news_article": {
+        // 리드문(육하원칙)이 첫 문단에 충분히 담겨 있는지 — 길이 기준의
+        // 단순 휴리스틱이다(실제 육하원칙 요소 검출은 rule-based로는
+        // 한계가 있어, 최소한의 형식적 신호만 확인한다).
+        const bodyText = input.postBody ?? "";
+        const firstParagraph = bodyText.split(/\n{2,}/)[0]?.trim() ?? "";
+        const hasLead = firstParagraph.length >= 30;
+        checklist.push(
+          checklistItem(
+            "news_article_lead_present",
+            "리드문(육하원칙) 존재",
+            hasLead ? "pass" : "fail",
+            hasLead
+              ? "첫 문단에 리드문으로 볼 수 있는 내용이 있습니다."
+              : "첫 문단이 너무 짧아 리드문(육하원칙 요약)으로 보기 어렵습니다."
+          )
+        );
+
+        const unsourcedClaimFound = NEWS_ARTICLE_ABSOLUTE_PREDICTION_PATTERNS.filter((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "news_article_no_unsourced_claim",
+            "출처 없는 단정적 전망 없음",
+            unsourcedClaimFound.length > 0 ? "warning" : "pass",
+            unsourcedClaimFound.length > 0
+              ? `단정적 전망 표현이 발견되었습니다: ${unsourcedClaimFound.join(", ")} — 출처 기반 사실과 전망을 분리했는지 확인하세요.`
+              : "단정적 전망 표현이 발견되지 않았습니다."
+          )
+        );
         break;
       }
 

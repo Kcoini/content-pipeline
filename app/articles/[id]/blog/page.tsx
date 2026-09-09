@@ -415,6 +415,11 @@ export default async function ArticleBlogPage({
                         이 글은 네이버 블로그 수동 게시용 글입니다.
                       </p>
                     )}
+                    {post.platform === "news_article" && (
+                      <p className="mt-1 rounded border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                        이 글은 언론 기사형(스트레이트 기사) 수동 게시용 글입니다.
+                      </p>
+                    )}
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || "(제목 없음)"}</p>
                     <p className="mt-1 text-zinc-500">{(post.excerpt || post.postBody || "").slice(0, 140) || "(본문 없음)"}{(post.excerpt || post.postBody || "").length > 140 ? "…" : ""}</p>
                     {/* Phase 3-22: raw 상태값 나열 대신 사용자 친화적 한 줄 요약 +
@@ -494,7 +499,7 @@ export default async function ArticleBlogPage({
                         <input type="hidden" name="socialPostId" value={post.id} />
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
                         <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
-                          {post.platform === "wordpress_blog" ? "수동 게시용 Draft 내보내기" : "Naver Blog Export"}
+                          {post.platform === "wordpress_blog" ? "수동 게시용 Draft 내보내기" : "수동 export 만들기"}
                         </button>
                       </form>
                       <form action={prepareManualPostingRecordAction}>

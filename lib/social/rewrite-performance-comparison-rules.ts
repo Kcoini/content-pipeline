@@ -19,6 +19,12 @@ export interface PlatformPerformanceComparisonRules {
 }
 
 const RULES: Record<SocialPlatform, PlatformPerformanceComparisonRules> = {
+  news_article: {
+    platform: "news_article",
+    primaryMetrics: ["views", "comments", "shares"],
+    secondaryMetrics: ["impressions"],
+    notes: "언론 기사는 조회수를 우선하고 댓글/공유를 함께 본다.",
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     primaryMetrics: ["clicks", "views", "conversionCount", "comments"],

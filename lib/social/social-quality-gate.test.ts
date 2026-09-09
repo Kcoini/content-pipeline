@@ -669,4 +669,50 @@ describe("runSocialPostQualityGate", () => {
       expect(depthItem?.status).toBe("fail");
     });
   });
+
+  describe("news_article (Phase 4-3): 언론 기사형 rule-based 검사", () => {
+    it("첫 문단이 충분히 길면 리드문 존재로 pass한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "news_article",
+        toneStyle: "informational",
+        postTitle: "기준금리 3%로 인상",
+        postBody: "한국은행은 15일 기준금리를 3%로 인상했다고 밝혔다. 이는 시장 예상과 부합하는 결정이다.\n\n본문 내용이 이어진다.",
+      });
+      const item = result.checklist.find((c) => c.key === "news_article_lead_present");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("첫 문단이 너무 짧으면 리드문 부재로 fail한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "news_article",
+        toneStyle: "informational",
+        postTitle: "제목",
+        postBody: "짧은 문단.\n\n본문 내용이 이어진다.",
+      });
+      const item = result.checklist.find((c) => c.key === "news_article_lead_present");
+      expect(item?.status).toBe("fail");
+    });
+
+    it("출처 없는 단정적 전망 표현이 있으면 warning이다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "news_article",
+        toneStyle: "informational",
+        postTitle: "제목",
+        postBody: "충분히 긴 리드문으로 육하원칙을 담은 첫 문단입니다. 앞으로 금리는 틀림없이 더 오를 것이다.",
+      });
+      const item = result.checklist.find((c) => c.key === "news_article_no_unsourced_claim");
+      expect(item?.status).toBe("warning");
+    });
+
+    it("단정적 전망 표현이 없으면 pass다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "news_article",
+        toneStyle: "informational",
+        postTitle: "제목",
+        postBody: "충분히 긴 리드문으로 육하원칙을 담은 첫 문단입니다. 전문가들은 신중한 전망을 내놓고 있다.",
+      });
+      const item = result.checklist.find((c) => c.key === "news_article_no_unsourced_claim");
+      expect(item?.status).toBe("pass");
+    });
+  });
 });

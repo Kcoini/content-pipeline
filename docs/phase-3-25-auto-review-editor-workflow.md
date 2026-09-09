@@ -169,3 +169,4 @@ not_checked/failed는 여전히 차단)를 추가했다.
 
 - [`phase-3-1-multi-platform-writing-foundation.md`](./phase-3-1-multi-platform-writing-foundation.md)
 - [`phase-3-24-cross-page-ux-consistency.md`](./phase-3-24-cross-page-ux-consistency.md)
+- [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md) — "마스터 원고 → 플랫폼별 글 생성" 구조 전환 1차. 이 문서의 "자동 검토는 최종 승인을 대체하지 않는다" 원칙은 마스터 원고 구조에서도 그대로 유지된다(플랫폼별 글 생성 이후 자동 검토·승인 흐름 자체는 바뀌지 않았다).

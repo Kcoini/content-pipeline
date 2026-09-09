@@ -255,3 +255,27 @@ describe("진행 단계 표시 (정적 소스 검사, Phase 3-22)", () => {
     expect(pageSource).toMatch(/existingSocialPosts\.some\(\(post\) => post\.approvalStatus === "approved"\)/);
   });
 });
+
+describe("마스터 원고 정보 섹션 (정적 소스 검사, Phase 4-4)", () => {
+  it("readArticleMasterManuscript로 조회하고, 없으면 섹션을 렌더링하지 않는다", () => {
+    expect(pageSource).toContain(
+      'import { getArticleById, readArticleMasterManuscript } from "@/lib/repositories/article-repository"'
+    );
+    expect(pageSource).toContain("const masterManuscript = readArticleMasterManuscript(article)");
+    expect(pageSource).toContain("{masterManuscript && (");
+  });
+
+  it("출처 요약/확인된 사실/확인 필요 사항 개수를 보여주고 raw JSON을 노출하지 않는다", () => {
+    const start = pageSource.indexOf("마스터 원고 정보</h2>");
+    const end = pageSource.indexOf("기사 본문</h2>");
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("출처 요약");
+    expect(block).toContain("확인된 사실");
+    expect(block).toContain("확인 필요 사항");
+    expect(block).not.toContain("JSON.stringify");
+  });
+
+  it("그대로 게시되는 내용이 아니라는 안내 문구가 있다", () => {
+    expect(pageSource).toContain("그대로 게시되는 내용이 아닙니다");
+  });
+});

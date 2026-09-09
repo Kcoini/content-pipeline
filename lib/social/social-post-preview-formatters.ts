@@ -19,6 +19,19 @@ export interface SocialPostPreview {
 
 const DISCUSSION_CUE_PATTERN = /[?？]|어떻게 생각|계신가요|공유해|추천해/;
 
+/** news_article: 제목 + 본문(리드문 포함) 미리보기, excerpt(부제/요약문) 표시. */
+function formatNewsArticle(post: SocialPost): SocialPostPreview {
+  return {
+    platform: post.platform,
+    heading: post.postTitle ?? "(제목 없음)",
+    lines: [
+      { label: "본문", value: post.postBody ?? "" },
+      { label: "부제/요약문", value: post.excerpt ?? "(없음)" },
+    ],
+    highlights: [],
+  };
+}
+
 /** wordpress_blog: 제목 + 본문 미리보기, excerpt 표시. */
 function formatWordpressBlog(post: SocialPost): SocialPostPreview {
   return {
@@ -112,6 +125,8 @@ function formatInstagram(post: SocialPost): SocialPostPreview {
 /** social post를 플랫폼에 맞는 미리보기 구조로 변환한다 (사람이 확인하기 쉬운 형태). */
 export function formatSocialPostPreview(post: SocialPost): SocialPostPreview {
   switch (post.platform) {
+    case "news_article":
+      return formatNewsArticle(post);
     case "wordpress_blog":
       return formatWordpressBlog(post);
     case "naver_blog":
@@ -150,6 +165,17 @@ export function formatExportPreview(post: SocialPost): SocialPostPreview {
   }
 
   switch (post.platform) {
+    case "news_article": {
+      return {
+        platform: post.platform,
+        heading: result.exportTitle ?? "(제목 없음)",
+        lines: [
+          { label: "제목", value: result.exportTitle ?? "" },
+          { label: "본문", value: result.exportBody ?? "" },
+        ],
+        highlights: [],
+      };
+    }
     case "wordpress_blog":
     case "naver_blog": {
       return {

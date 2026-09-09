@@ -125,18 +125,17 @@ export function getDashboardStatusSummary(
     case "ready_to_generate":
       return {
         headline: `출처가 준비되었습니다 (${ctx.sourceCount}개).`,
-        nextAction:
-          "WordPress 블로그, 네이버 블로그, 네이버 카페 글을 생성하려면 먼저 출처 기반 원고(기사 초안)를 생성하세요.",
-        primaryActionLabel: "기사 초안 생성",
+        nextAction: "WordPress 블로그, 네이버 블로그, 네이버 카페 글을 생성하려면 먼저 마스터 원고를 만드세요.",
+        primaryActionLabel: "마스터 원고 만들기",
         primaryActionHref: "#generate-draft",
       };
     case "needs_platform_posts":
       return {
-        headline: "출처 기반 원고가 준비되었습니다.",
+        headline: "마스터 원고가 준비되었습니다.",
         nextAction: "WordPress 블로그, 네이버 블로그, 네이버 카페 글을 생성하세요.",
         primaryActionLabel: "선택한 플랫폼 글 생성",
         primaryActionHref: "#platform-generation",
-        secondaryActionLabel: "기사 보기",
+        secondaryActionLabel: "마스터 원고 보기",
         secondaryActionHref: ctx.articleId ? `/articles/${ctx.articleId}` : undefined,
       };
     case "needs_review":

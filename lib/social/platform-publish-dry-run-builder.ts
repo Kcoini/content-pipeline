@@ -28,6 +28,29 @@ function baseFinalChecklist(): string[] {
  */
 export function buildPlatformPublishDryRunPayload(post: SocialPost): PlatformPublishDryRunResult {
   switch (post.platform) {
+    case "news_article": {
+      if (!post.postTitle?.trim() || !post.postBody?.trim()) {
+        return {
+          ok: false,
+          platform: post.platform,
+          dryRunPayload: {},
+          handoffPayload: {},
+          checklist: [],
+          warnings: [],
+          error: "post_title/post_body가 모두 있어야 dry-run을 생성할 수 있습니다.",
+        };
+      }
+      const checklist = [...baseFinalChecklist(), "리드문(육하원칙)과 출처 표기를 다시 확인하세요."];
+      const dryRunPayload = {
+        type: "news_article_manual_export",
+        title: post.postTitle,
+        contentPreviewLength: post.postBody.length,
+        excerpt: post.excerpt ?? null,
+        note: "언론 기사는 manual export 전제입니다 — 실제 배포는 사람이 직접 진행합니다.",
+      };
+      return { ok: true, platform: post.platform, dryRunPayload, handoffPayload: dryRunPayload, checklist, warnings: [] };
+    }
+
     case "wordpress_blog": {
       if (!post.postTitle?.trim() || !post.postBody?.trim()) {
         return {

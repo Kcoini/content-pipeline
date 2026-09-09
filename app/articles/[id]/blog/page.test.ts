@@ -507,8 +507,9 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
     expect(batchButtonIdx).toBeLessThan(step1Idx);
   });
 
-  it("WordPress Draft Export는 wordpress_blog 카드에서 '수동 게시용 Draft 내보내기'로 표시된다 (naver_blog는 변경 없음)", () => {
-    expect(pageSource).toContain('"수동 게시용 Draft 내보내기" : "Naver Blog Export"');
+  it("WordPress Draft Export는 wordpress_blog 카드에서 '수동 게시용 Draft 내보내기'로, 그 외 blog 그룹 플랫폼(naver_blog/news_article)은 '수동 export 만들기'로 표시된다 (Phase 4-4: news_article 추가로 영어 라벨을 일반화)", () => {
+    expect(pageSource).toContain('"수동 게시용 Draft 내보내기" : "수동 export 만들기"');
+    expect(pageSource).not.toContain("Naver Blog Export");
   });
 
   it("품질검사/승인/게시 체크리스트 준비 버튼(폼)은 wordpress_blog 카드 안에서 중복 배치되지 않는다 (Step 1/2/7은 상단 공통 버튼을 참조만 한다)", () => {

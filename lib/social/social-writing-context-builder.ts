@@ -3,11 +3,13 @@
 // 실제로 필요한 최소한의 정보만 모아 반환한다. API key/인증 정보/원문
 // source HTML은 이 context에 절대 포함하지 않는다.
 
-import { getArticleById } from "@/lib/repositories/article-repository";
+import { getArticleById, readArticleMasterManuscript } from "@/lib/repositories/article-repository";
 import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
 import { getPlatformWritingConfig, getSocialOutputContractName } from "./platform-writing-config";
 import { countUsableSources } from "./wordpress-blog-source-mode";
 import { getToneStyleConfig } from "./tone-style-config";
+import { getPlatformBrief } from "@/lib/articles/master-manuscript-builder";
+import type { MasterManuscriptPlatformBriefs } from "@/lib/articles/master-manuscript-types";
 import type {
   SocialPlatform,
   ToneStyle,
@@ -84,6 +86,14 @@ export interface SocialWritingContext {
   safetyRules: string[];
   /** `contracts/social/*.schema.json` 파일명 (출력 계약 이름). */
   outputContractName: string;
+  /**
+   * Phase 4-2: 마스터 원고의 platformBriefs 중 이 플랫폼에 해당하는
+   * 부분만 담는다(마스터 원고 전체를 넣지 않는다). article이
+   * Phase 4-2 이전에 생성되어 아직 마스터 원고가 없으면 null이다 —
+   * 이 경우 기존 excerpt/keyPoints/sourceSummaries만으로도 생성은
+   * 그대로 동작한다(하위 호환, breaking 없음).
+   */
+  platformBrief: MasterManuscriptPlatformBriefs[keyof MasterManuscriptPlatformBriefs] | null;
 }
 
 /** article.content(마크다운/HTML 섞인 원문)에서 태그/기호를 제거한 순수 텍스트로 짧게 요약한다. */
@@ -134,6 +144,9 @@ export async function buildSocialWritingContext(
     new Set([...COMMON_SAFETY_RULES, ...platformConfig.prohibitedPatterns, ...toneStyleConfig.prohibitedPatterns])
   );
 
+  const masterManuscript = readArticleMasterManuscript(article);
+  const platformBrief = masterManuscript ? getPlatformBrief(masterManuscript, options.platform) : null;
+
   return {
     articleId: article.id,
     title: article.title,
@@ -159,5 +172,6 @@ export async function buildSocialWritingContext(
     toneStyleConfig,
     safetyRules,
     outputContractName: getSocialOutputContractName(options.platform),
+    platformBrief,
   };
 }

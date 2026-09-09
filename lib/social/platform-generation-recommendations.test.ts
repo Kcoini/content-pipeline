@@ -42,6 +42,14 @@ describe("getRecommendedPlatforms (Phase 3-21: 추천 플랫폼 선택)", () => 
   it("시각적 정보/체크리스트/생활 팁은 Instagram을 추천에 포함한다", () => {
     expect(getRecommendedPlatforms("visual_checklist_tip")).toContain("instagram");
   });
+
+  it("news_article은 언론사 모드 설정이 없으면 어떤 topicType 추천에도 기본 포함되지 않는다 (Phase 4-3, 선택은 가능하되 기본 선택은 하지 않는다)", () => {
+    expect(getRecommendedPlatforms()).not.toContain("news_article");
+    expect(getRecommendedPlatforms("economic_daily_life")).not.toContain("news_article");
+    expect(getRecommendedPlatforms("policy_support")).not.toContain("news_article");
+    expect(getRecommendedPlatforms("breaking_news")).not.toContain("news_article");
+    expect(getRecommendedPlatforms("visual_checklist_tip")).not.toContain("news_article");
+  });
 });
 
 describe("getRecommendedToneForPlatform (Phase 3-21: 플랫폼별 추천 문체)", () => {
@@ -63,6 +71,10 @@ describe("getRecommendedToneForPlatform (Phase 3-21: 플랫폼별 추천 문체)
 
   it("wordpress_blog는 explanatory(설명형)를 추천한다", () => {
     expect(getRecommendedToneForPlatform("wordpress_blog")).toBe("explanatory");
+  });
+
+  it("news_article은 informational(정보형)을 추천한다 (Phase 4-3)", () => {
+    expect(getRecommendedToneForPlatform("news_article")).toBe("informational");
   });
 });
 

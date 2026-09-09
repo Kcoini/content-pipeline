@@ -18,7 +18,12 @@ import {
   describeThemeStageLabel,
 } from "@/lib/dashboard/dashboard-workflow-presentation";
 import type { Article, Source } from "@/lib/types/domain";
-import { ARTICLE_MODE_CONFIGS, ARTICLE_MODE_LIST, DEFAULT_ARTICLE_MODE, isArticleMode } from "@/lib/articles/article-modes";
+import { ARTICLE_MODE_CONFIGS, isArticleMode } from "@/lib/articles/article-modes";
+import {
+  AUTO_MASTER_MANUSCRIPT_DIRECTION,
+  MASTER_MANUSCRIPT_DIRECTION_LIST,
+  getMasterManuscriptDirectionLabel,
+} from "@/lib/articles/article-modes";
 import { TransientNotice } from "@/components/ui/transient-notice";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { SOCIAL_PLATFORMS, type SocialPlatform } from "@/lib/social/social-platform-types";
@@ -182,10 +187,10 @@ export default async function DashboardPage({
   // 표시한다 — "버튼을 눌러도 반응이 없다"는 문제의 재발을 막기 위해서다.
   const generatedModeLabel =
     generated === "1" && generatedMode && isArticleMode(generatedMode)
-      ? ARTICLE_MODE_CONFIGS[generatedMode].label
+      ? getMasterManuscriptDirectionLabel(generatedMode)
       : null;
   const generationSuccessMessage = generatedModeLabel
-    ? `${generatedModeLabel} 기사초안이 생성되었습니다.`
+    ? `${generatedModeLabel} 방향으로 마스터 원고가 생성되었습니다.`
     : null;
 
   // Phase 3-23-2: 대시보드에서 실행한 플랫폼별 글 생성 결과를 대시보드
@@ -203,9 +208,9 @@ export default async function DashboardPage({
 
   // 재생성 확인 배너에 쓸 라벨. mode 값이 올바르지 않으면(과거 링크 등)
   // 배너를 표시하지 않는다 — 잘못된 값으로 안내하는 것보다 안전하다.
-  const pendingModeLabel = pendingMode && isArticleMode(pendingMode) ? ARTICLE_MODE_CONFIGS[pendingMode].label : null;
+  const pendingModeLabel = pendingMode && isArticleMode(pendingMode) ? getMasterManuscriptDirectionLabel(pendingMode) : null;
   const existingModeLabel =
-    existingMode && isArticleMode(existingMode) ? ARTICLE_MODE_CONFIGS[existingMode].label : existingMode ?? null;
+    existingMode && isArticleMode(existingMode) ? getMasterManuscriptDirectionLabel(existingMode) : existingMode ?? null;
   const showRegenerateConfirm = regenerateConfirm === "1" && Boolean(pendingModeLabel) && Boolean(selectedTheme);
 
   // Phase 3-23-4: 플랫폼별 글 생성 영역을 "폼"이 아니라 "카드"로 보여주기
@@ -525,31 +530,36 @@ export default async function DashboardPage({
   // 보여주고, article이 있으면 요약 카드 + "재생성 옵션" 토글(기본 접힘)
   // 안에 같은 폼을 넣는다 — 라디오 버튼이 계속 노출되어 혼란을 주지
   // 않게 하기 위함이다.
-  const draftModeLabel = article
-    ? ARTICLE_MODE_LIST.find((m) => m.id === article.articleMode)?.label ?? article.articleMode
-    : null;
+  // Phase 4-1: "article"이라는 내부 용어 대신 "마스터 원고"라는 사용자
+  // 표현을 쓴다. article은 여전히 같은 DB row/기능이다 — 삭제하거나
+  // 새 테이블을 만들지 않았다(문서 phase-4-1-master-manuscript-terminology.md 참고).
+  const draftModeLabel = article ? getMasterManuscriptDirectionLabel(article.articleMode) : null;
   const draftManagementBlock = selectedTheme ? (
     <section
       id="generate-draft"
       tabIndex={-1}
       className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-indigo-500"
     >
-      <h2 className="text-sm font-semibold text-zinc-700">출처 기반 원고</h2>
+      <h2 className="text-sm font-semibold text-zinc-700">마스터 원고</h2>
+      <p className="mt-1 break-keep text-xs text-zinc-500">
+        출처를 바탕으로 모든 플랫폼 글의 기준이 되는 마스터 원고를 만듭니다. 이 원고는 그대로 게시하지 않고, 이후 각
+        플랫폼에 맞게 변환됩니다.
+      </p>
 
       {/* Phase 2-22: 이미 이 테마로 생성된 기사가 있는 상태에서 기사초안
           생성을 누르면, 조용히 덮어쓰거나 무반응으로 끝나지 않고 항상
           이 확인 배너를 먼저 보여준다. */}
       {showRegenerateConfirm && (
         <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">이미 이 테마로 생성된 기사초안이 있습니다.</p>
+          <p className="font-medium">이미 이 테마로 생성된 마스터 원고가 있습니다.</p>
           <p className="mt-1 break-keep">
-            현재 초안: <span className="font-medium">{existingModeLabel ?? "알 수 없음"}</span> · 선택한 유형:{" "}
+            현재 원고: <span className="font-medium">{existingModeLabel ?? "알 수 없음"}</span> · 선택한 생성 방향:{" "}
             <span className="font-medium">{pendingModeLabel}</span>
           </p>
           <p className="mt-1 break-keep text-xs text-amber-700">
             {existingModeLabel === pendingModeLabel
-              ? "같은 유형으로 다시 생성하면 기존 미승인 초안(draft)은 새 초안으로 교체됩니다(이미 검토·승인된 기사는 유지됩니다)."
-              : `기존 초안을 유지하고 ${pendingModeLabel} 초안을 새로 생성하시겠습니까? 기존 미승인 초안(draft)은 새 초안으로 교체됩니다(이미 검토·승인된 기사는 유지됩니다).`}
+              ? "같은 방향으로 다시 생성하면 기존 미승인 원고(draft)는 새 원고로 교체됩니다(이미 검토·승인된 기사는 유지됩니다)."
+              : `기존 원고를 유지하고 ${pendingModeLabel} 방향으로 새로 생성하시겠습니까? 기존 미승인 원고(draft)는 새 원고로 교체됩니다(이미 검토·승인된 기사는 유지됩니다).`}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
@@ -563,7 +573,7 @@ export default async function DashboardPage({
               <input type="hidden" name="articleMode" value={pendingMode} />
               <input type="hidden" name="confirmed" value="true" />
               <button type="submit" className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500">
-                새 초안으로 생성
+                새 원고로 생성
               </button>
             </form>
           </div>
@@ -573,27 +583,42 @@ export default async function DashboardPage({
       {!article ? (
         <form action={generateArticleDraft} className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="themeId" value={selectedTheme.id} />
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-xs font-medium text-zinc-600">글쓰기 모드</legend>
-            {ARTICLE_MODE_LIST.map((modeConfig) => (
-              <label
-                key={modeConfig.id}
-                className="flex items-start gap-2 rounded border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
-              >
-                <input
-                  type="radio"
-                  name="articleMode"
-                  value={modeConfig.id}
-                  defaultChecked={modeConfig.id === DEFAULT_ARTICLE_MODE}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="font-medium text-zinc-800">{modeConfig.label}</span>
-                  <span className="block text-xs text-zinc-500">{modeConfig.description}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          {/* Phase 4-1: 처음부터 3종류 중 하나를 반드시 고르게 하지 않는다.
+              기본은 "자동 추천"이고, 기존 3종류(general_news/
+              source_based_explainer/monetized_blog)는 고급 옵션 안에
+              그대로 남아 있다 — <details>가 닫혀 있어도 선택된 라디오
+              값은 그대로 제출된다. */}
+          <details className="group rounded border border-zinc-200 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-zinc-600 [&::-webkit-details-marker]:hidden">
+              <span className="group-open:hidden">고급 옵션: 원고 생성 방향 선택 (기본값: 자동 추천)</span>
+              <span className="hidden group-open:inline">원고 생성 방향 선택 접기</span>
+            </summary>
+            <fieldset className="mt-2 flex flex-col gap-2">
+              <legend className="text-xs font-medium text-zinc-600">원고 생성 방향</legend>
+              {MASTER_MANUSCRIPT_DIRECTION_LIST.map((direction) => (
+                <label
+                  key={direction}
+                  className="flex items-start gap-2 rounded border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
+                >
+                  <input
+                    type="radio"
+                    name="articleMode"
+                    value={direction}
+                    defaultChecked={direction === AUTO_MASTER_MANUSCRIPT_DIRECTION}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium text-zinc-800">{getMasterManuscriptDirectionLabel(direction)}</span>
+                    <span className="block text-xs text-zinc-500">
+                      {direction === AUTO_MASTER_MANUSCRIPT_DIRECTION
+                        ? "테마와 출처를 보고 가장 적합한 방향을 시스템이 고릅니다."
+                        : ARTICLE_MODE_CONFIGS[direction].description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </details>
           <div>
             <button
               type="submit"
@@ -603,17 +628,17 @@ export default async function DashboardPage({
                   ? `출처가 부족합니다 (${sources.length}/${MIN_SOURCE_COUNT}개 등록됨).`
                   : undefined
               }
-              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-300"
+              className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500"
             >
-              기사 초안 생성
+              마스터 원고 만들기
             </button>
             {/* Phase 2-22: disabled 버튼에 이유 없이 회색으로만 표시되던
                 문제를 고친다 — title(hover) 뿐 아니라 항상 보이는 텍스트로도
                 알려준다. */}
             {sources.length < MIN_SOURCE_COUNT && (
               <p className="mt-1 text-xs text-amber-600">
-                출처가 부족합니다 ({sources.length}/{MIN_SOURCE_COUNT}개 등록됨) — 출처를 더 등록해야 기사초안을
-                생성할 수 있습니다.
+                출처가 부족합니다 ({sources.length}/{MIN_SOURCE_COUNT}개 등록됨) — 출처를 더 등록해야 마스터 원고를
+                만들 수 있습니다.
               </p>
             )}
           </div>
@@ -621,7 +646,7 @@ export default async function DashboardPage({
       ) : (
         <>
           <p className="mt-1 break-keep text-sm text-zinc-600">
-            상태: <span className="font-medium text-zinc-800">원고 생성 완료</span> · 유형: {draftModeLabel}
+            상태: <span className="font-medium text-zinc-800">생성 완료</span> · 생성 방향: {draftModeLabel}
           </p>
           <p className="mt-0.5 break-keep text-sm text-zinc-600">
             제목: <span className="font-medium text-zinc-800">{article.title}</span>
@@ -631,11 +656,11 @@ export default async function DashboardPage({
               href={`/articles/${article.id}`}
               className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
             >
-              원고 보기
+              마스터 원고 보기
             </Link>
           </div>
 
-          {/* Phase 3-23-4: 이미 초안이 있으면 라디오 버튼을 기본으로
+          {/* Phase 3-23-4: 이미 원고가 있으면 라디오 버튼을 기본으로
               노출하지 않는다 — "재생성 옵션"을 펼쳤을 때만 보인다. */}
           <details className="group mt-3">
             <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-zinc-500 [&::-webkit-details-marker]:hidden">
@@ -645,22 +670,26 @@ export default async function DashboardPage({
             <form action={generateArticleDraft} className="mt-3 flex flex-col gap-3">
               <input type="hidden" name="themeId" value={selectedTheme.id} />
               <fieldset className="flex flex-col gap-2">
-                <legend className="text-xs font-medium text-zinc-600">글쓰기 모드</legend>
-                {ARTICLE_MODE_LIST.map((modeConfig) => (
+                <legend className="text-xs font-medium text-zinc-600">원고 생성 방향</legend>
+                {MASTER_MANUSCRIPT_DIRECTION_LIST.map((direction) => (
                   <label
-                    key={modeConfig.id}
+                    key={direction}
                     className="flex items-start gap-2 rounded border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
                   >
                     <input
                       type="radio"
                       name="articleMode"
-                      value={modeConfig.id}
-                      defaultChecked={modeConfig.id === article.articleMode}
+                      value={direction}
+                      defaultChecked={direction === article.articleMode}
                       className="mt-0.5"
                     />
                     <span>
-                      <span className="font-medium text-zinc-800">{modeConfig.label}</span>
-                      <span className="block text-xs text-zinc-500">{modeConfig.description}</span>
+                      <span className="font-medium text-zinc-800">{getMasterManuscriptDirectionLabel(direction)}</span>
+                      <span className="block text-xs text-zinc-500">
+                        {direction === AUTO_MASTER_MANUSCRIPT_DIRECTION
+                          ? "테마와 출처를 보고 가장 적합한 방향을 시스템이 고릅니다."
+                          : ARTICLE_MODE_CONFIGS[direction].description}
+                      </span>
                     </span>
                   </label>
                 ))}
@@ -670,7 +699,7 @@ export default async function DashboardPage({
                   type="submit"
                   className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
                 >
-                  기사 초안 재생성
+                  마스터 원고 다시 만들기
                 </button>
                 <p className="mt-1 text-xs text-zinc-500">
                   다시 누르면 재생성 여부를 먼저 확인합니다(조용히 덮어쓰지 않습니다).
@@ -696,7 +725,7 @@ export default async function DashboardPage({
     >
       <h2 className="text-sm font-semibold text-zinc-700">플랫폼별 글 생성</h2>
       {!article ? (
-        <p className="mt-2 text-xs text-zinc-500">먼저 기사 초안(출처 기반 원고)을 생성해야 플랫폼별 글을 만들 수 있습니다.</p>
+        <p className="mt-2 text-xs text-zinc-500">먼저 마스터 원고를 만들어야 플랫폼별 글을 만들 수 있습니다.</p>
       ) : (
         <>
           {/* Phase 3-23-2: 대시보드에서 실행한 생성 결과를 대시보드

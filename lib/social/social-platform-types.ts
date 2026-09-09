@@ -3,7 +3,12 @@
 // 타입 정의. 이 단계에서는 실제 AI 생성이나 실제 플랫폼 게시를 구현하지
 // 않으며, 구조(스키마/타입/검증)만 준비한다.
 
+// Phase 4-3: "마스터 원고 중심" 구조 전환 3차 — 언론 기사형 플랫폼
+// news_article을 추가한다. news_article은 마스터 원고 자체가 아니라
+// 마스터 원고를 바탕으로 생성되는 플랫폼별 출력물 중 하나다(사실
+// 전달/중립적 설명/육하원칙 중심의 스트레이트 기사 형식).
 export type SocialPlatform =
+  | "news_article"
   | "wordpress_blog"
   | "naver_blog"
   | "naver_cafe"
@@ -12,6 +17,7 @@ export type SocialPlatform =
   | "instagram";
 
 export const SOCIAL_PLATFORMS: readonly SocialPlatform[] = [
+  "news_article",
   "wordpress_blog",
   "naver_blog",
   "naver_cafe",

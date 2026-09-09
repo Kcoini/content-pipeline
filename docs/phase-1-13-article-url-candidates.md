@@ -127,13 +127,21 @@ sources.metadata에 저장되는 정보:
 
 | 이벤트 | 시점 |
 |---|---|
-| article_url_collection_started | URL 후보 수집 시작 |
-| article_url_collection_completed | URL 후보 수집 완료 |
-| article_url_collection_failed | URL 후보 수집 실패 |
+| article_url_collection_started | URL 후보 수집 시작 (서비스 계층) |
+| article_url_collection_completed | URL 후보 수집 완료 (서비스 계층) |
+| article_url_collection_failed | URL 후보 수집 실패 (서비스 계층) |
 | article_url_candidate_selected | 사용자가 후보 선택 |
 | article_url_candidate_imported | 후보 → sources 등록 완료 |
 | article_url_candidate_dismissed | 후보 제외 |
 | source_created_from_candidate | sources에 출처 생성 완료 |
+
+Phase 3-27에서 화면(버튼 클릭) 기준 이벤트를 추가했다(위 서비스
+계층 이벤트와 별개로, action 계층에서 기록한다):
+`related_url_collection_started`/`completed`/`failed`/`no_results`/
+`partial_success`/`add_more_clicked`/`finished_by_user`/
+`go_dashboard_clicked`/`go_generate_clicked`. 자세한 내용은
+[`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
+참고.
 
 ---
 
@@ -153,7 +161,16 @@ sources.metadata에 저장되는 정보:
 
 ## 현재 한계 및 다음 단계
 
-- 실제 네이버 검색 API / 카카오 API 연결 미구현 (`ARTICLE_SEARCH_ENABLED=true` 경로)
-- 후보 import 결과(성공/실패/중복 건수) 피드백 UI 없음 (revalidate로 재렌더링만)
+- 실제 네이버 검색 API / 카카오 API 연결은 구현되어 있다
+  (`ARTICLE_SEARCH_ENABLED=true` 경로) — 다만 검색 결과 품질 필터링/
+  언론사 신뢰도 필터는 아직 없다.
+- ~~후보 import 결과(성공/실패/중복 건수) 피드백 UI 없음~~ → Phase
+  3-27에서 해결했다. "관련 기사 URL 후보 수집" 버튼을 누르면 제출 중
+  상태 → 결과 요약 카드(성공/부분 성공/결과 없음/실패, 신규/중복
+  건수, 현재 출처 상태) → 다음 행동 선택(추가 수집/수집한 URL 확인/
+  직접 URL 추가/글 생성 단계로 진행/대시보드로 돌아가기) 순서로 항상
+  반응한다. 자세한 내용은
+  [`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
+  참고.
 - 여러 테마에 걸친 중복 URL 감지 미구현 (현재는 같은 theme 안에서만 중복 체크)
-- 향후: 실제 API 연결, 검색 결과 품질 필터링, 언론사 신뢰도 필터
+- 향후: 검색 결과 품질 필터링, 언론사 신뢰도 필터

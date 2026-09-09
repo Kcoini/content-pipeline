@@ -6,6 +6,13 @@ import type { SocialPlatform } from "./social-platform-types";
 import type { PlatformMetricsConfig } from "./social-metrics-types";
 
 export const PLATFORM_METRICS_CONFIGS: Record<SocialPlatform, PlatformMetricsConfig> = {
+  news_article: {
+    platform: "news_article",
+    requiredMetrics: ["views"],
+    optionalMetrics: ["comments", "shares"],
+    scoreWeights: { views: 60, comments: 20, shares: 20 },
+    engagementDenominatorPriority: ["impressions", "reach", "views"],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     requiredMetrics: ["views"],

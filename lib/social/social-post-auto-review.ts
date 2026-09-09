@@ -76,6 +76,9 @@ const AXIS_BY_KEY: Record<string, AutoReviewAxis> = {
   no_income_guarantee: "safety",
   no_pii_exposure: "safety",
   naver_cafe_no_internal_status_leak: "safety",
+  // Phase 4-3: news_article(언론 기사).
+  news_article_lead_present: "structure",
+  news_article_no_unsourced_claim: "source",
 };
 
 function resolveAxis(key: string): AutoReviewAxis {

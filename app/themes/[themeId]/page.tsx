@@ -4,10 +4,27 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getThemeById } from "@/lib/repositories/theme-repository";
 import { getArticleUrlCandidates } from "@/lib/article-search/article-search-service";
-import { collectCandidates, importCandidatesToSources, dismissCandidate } from "./actions";
+import { getSourcesByThemeId } from "@/lib/repositories/source-repository";
+import { summarizeSourceStatus } from "@/lib/dashboard/source-display";
+import {
+  collectCandidates,
+  importCandidatesToSources,
+  dismissCandidate,
+  finishUrlCollection,
+  goDashboardFromUrlCollection,
+  goGenerateFromUrlCollection,
+} from "./actions";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import {
+  RelatedUrlCollectionResultCard,
+  type CollectionResultStatus,
+} from "@/components/sources/related-url-collection-result-card";
 import type { ArticleUrlCandidate } from "@/lib/types/domain";
 
 export const dynamic = "force-dynamic";
+
+/** 대시보드(`app/dashboard/page.tsx`)와 동일한 기준값 — 글 생성에 필요한 최소 출처 수. */
+const MIN_SOURCE_COUNT = 3;
 
 const STATUS_LABEL: Record<string, string> = {
   candidate: "후보",
@@ -90,19 +107,39 @@ function CandidateCard({ candidate }: { candidate: ArticleUrlCandidate }) {
 
 export default async function ThemePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ themeId: string }>;
+  searchParams: Promise<{
+    collectStatus?: string;
+    collectNew?: string;
+    collectDup?: string;
+    collectError?: string;
+  }>;
 }) {
   const { themeId } = await params;
+  const { collectStatus, collectNew, collectDup, collectError } = await searchParams;
   const theme = await getThemeById(themeId);
 
   if (!theme) notFound();
 
   const candidates = await getArticleUrlCandidates(themeId);
+  const sources = await getSourcesByThemeId(themeId);
+  const sourceStatus = summarizeSourceStatus(sources, MIN_SOURCE_COUNT);
 
   const activeCandidates = candidates.filter((c) => c.status === "candidate");
   const importedCandidates = candidates.filter((c) => c.status === "imported");
   const dismissedCandidates = candidates.filter((c) => c.status === "dismissed");
+
+  // Phase 3-27: "관련 기사 URL 수집" 버튼 실행 결과를 항상 화면에
+  // 보여준다(무반응 방지). action이 redirect로 넘긴 query만 신뢰하고,
+  // 유효하지 않은 값이면 결과 카드를 아예 보여주지 않는다.
+  const VALID_COLLECT_STATUSES: readonly CollectionResultStatus[] = ["success", "partial", "none", "error", "finished"];
+  const resolvedCollectStatus: CollectionResultStatus | null = VALID_COLLECT_STATUSES.includes(
+    collectStatus as CollectionResultStatus
+  )
+    ? (collectStatus as CollectionResultStatus)
+    : null;
 
   const isMockMode = process.env.ARTICLE_SEARCH_ENABLED !== "true";
 
@@ -138,33 +175,56 @@ export default async function ThemePage({
           </div>
         )}
 
-        {/* 수집 버튼 */}
-        <form
-          action={async () => {
-            "use server";
-            await collectCandidates(themeId);
-          }}
-          className="mb-6"
-        >
-          <button
-            type="submit"
-            className="rounded-md bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700"
+        {/* 수집 버튼 — Phase 3-27: 결과를 항상 아래 결과 카드로 보여주므로
+            (무반응 방지), 결과 카드가 있으면 이 버튼은 "다시 처음부터
+            수집"용으로 보이도록 결과 카드 바로 위에 배치한다. */}
+        <form id="collect-form" action={collectCandidates} className="mb-6 scroll-mt-4">
+          <input type="hidden" name="themeId" value={themeId} />
+          <input type="hidden" name="trigger" value="initial" />
+          <PendingSubmitButton
+            pendingLabel="관련 기사 URL을 수집하고 있습니다..."
+            className="rounded-md bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             관련 기사 URL 후보 수집
-          </button>
+          </PendingSubmitButton>
           <p className="mt-1 text-xs text-zinc-500">
-            테마 키워드({theme.keywords.slice(0, 3).join(", ")})로 관련 기사 URL을 자동 수집합니다.
+            테마 키워드({theme.keywords.slice(0, 3).join(", ")})로 관련 기사 URL을 자동 수집합니다. 수집 중에는 잠시만
+            기다려 주세요.
           </p>
         </form>
 
-        {/* 후보 목록 + 일괄 등록 폼 */}
+        {resolvedCollectStatus && (
+          <div className="mb-6 scroll-mt-4">
+            <RelatedUrlCollectionResultCard
+              themeId={themeId}
+              status={resolvedCollectStatus}
+              newCount={Number(collectNew ?? 0) || 0}
+              duplicateCount={Number(collectDup ?? 0) || 0}
+              candidateCounts={{
+                pending: activeCandidates.length,
+                imported: importedCandidates.length,
+                dismissed: dismissedCandidates.length,
+              }}
+              sourceStatus={sourceStatus}
+              errorMessage={collectError ?? null}
+              hasCollectedCandidates={candidates.length > 0}
+              collectMoreAction={collectCandidates}
+              finishCollectionAction={finishUrlCollection}
+              goDashboardAction={goDashboardFromUrlCollection}
+              goGenerateAction={goGenerateFromUrlCollection}
+            />
+          </div>
+        )}
+
+        {/* 후보 목록 + 일괄 등록 폼 — "수집한 URL 확인" 링크가 여기로 이동한다. */}
         {candidates.length > 0 && (
           <form
+            id="candidate-list"
             action={async (formData: FormData) => {
               "use server";
               await importCandidatesToSources(formData);
             }}
-            className="mb-6"
+            className="mb-6 scroll-mt-4"
           >
             <input type="hidden" name="themeId" value={themeId} />
 

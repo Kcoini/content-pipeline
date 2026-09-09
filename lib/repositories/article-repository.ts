@@ -33,6 +33,7 @@ import {
   type InternalLinkSuggestion,
 } from "@/lib/articles/article-modes";
 import type { GeneratedArticle } from "@/lib/ai/article-writer";
+import type { MasterManuscript } from "@/lib/articles/master-manuscript-types";
 
 export interface SaveDraftArticleInput {
   themeId: string;
@@ -1521,4 +1522,54 @@ export async function saveWordPressCategoryTagIds(
   }
 
   return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/**
+ * Phase 4-2: 구조화된 마스터 원고(platformBriefs 등)를 저장한다. 새
+ * 컬럼을 만들지 않고 기존 `format_metadata` jsonb 안에
+ * `master_manuscript` 네임스페이스로 저장한다(saveWordPressMetadata의
+ * `format_metadata.wordpress` 패턴과 동일). `buildMasterManuscript()`가
+ * article/source로부터 항상 다시 계산할 수 있는 파생 데이터이므로,
+ * 이 저장은 "캐시"에 가깝다 — 저장에 실패해도 article 생성 자체를
+ * 막지 않도록 caller가 별도로 감싸는 것을 권장한다.
+ */
+export async function saveArticleMasterManuscript(
+  articleId: string,
+  masterManuscript: MasterManuscript
+): Promise<Article> {
+  const existing = await getArticleById(articleId);
+  if (!existing) {
+    throw new ArticleNotFoundError(articleId);
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const formatMetadata = {
+    ...existing.formatMetadata,
+    master_manuscript: masterManuscript,
+  };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .update({ format_metadata: formatMetadata })
+    .eq("id", articleId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`마스터 원고 저장에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapArticleRowToArticle(data, existing.citedSourceIds);
+}
+
+/**
+ * article.format_metadata.master_manuscript에서 마스터 원고를 읽는다.
+ * 아직 계산되지 않았으면(과거에 생성된 article 등) null을 반환한다 —
+ * 이 경우 caller가 buildMasterManuscript()로 즉석에서 계산해 쓸 수
+ * 있다(항상 다시 계산 가능한 파생 데이터라서 안전하다).
+ */
+export function readArticleMasterManuscript(article: Pick<Article, "formatMetadata">): MasterManuscript | null {
+  const raw = (article.formatMetadata as { master_manuscript?: unknown } | undefined)?.master_manuscript;
+  return raw ? (raw as MasterManuscript) : null;
 }

@@ -10,6 +10,7 @@ import type { SocialPlatform, ToneStyle } from "./social-platform-types";
 export type PlatformCostLevel = "low" | "medium" | "high";
 
 export const PLATFORM_COST_LEVELS: Record<SocialPlatform, PlatformCostLevel> = {
+  news_article: "medium",
   wordpress_blog: "high",
   naver_blog: "medium",
   naver_cafe: "low",
@@ -19,6 +20,7 @@ export const PLATFORM_COST_LEVELS: Record<SocialPlatform, PlatformCostLevel> = {
 };
 
 export const PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  news_article: "언론 기사",
   wordpress_blog: "WordPress 블로그",
   naver_blog: "네이버 블로그",
   naver_cafe: "네이버 카페",
@@ -28,6 +30,7 @@ export const PLATFORM_LABELS: Record<SocialPlatform, string> = {
 };
 
 export const PLATFORM_SHORT_DESCRIPTIONS: Record<SocialPlatform, string> = {
+  news_article: "스트레이트 기사·보도 기사 형식 (사실 전달, 중립적 설명, 육하원칙, 수동 export)",
   wordpress_blog: "WordPress 게시용 긴 SEO 블로그 글 (HTML 변환, SEO metadata, 대표 이미지)",
   naver_blog: "네이버 블로그용 모바일 친화 글 (자연스러운 블로그 말투, 수동 export)",
   naver_cafe: "네이버 카페용 커뮤니티 글 (plain text, 질문형/공감형, 수동 복사)",
@@ -36,7 +39,7 @@ export const PLATFORM_SHORT_DESCRIPTIONS: Record<SocialPlatform, string> = {
   instagram: "캡션 + 해시태그 + 카드뉴스용 문구",
 };
 
-/** "테마/출처 준비 후 특별한 근거가 없을 때"의 기본 추천 플랫폼. */
+/** "테마/출처 준비 후 특별한 근거가 없을 때"의 기본 추천 플랫폼. news_article은 언론사 모드 설정이 없으면 기본 선택하지 않는다(선택은 가능). */
 export const DEFAULT_RECOMMENDED_PLATFORMS: readonly SocialPlatform[] = ["wordpress_blog", "naver_blog", "naver_cafe"];
 
 /**
@@ -59,6 +62,9 @@ export function getRecommendedPlatforms(topicType?: PlatformRecommendationTopicT
     case "policy_support":
       return ["wordpress_blog", "naver_blog", "naver_cafe"];
     case "breaking_news":
+      // Phase 4-3: 언론사 모드 설정이 아직 없어 news_article을 기본
+      // 추천에 자동으로 넣지 않는다("13. 대시보드 반영" 참고 — 선택은
+      // 가능하되 기본 선택은 하지 않는다). 기존 추천 순서/구성은 그대로 둔다.
       return ["x", "threads", "naver_cafe", "wordpress_blog"];
     case "visual_checklist_tip":
       return ["wordpress_blog", "naver_blog", "naver_cafe", "instagram"];
@@ -75,6 +81,9 @@ export function getRecommendedPlatforms(topicType?: PlatformRecommendationTopicT
  */
 export function getRecommendedToneForPlatform(platform: SocialPlatform): ToneStyle {
   switch (platform) {
+    case "news_article":
+      // 사실 전달/중립적 설명 — 언론 기사는 항상 explanatory·informational 계열이다.
+      return "informational";
     case "wordpress_blog":
       return "explanatory";
     case "naver_blog":
@@ -100,6 +109,7 @@ export function getRecommendedToneForPlatform(platform: SocialPlatform): ToneSty
 
 /** 플랫폼별 권장 tone_style 목록(문체 수동 선택 UI에서 안내용으로 사용). */
 export const RECOMMENDED_TONE_STYLES_BY_PLATFORM: Record<SocialPlatform, ToneStyle[]> = {
+  news_article: ["informational", "explanatory"],
   wordpress_blog: ["explanatory", "informational", "comparison", "warning", "loss_aversion"],
   naver_blog: ["explanatory", "informational", "comparison", "story", "persuasive"],
   naver_cafe: ["story", "curiosity", "warning"],

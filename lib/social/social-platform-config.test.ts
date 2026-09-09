@@ -16,7 +16,7 @@ describe("platform writing config", () => {
     }
   });
 
-  it("정의된 6개 플랫폼 config가 모두 존재한다", () => {
+  it("정의된 7개 플랫폼 config가 모두 존재한다 (Phase 4-3: news_article 포함)", () => {
     expect(Object.keys(PLATFORM_WRITING_CONFIGS).sort()).toEqual([...SOCIAL_PLATFORMS].sort());
   });
 

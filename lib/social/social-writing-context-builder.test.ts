@@ -4,9 +4,15 @@ import type { Article, Source } from "@/lib/types/domain";
 const getArticleById = vi.fn();
 const getSourcesByArticleId = vi.fn();
 
-vi.mock("@/lib/repositories/article-repository", () => ({
-  getArticleById: (...args: unknown[]) => getArticleById(...args),
-}));
+vi.mock("@/lib/repositories/article-repository", async (importOriginal) => {
+  // readArticleMasterManuscript는 순수 함수라 실제 구현을 그대로 쓴다 —
+  // getArticleById(DB 접근)만 mock으로 바꾼다.
+  const actual = await importOriginal<typeof import("@/lib/repositories/article-repository")>();
+  return {
+    ...actual,
+    getArticleById: (...args: unknown[]) => getArticleById(...args),
+  };
+});
 vi.mock("@/lib/repositories/source-repository", () => ({
   getSourcesByArticleId: (...args: unknown[]) => getSourcesByArticleId(...args),
 }));

@@ -32,6 +32,13 @@ function commonChecklist(): { key: string; label: string }[] {
 
 function platformChecklist(platform: SocialPost["platform"]): { key: string; label: string }[] {
   switch (platform) {
+    case "news_article":
+      return [
+        checklistItem("news_article_lead_check", "리드문(육하원칙) 확인"),
+        checklistItem("news_article_fact_source_check", "사실-해석 구분 및 출처 표기 확인"),
+        checklistItem("news_article_neutral_tone_check", "중립적 톤/과장 제목 여부 확인"),
+        checklistItem("news_article_copy_url", "게시(배포) 후 URL 또는 위치 기록"),
+      ];
     case "wordpress_blog":
       return [
         checklistItem("wordpress_workflow_duplicate_check", "WordPress 자동 게시 workflow와 중복 여부 확인"),
@@ -91,6 +98,8 @@ function platformChecklist(platform: SocialPost["platform"]): { key: string; lab
 
 function platformInstructions(platform: SocialPost["platform"]): string[] {
   switch (platform) {
+    case "news_article":
+      return ["게시/배포 전 리드문의 육하원칙과 출처 표기를 다시 확인하세요."];
     case "wordpress_blog":
       return ["기존 WordPress 자동 게시 workflow가 있다면 중복 게시가 아닌지 먼저 확인하세요."];
     case "naver_blog":

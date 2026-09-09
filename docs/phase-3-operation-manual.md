@@ -30,6 +30,12 @@
    참고. 상단 내비게이션(자동 테마 찾기/기사 목록 + 대시보드 드롭다운
    메뉴)은
    [`phase-1-22-dashboard-top-nav-simplification.md`](./phase-1-22-dashboard-top-nav-simplification.md)
+   참고. **Phase 4-1**: 화면에는 "기사 초안 생성" 대신 "마스터 원고
+   만들기"로 표시된다. 처음부터 3종류 중 하나를 강제로 고르지 않고
+   기본값은 "자동 추천"이며, 기존 3종류는 "원고 생성 방향"이라는
+   고급 옵션으로 남아 있다(내부적으로는 여전히 같은 `article`/
+   `article_mode`다 — 데이터 구조는 바뀌지 않았다). 자세한 내용은
+   [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)
    참고.
 2. **`/articles/[id]`에서 기사 개요 확인 + 플랫폼별 글 생성(Phase 3-21)** —
    기사 본문, 상태, 하위 워크플로우(블로그/소셜/rewrite/성과/AB테스트)
@@ -443,8 +449,24 @@ rewrite-vs-원본 성과 비교를 한 곳에서 처리한다.
 관리한다(초안 구조일 뿐, 자동 게시/자동 승자 판정 실행 없음).
 
 ### `/social-posts/[id]`
-social post 하나의 상세 화면. 다른 목록/대시보드에서 딥링크로
-진입하는 용도로 쓰인다.
+social post 하나를 최종 검토·수정·승인하는 화면(Phase 3-26). 기본
+탭은 게시용 미리보기이고, 수정하기/내부 원문 보기 탭이 별도로 있다.
+자동 검토는 최종 승인을 대체하지 않으며, 최종 승인 전에는 export/
+Draft 반영이 불가능하다. 다른 목록/대시보드에서 딥링크로도 진입할
+수 있다. 자세한 내용은
+[`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
+참고.
+
+### `/themes/[themeId]`
+테마 키워드 기반으로 "관련 기사 URL"을 자동 수집하고, 선택한 후보를
+출처(source)로 등록하는 화면. "관련 기사 URL 후보 수집" 버튼을 누르면
+제출 중 상태를 보여주고, 완료되면 반드시 결과 요약 카드(새로 찾은
+기사/이미 알고 있던 기사/제외된 기사 수, 성공/부분 성공/결과 없음/
+실패 상태)와 다음 행동 버튼(추가 수집/수집한 URL 확인/직접 URL
+추가/글 생성 단계로 진행/대시보드로 돌아가기)을 보여준다 — 버튼을
+누른 뒤 무반응 상태로 남지 않는다(Phase 3-27). 자세한 내용은
+[`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
+참고.
 
 ### `/dashboard/content`
 article 단위로 전체 콘텐츠 상태를 모아보는 대시보드.
@@ -512,3 +534,9 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 사용자 플랫폼 UI를 "행동 중심"으로 정리(Phase 3-22, 진행 단계 표시/상태 문구 번역/카드당 주요 버튼 하나): [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
 - 대시보드를 "작업 흐름 중심 화면"으로 재구성(Phase 3-23, 현재 상태/다음 작업 카드 확장 + 대시보드 내 플랫폼별 글 생성 섹션 신설): [`phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md)
 - 수익형 블로그 구조 강화(Phase 2-24, SEO/AEO/GEO/E-E-A-T/체류시간/모바일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
+- `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
+- "관련 기사 URL 수집" 버튼 클릭 후 결과 요약 + 다음 행동 UI 추가(Phase 3-27, 무반응 방지): [`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
+- "마스터 원고 중심" 구조 전환 1차 — 용어 정리 + 고급 옵션화(Phase 4-1): [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)
+- "마스터 원고 중심" 구조 전환 2차 — platformBrief 구조화(Phase 4-2, AI 재호출 없는 결정적 계산): [`phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md)
+- "마스터 원고 중심" 구조 전환 3차 — news_article(언론 기사) 플랫폼 추가(Phase 4-3): [`phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)
+- "마스터 원고 중심" 구조 전환 4차 — 비용 최적화 + 전체 페이지 반영(Phase 4-4, `/articles/[id]` 마스터 원고 정보 섹션 신설): [`phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)

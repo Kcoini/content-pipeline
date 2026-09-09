@@ -28,6 +28,28 @@ const BASE_CHECKLIST_KEYS: readonly string[] = [
 ];
 
 export const PLATFORM_WRITING_CONFIGS: Record<SocialPlatform, PlatformWritingConfig> = {
+  // Phase 4-3: 언론 기사형(스트레이트 기사/보도 기사). 마스터 원고를
+  // 바탕으로 생성되는 출력물 중 하나이며, 마스터 원고 자체가 아니다.
+  news_article: {
+    platform: "news_article",
+    purpose: "neutral, fact-based straight news article (5W1H, source-based)",
+    supportsTitle: true,
+    supportsBody: true,
+    supportsCaption: false,
+    supportsHashtags: false,
+    supportsThreads: false,
+    supportsImages: true,
+    requiresImage: false,
+    preferredLength: "medium",
+    exportFormat: "markdown_copy",
+    maxLength: 3000,
+    minLength: 500,
+    recommendedHashtagCount: 0,
+    requiresHumanApproval: true,
+    allowAutoPublish: false,
+    prohibitedPatterns: [...BASE_PROHIBITED_PATTERNS],
+    qualityChecklistKeys: [...BASE_CHECKLIST_KEYS, "length_check", "news_article_lead_present", "news_article_no_unsourced_claim"],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     purpose: "SEO/AEO/GEO/E-E-A-T problem-solving long-form blog post",
@@ -163,6 +185,7 @@ export function getPlatformWritingConfig(platform: SocialPlatform): PlatformWrit
 
 /** platform → `contracts/social/*.schema.json` 파일명 매핑 (Phase 3-2). */
 export const SOCIAL_OUTPUT_CONTRACT_FILENAMES: Record<SocialPlatform, string> = {
+  news_article: "news-article.schema.json",
   wordpress_blog: "wordpress-blog.schema.json",
   naver_blog: "naver-blog.schema.json",
   naver_cafe: "naver-cafe.schema.json",
@@ -173,6 +196,7 @@ export const SOCIAL_OUTPUT_CONTRACT_FILENAMES: Record<SocialPlatform, string> = 
 
 /** platform → `prompts/social/*.md` 파일명 매핑 (Phase 3-2). */
 export const SOCIAL_PLATFORM_PROMPT_FILENAMES: Record<SocialPlatform, string> = {
+  news_article: "news-article.md",
   wordpress_blog: "wordpress-blog.md",
   naver_blog: "naver-blog.md",
   naver_cafe: "naver-cafe.md",

@@ -448,8 +448,9 @@ export type PublishLogRow = {
   updated_at: string;
 };
 
-/** Phase 3-1: 멀티 플랫폼 자동 글쓰기 대상 플랫폼 */
+/** Phase 3-1: 멀티 플랫폼 자동 글쓰기 대상 플랫폼. Phase 4-3: news_article 추가. */
 export type SocialPlatform =
+  | "news_article"
   | "wordpress_blog"
   | "naver_blog"
   | "naver_cafe"

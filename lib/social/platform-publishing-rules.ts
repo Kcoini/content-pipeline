@@ -25,6 +25,12 @@ export function getCommonPublishingRules(): PublishingRuleDescriptor[] {
 /** 플랫폼별로 검사하는 규칙(문서/UI 표시용 설명). */
 export function getPlatformPublishingRules(platform: SocialPlatform): PublishingRuleDescriptor[] {
   switch (platform) {
+    case "news_article":
+      return [
+        { key: "news_article_title_body_present", label: "post_title/post_body 존재" },
+        { key: "news_article_lead_present", label: "리드문(육하원칙) 존재" },
+        { key: "news_article_no_unsourced_claim", label: "출처 없는 단정 표현 없음" },
+      ];
     case "wordpress_blog":
       return [
         { key: "wordpress_title_body_present", label: "post_title/post_body 존재" },

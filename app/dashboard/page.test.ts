@@ -256,10 +256,10 @@ describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22
     expect(actionsSource).toContain("article_generation_clicked");
   });
 
-  it("페이지는 재생성 확인 배너(취소/새 초안으로 생성)를 표시한다", () => {
+  it("페이지는 재생성 확인 배너(취소/새 원고로 생성)를 표시한다 (Phase 4-1)", () => {
     expect(pageSource).toContain("showRegenerateConfirm");
-    expect(pageSource).toContain("새 초안으로 생성");
-    expect(pageSource).toContain("이미 이 테마로 생성된 기사초안이 있습니다.");
+    expect(pageSource).toContain("새 원고로 생성");
+    expect(pageSource).toContain("이미 이 테마로 생성된 마스터 원고가 있습니다.");
   });
 
   it("disabled 버튼에는 이유를 표시한다(출처 부족)", () => {
@@ -269,10 +269,10 @@ describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22
     expect(block).toContain("출처가 부족합니다");
   });
 
-  it("이미 초안이 있으면 라디오 폼 대신 '원고 생성 완료' 요약과 재생성 옵션 토글을 보여준다 (Phase 3-23-4)", () => {
-    expect(pageSource).toContain("원고 생성 완료");
+  it("이미 마스터 원고가 있으면 라디오 폼 대신 '생성 완료' 요약과 재생성 옵션 토글을 보여준다 (Phase 3-23-4, Phase 4-1)", () => {
+    expect(pageSource).toContain("생성 완료");
     expect(pageSource).toContain("재생성 옵션");
-    expect(pageSource).toContain("기사 초안 재생성");
+    expect(pageSource).toContain("마스터 원고 다시 만들기");
   });
 
   it("생성 성공/실패 메시지를 TransientNotice로 표시한다", () => {
@@ -287,6 +287,59 @@ describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22
 
   it("화면 상단에 진행 단계 표시(ContentProgressSteps)가 있다 (Phase 3-22)", () => {
     expect(pageSource).toContain("ContentProgressSteps");
+  });
+});
+
+describe("마스터 원고 중심 구조 전환 — 1차 (정적 소스 검사, Phase 4-1)", () => {
+  it("기본 화면에서 3종류(글쓰기 모드) 라디오가 강제로 보이지 않고 '고급 옵션' 접힘 안에 있다", () => {
+    expect(pageSource).toContain("고급 옵션: 원고 생성 방향 선택 (기본값: 자동 추천)");
+    expect(pageSource).toMatch(/<details className="group rounded border border-zinc-200 px-3 py-2">/);
+  });
+
+  it("기본 버튼은 '마스터 원고 만들기'다", () => {
+    expect(pageSource).toContain("마스터 원고 만들기");
+  });
+
+  it("'자동 추천'이 기본 선택값이다", () => {
+    expect(pageSource).toMatch(/defaultChecked=\{direction === AUTO_MASTER_MANUSCRIPT_DIRECTION\}/);
+  });
+
+  it("기존 3종류(general_news/source_based_explainer/monetized_blog)는 삭제되지 않고 방향 선택지로 남아 있다", () => {
+    expect(pageSource).toContain("MASTER_MANUSCRIPT_DIRECTION_LIST");
+    expect(pageSource).toContain("ARTICLE_MODE_CONFIGS[direction].description");
+  });
+
+  it("actions.ts는 '자동 추천'(auto)을 DB에 저장하기 전에 실제 ArticleMode로 바꾼다(DB의 article_mode CHECK 제약과 호환)", () => {
+    expect(actionsSource).toContain("resolveMasterManuscriptDirection");
+    expect(actionsSource).toContain("AUTO_MASTER_MANUSCRIPT_DIRECTION");
+    expect(actionsSource).toContain("isArticleMode(rawArticleMode)");
+  });
+
+  it("생성 성공 메시지가 '마스터 원고'라는 표현을 사용한다(article이라는 raw 용어 대신)", () => {
+    expect(pageSource).toContain("방향으로 마스터 원고가 생성되었습니다.");
+  });
+});
+
+describe("마스터 원고 중심 구조 전환 — 2차 platformBrief 구조화 (정적 소스 검사, Phase 4-2)", () => {
+  it("기사초안 저장 직후 마스터 원고(platformBrief 재료)를 계산해 저장한다", () => {
+    expect(actionsSource).toContain('import { buildMasterManuscript } from "@/lib/articles/master-manuscript-builder"');
+    expect(actionsSource).toContain("buildMasterManuscript(article, citedSources)");
+    expect(actionsSource).toContain("saveArticleMasterManuscript(article.id, masterManuscript)");
+  });
+
+  it("마스터 원고 계산/저장에 실패해도 기사초안 저장 자체는 막지 않는다(try/catch로 감싼다)", () => {
+    const start = actionsSource.indexOf("const masterManuscript = buildMasterManuscript");
+    const tryStart = actionsSource.lastIndexOf("try {", start);
+    const catchIndex = actionsSource.indexOf("} catch (error) {", start);
+    expect(tryStart).toBeGreaterThan(0);
+    expect(catchIndex).toBeGreaterThan(start);
+  });
+
+  it("AI를 다시 호출하지 않는다(마스터 원고는 이미 생성된 article/source로부터 결정적으로 계산된다)", () => {
+    const start = actionsSource.indexOf("4.5) Phase 4-2");
+    const end = actionsSource.indexOf("// 5) AI Evals");
+    const block = actionsSource.slice(start, end);
+    expect(block).not.toMatch(/generateAiArticleDraft|getAnthropicClient|shouldUseAnthropic\(\)/);
   });
 });
 
@@ -334,10 +387,10 @@ describe("dashboard 상태 판단 통합 및 섹션 접힘 (정적 소스 검사
     expect(pageSource).not.toMatch(/article!\[/);
   });
 
-  it("출처 기반 원고 섹션은 heading(<h2>)을 가진 섹션이다(한 줄 텍스트로 축소되지 않는다) (Phase 3-23-4)", () => {
-    const match = pageSource.match(/<h2 className="text-sm font-semibold text-zinc-700">출처 기반 원고<\/h2>/);
+  it("마스터 원고 섹션은 heading(<h2>)을 가진 섹션이다(한 줄 텍스트로 축소되지 않는다) (Phase 3-23-4, Phase 4-1)", () => {
+    const match = pageSource.match(/<h2 className="text-sm font-semibold text-zinc-700">마스터 원고<\/h2>/);
     expect(match).not.toBeNull();
-    expect(pageSource).toContain("원고 보기");
+    expect(pageSource).toContain("마스터 원고 보기");
   });
 
   it("#generate-draft, #platform-generation, #theme-list 앵커 대상은 tabIndex={-1}로 포커스 가능하다(접근성)", () => {

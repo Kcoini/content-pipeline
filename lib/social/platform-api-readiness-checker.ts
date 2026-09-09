@@ -24,6 +24,7 @@ export interface PlatformApiReadinessResult {
 
 /** platform별로 확인할 환경변수 "이름" 목록. 값은 이 파일 밖으로 노출하지 않는다. */
 const REQUIRED_ENV_VAR_NAMES: Record<SocialPlatform, string[]> = {
+  news_article: [],
   wordpress_blog: ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APP_PASSWORD"],
   naver_blog: ["NAVER_BLOG_API_CLIENT_ID", "NAVER_BLOG_API_CLIENT_SECRET"],
   naver_cafe: ["NAVER_CAFE_API_CLIENT_ID", "NAVER_CAFE_API_CLIENT_SECRET"],

@@ -20,6 +20,8 @@ const {
   getArticles,
   archiveArticle,
   getArticleRelatedCounts,
+  saveArticleMasterManuscript,
+  readArticleMasterManuscript,
 } = await import("./article-repository");
 
 function makeChain(result: { data: unknown; error: unknown; count?: number | null }) {
@@ -32,6 +34,7 @@ function makeChain(result: { data: unknown; error: unknown; count?: number | nul
   chain.is = vi.fn(self);
   chain.order = vi.fn(self);
   chain.maybeSingle = vi.fn(() => Promise.resolve(result));
+  chain.single = vi.fn(() => Promise.resolve(result));
   chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve);
   return chain;
 }
@@ -405,5 +408,44 @@ describe("getArticleRelatedCounts", () => {
     const counts = await getArticleRelatedCounts("article-1");
 
     expect(counts).toEqual({ socialPostCount: 0, hasWordPressPost: false });
+  });
+});
+
+describe("readArticleMasterManuscript (Phase 4-2, 순수 함수)", () => {
+  it("format_metadata.master_manuscript가 없으면 null을 반환한다", () => {
+    expect(readArticleMasterManuscript({ formatMetadata: {} })).toBeNull();
+  });
+
+  it("format_metadata.master_manuscript가 있으면 그대로 반환한다", () => {
+    const master = { mainMessage: "핵심 메시지" };
+    expect(readArticleMasterManuscript({ formatMetadata: { master_manuscript: master } })).toEqual(master);
+  });
+});
+
+describe("saveArticleMasterManuscript (Phase 4-2)", () => {
+  it("format_metadata.master_manuscript 네임스페이스로 저장한다(기존 format_metadata 유지)", async () => {
+    const master = { mainMessage: "핵심 메시지" } as unknown as import("@/lib/articles/master-manuscript-types").MasterManuscript;
+    const updatedRow = makeArticleRow({
+      format_metadata: { wordpress: { slug: "test" }, master_manuscript: master },
+    });
+    const chain = makeChain({ data: updatedRow, error: null });
+    // getArticleById(select)와 최종 update(select) 둘 다 같은 chain을 쓴다 — archiveArticle 테스트와 동일한 패턴.
+    createServerSupabaseClient.mockReturnValue({ from: makeSupabaseFrom(chain) });
+
+    const result = await saveArticleMasterManuscript("article-1", master);
+
+    expect(chain.update).toHaveBeenCalledWith({
+      format_metadata: { wordpress: { slug: "test" }, master_manuscript: master },
+    });
+    expect(result.formatMetadata).toEqual({ wordpress: { slug: "test" }, master_manuscript: master });
+  });
+
+  it("존재하지 않는 기사면 에러를 던진다", async () => {
+    const chain = makeChain({ data: null, error: null });
+    createServerSupabaseClient.mockReturnValue({ from: makeSupabaseFrom(chain) });
+
+    await expect(
+      saveArticleMasterManuscript("missing-article", {} as unknown as import("@/lib/articles/master-manuscript-types").MasterManuscript)
+    ).rejects.toThrow("기사를 찾을 수 없습니다");
   });
 });

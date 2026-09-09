@@ -432,7 +432,19 @@ export type LogEventType =
   | "platform_generation_failed"
   | "platform_generation_tone_auto_selected"
   | "platform_generation_tone_manual_selected"
-  | "platform_generation_public_publish_blocked";
+  | "platform_generation_public_publish_blocked"
+  // Phase 3-27: "관련 기사 URL 수집" 버튼 클릭 후 무반응 방지 — 수집
+  // 시작/완료/실패/결과없음/부분성공 및 결과 화면의 다음 행동 버튼
+  // 클릭을 기록한다.
+  | "related_url_collection_started"
+  | "related_url_collection_completed"
+  | "related_url_collection_failed"
+  | "related_url_collection_no_results"
+  | "related_url_collection_partial_success"
+  | "related_url_collection_add_more_clicked"
+  | "related_url_collection_finished_by_user"
+  | "related_url_collection_go_dashboard_clicked"
+  | "related_url_collection_go_generate_clicked";
 
 export type LogStatus = "success" | "failed" | "info";
 

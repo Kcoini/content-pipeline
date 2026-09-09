@@ -114,9 +114,39 @@ describe("buildExportPayload", () => {
     expect(result.format).toBe("plain_text_copy");
     expect(result.payload.text).toContain("쓰레드 본문");
   });
+
+  it("news_article은 markdown_copy 형식으로 title/markdown을 반환한다 (Phase 4-3)", () => {
+    const post = makeSocialPost({ platform: "news_article", postTitle: "기준금리 인상", postBody: "한국은행이 기준금리를 인상했다." });
+
+    const result = buildExportPayload(post);
+
+    expect(result.format).toBe("markdown_copy");
+    expect(result.payload.title).toBe("기준금리 인상");
+    expect(result.payload.markdown).toContain("한국은행이 기준금리를 인상했다.");
+  });
 });
 
 describe("buildManualExportPayload (Phase 3-5)", () => {
+  it("news_article은 news_article_markdown_copy 형식으로 title/body를 반환한다 (Phase 4-3)", () => {
+    const post = makeSocialPost({ platform: "news_article" });
+
+    const result = buildManualExportPayload(post);
+
+    expect(result.ok).toBe(true);
+    expect(result.exportFormat).toBe("news_article_markdown_copy");
+    expect(result.exportTitle).toBe("제목");
+    expect(result.exportBody).toBe("본문 내용입니다.");
+  });
+
+  it("news_article은 제목이나 본문이 없으면 export할 수 없다", () => {
+    const post = makeSocialPost({ platform: "news_article", postBody: "" });
+
+    const result = buildManualExportPayload(post);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("제목과 본문");
+  });
+
   it("wordpress_blog는 wordpress_markdown 형식으로 title/body를 반환한다", () => {
     const post = makeSocialPost({ platform: "wordpress_blog" });
 

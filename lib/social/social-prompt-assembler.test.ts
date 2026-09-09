@@ -30,6 +30,7 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     toneStyleConfig: getToneStyleConfig("informational"),
     safetyRules: ["협박형 문장 금지"],
     outputContractName: "naver-blog.schema.json",
+    platformBrief: null,
     ...overrides,
   };
 }
@@ -71,5 +72,42 @@ describe("assembleSocialWritingPrompt", () => {
     expect(serialized).not.toContain("api_key");
     expect(serialized).not.toContain("authorization");
     expect(serialized).not.toContain("app_password");
+  });
+
+  it("platformBrief가 있으면 userPrompt에 그 플랫폼 brief만 포함되고, contextSummary에는 hasPlatformBrief만 기록된다 (Phase 4-2)", () => {
+    const brief = { seoKeywords: ["AI 투자"], searchIntent: null, faqCandidates: [], tableCandidates: [], checklistCandidates: [], longFormPoints: ["핵심 포인트 A"] };
+    const result = assembleSocialWritingPrompt(makeContext({ platformBrief: brief }));
+
+    expect(result.userPrompt).toContain("platform_brief");
+    expect(result.userPrompt).toContain("핵심 포인트 A");
+    expect(result.contextSummary.hasPlatformBrief).toBe(true);
+    expect(result.contextSummary).not.toHaveProperty("platformBrief");
+  });
+
+  it("platformBrief가 없으면(마스터 원고 없는 기존 article) userPrompt에 platform_brief 블록이 없다 — 하위 호환", () => {
+    const result = assembleSocialWritingPrompt(makeContext({ platformBrief: null }));
+
+    expect(result.userPrompt).not.toContain("platform_brief");
+    expect(result.contextSummary.hasPlatformBrief).toBe(false);
+  });
+
+  it("비정상적으로 큰 platformBrief가 들어와도 userPrompt에 그대로 반영되지 않고 길이 상한선에서 잘린다 (Phase 4-4: 비용 최적화 방어선)", () => {
+    // master-manuscript-builder.ts가 정상적으로 만든 platformBrief는
+    // 이미 작지만, 이 테스트는 "만약 계산 로직이 바뀌어 커지더라도
+    // 프롬프트 크기가 무한정 커지지 않는다"는 방어선 자체를 검증한다.
+    const oversizedBrief = {
+      seoKeywords: [],
+      searchIntent: null,
+      faqCandidates: [],
+      tableCandidates: [],
+      checklistCandidates: [],
+      longFormPoints: Array.from({ length: 500 }, (_, i) => `포인트 ${i} `.repeat(20)),
+    };
+    const result = assembleSocialWritingPrompt(makeContext({ platformBrief: oversizedBrief }));
+
+    const briefBlockStart = result.userPrompt.indexOf("platform_brief");
+    const briefBlock = result.userPrompt.slice(briefBlockStart);
+    expect(briefBlock.length).toBeLessThan(4200);
+    expect(briefBlock).toContain("길이 제한으로 생략됨");
   });
 });

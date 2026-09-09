@@ -34,6 +34,20 @@ export interface PlatformApiCapability {
 }
 
 const CAPABILITIES: Record<SocialPlatform, PlatformApiCapability> = {
+  news_article: {
+    platform: "news_article",
+    supportsApiPublishing: false,
+    supportsDryRun: true,
+    supportsMediaUpload: false,
+    supportsScheduling: false,
+    supportsMetricsApi: false,
+    requiresOAuth: false,
+    requiresAppReview: false,
+    currentMode: "manual_export",
+    publishEnabledFlagName: "NEWS_ARTICLE_API_PUBLISH_ENABLED",
+    notes: "언론 기사는 언론사/CMS마다 API가 제각각이라 이번 단계는 manual export를 기본 경로로 유지한다.",
+    warnings: ["언론 기사는 연동된 CMS API가 없습니다 — 실제 게시(배포)는 manual export를 사용하세요."],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     supportsApiPublishing: true,

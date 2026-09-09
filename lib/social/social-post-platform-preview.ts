@@ -17,6 +17,8 @@ export type PlatformPreviewMode =
   | "caption_stack"; // instagram: caption/hashtags/card text 분리
 
 const PREVIEW_MODE_BY_PLATFORM: Record<SocialPlatform, PlatformPreviewMode> = {
+  // news_article은 HTML 변환 대상이 아니다(manual export markdown 전제) — naver_blog와 같은 문단형 렌더링을 재사용한다.
+  news_article: "mobile_blog",
   wordpress_blog: "wordpress_html",
   naver_blog: "mobile_blog",
   naver_cafe: "plain_text",
@@ -30,6 +32,7 @@ export function getPlatformPreviewMode(platform: SocialPlatform): PlatformPrevie
 }
 
 const BODY_LABEL_BY_PLATFORM: Record<SocialPlatform, string> = {
+  news_article: "본문",
   wordpress_blog: "본문",
   naver_blog: "본문",
   naver_cafe: "본문",

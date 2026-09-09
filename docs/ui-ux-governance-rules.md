@@ -521,3 +521,45 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - 최종 승인 전에는 export/Draft 반영을 차단한다.
 - 자동 public publish는 이번에도, 앞으로도 추가하지 않는다.
 - 실제 적용 사례: [`docs/phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md).
+
+## 비동기 작업(검색/수집 등) 버튼은 결과 요약 + 다음 행동을 반드시 보여준다 (Phase 3-27)
+
+시간이 걸리는 작업(외부 API 검색/수집 등)을 실행하는 버튼은 눌러도
+"조용히 페이지가 다시 그려지는" 것으로 끝내지 않는다. 관련 기사 URL
+수집처럼 "실행 → 완료까지 몇 초 걸리는 → 몇 건 찾았는지 알아야
+다음 행동을 정할 수 있는" 작업은 항상 다음 3단계를 갖춘다.
+
+- **실행 중 상태**: 버튼을 disabled로 바꾸고 "OO 중..." 문구를
+  보여준다(`components/ui/pending-submit-button.tsx`의
+  `useFormStatus` 기반 최소 클라이언트 래퍼 재사용 — 폼/페이지
+  자체를 클라이언트 컴포넌트로 바꾸지 않는다).
+- **결과 요약**: 성공/부분 성공/결과 없음/실패를 각각 다른 문구로
+  보여준다. 새로 찾은 개수/중복 개수 같은 숫자는 보여주되, raw
+  status나 API 응답 원문은 노출하지 않는다.
+- **다음 행동 선택**: "추가로 실행"/"이 결과 확인"/"다음 단계로
+  진행"/"이전 화면으로 돌아가기" 같은 선택지를 버튼으로 제시하고,
+  상황에 맞는 것 하나만 primary로 강조한다(여러 개가 동시에
+  강조되지 않게 한다).
+- 결과는 DB에 새로 저장하지 않고 action의 redirect query string으로
+  페이지에 전달한다(새로고침하면 결과 카드가 사라지는 것이 의도된
+  동작이다) — 이 화면 전용 저장소를 새로 만들지 않는다.
+- 실제 적용 사례: [`docs/phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md).
+
+## "article"이 아니라 "마스터 원고"라는 사용자 표현을 쓴다 (Phase 4-1)
+
+사용자에게 보이는 화면에서는 내부 개념 `article`/`article mode`
+대신 "마스터 원고"/"원고 생성 방향"이라는 표현을 쓴다. 마스터
+원고는 그 자체로 최종 게시글이 아니라, 플랫폼별 글을 만들기 위한
+출처 기반 편집 자료라는 점을 안내문으로 분명히 한다.
+
+- 여러 생성 방향 중 하나를 처음부터 강제로 고르게 하지 않는다 —
+  기본값은 "자동 추천"이고, 세부 방향 선택은 "고급 옵션" 뒤에 둔다
+  (버튼/라디오가 많아 보이는 화면을 피한다).
+- 내부 enum/DB 값은 이 원칙 때문에 함부로 늘리거나 바꾸지 않는다 —
+  "자동 추천" 같은 UI 전용 선택지는 서버가 실제 값으로 변환한 뒤에만
+  저장한다(`resolveMasterManuscriptDirection` 참고).
+- 기존 내부 라벨(`ArticleModeConfig.label`, eval/prompt 파일과
+  짝지어진 표기)은 그대로 두고, 사용자 표현은 별도 매핑 함수로
+  분리한다 — 한쪽을 바꾼다고 다른 쪽(문서/파일명 참조)이 깨지지
+  않게 하기 위함이다.
+- 실제 적용 사례: [`docs/phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md), [`docs/phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md)(마스터 원고를 구조화된 platformBrief로 계산 — AI를 다시 호출하지 않는 결정적 계산이라는 점이 특히 이 원칙과 관련 있다), [`docs/phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)(플랫폼 하나를 추가할 때 exhaustive `Record`/`switch`를 그대로 따라가며 채우는 방법), [`docs/phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)(마스터 원고 구조화 데이터를 처음으로 화면에 노출하면서도 개수 요약 + 펼치기로만 보여준 사례).

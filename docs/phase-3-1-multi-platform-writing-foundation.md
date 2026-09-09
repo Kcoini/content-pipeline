@@ -241,3 +241,4 @@ article 상세 페이지의 "Multi-platform Writing" 섹션에서:
 - 페이지 간 UX 일관성 — raw enum/DB 컬럼명/영어 제목 정리(Phase 3-24): [`phase-3-24-cross-page-ux-consistency.md`](./phase-3-24-cross-page-ux-consistency.md)
 - 검토를 "자동 검토 + 사람은 편집자" 흐름으로 전환(Phase 3-25, 통과/확인 필요/수정 필요/차단 리포트, 승인 게이트 완화): [`phase-3-25-auto-review-editor-workflow.md`](./phase-3-25-auto-review-editor-workflow.md)
 - `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26, 게시용 미리보기/수정하기/내부 원문 보기 3탭, 플랫폼별 게시용 미리보기, 최종 승인 패널): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
+- `SocialWritingContext`에 마스터 원고 기반 platformBrief 연결(Phase 4-2, article 전체 대신 플랫폼별 brief만 prompt에 추가): [`phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md)

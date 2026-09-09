@@ -1,5 +1,14 @@
 # `monetized_blog` 모드 — 문제 해결형 수익 블로그
 
+> **Phase 4-1**: `/dashboard` 화면에서는 이제 이 모드가 "수익형
+> 블로그형" 대신 **"SEO/수익화 중심"**이라는 "원고 생성 방향"
+> 고급 옵션으로 표시된다(기본값은 "자동 추천"). 내부 값
+> `monetized_blog`와 이 문서에서 설명하는 동작은 전혀 바뀌지 않았다
+> — 사용자에게 보이는 표현만 `getMasterManuscriptDirectionLabel()`
+> (`lib/articles/article-modes.ts`)로 분리했다. 자세한 내용은
+> [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)
+> 참고.
+
 이 문서는 기사 생성 모드 3종 중 `monetized_blog`의 개선된 설계를
 설명한다. 구현은 `lib/ai/article-writer.ts`
 (`MONETIZED_BLOG_SYSTEM_PROMPT`, `MONETIZED_BLOG_TOOL`,
@@ -582,10 +591,11 @@ Metadata/SEO/이미지/Quality Gate 자동 준비)은 이 승인 상태를 절�
 
 사용자 화면에서는 `monetized_blog`를 포함한 모든 article mode를
 "최종 게시물"이 아니라 **출처 기반 원고 context**로 안내한다 — article
-은 WordPress 블로그/네이버 블로그/네이버 카페/X/Threads/Instagram 글을
-만들기 위한 기반 자료로 쓰인다. `monetized_blog`는 그중 "수익형
-블로그에 적합한 article context"로 정리된다. 내부 구조(article_mode
-컬럼, 상태 모델)는 변경하지 않았다. 상세는
+은 언론 기사/WordPress 블로그/네이버 블로그/네이버 카페/X/Threads/
+Instagram 글을 만들기 위한 기반 자료로 쓰인다(언론 기사=news_article은
+Phase 4-3에서 추가됐다). `monetized_blog`는 그중 "수익형 블로그에
+적합한 article context"로 정리된다. 내부 구조(article_mode 컬럼,
+상태 모델)는 변경하지 않았다. 상세는
 [`phase-3-21-platform-generation-flow.md`](./phase-3-21-platform-generation-flow.md)
 참고.
 

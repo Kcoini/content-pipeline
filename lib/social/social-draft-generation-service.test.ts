@@ -57,6 +57,7 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     toneStyleConfig: getToneStyleConfig("informational"),
     safetyRules: ["협박형 문장 금지"],
     outputContractName: "naver-blog.schema.json",
+    platformBrief: null,
     ...overrides,
   };
 }

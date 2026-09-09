@@ -14,7 +14,7 @@ import {
 import { summarizeSourcesMock, summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
 import { evaluateArticleForMode } from "@/lib/ai/eval-article";
 import { getAiProvider, shouldUseAnthropic } from "@/lib/ai/ai-config";
-import { getArticleModeConfig, isArticleMode } from "@/lib/articles/article-modes";
+import { getArticleModeConfig, isArticleMode, resolveMasterManuscriptDirection, AUTO_MASTER_MANUSCRIPT_DIRECTION } from "@/lib/articles/article-modes";
 import { toAiErrorMessage } from "@/lib/ai/ai-errors";
 import { recordContractCheck } from "@/lib/repositories/log-repository";
 import {
@@ -26,7 +26,8 @@ import {
 import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, updateSourceSummary, skipSourceSummary, DuplicateSourceError } from "@/lib/repositories/source-repository";
 import { fetchUrlContent } from "@/lib/services/url-fetcher";
 import { generateSourceSummaryWithAi, generateSourceSummaryMock } from "@/lib/ai/source-auto-summarizer";
-import { saveDraftArticle, getArticleByThemeId } from "@/lib/repositories/article-repository";
+import { saveDraftArticle, getArticleByThemeId, saveArticleMasterManuscript } from "@/lib/repositories/article-repository";
+import { buildMasterManuscript } from "@/lib/articles/master-manuscript-builder";
 import { saveEvalRun } from "@/lib/repositories/eval-repository";
 import type { Language } from "@/lib/types/domain";
 
@@ -226,7 +227,14 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
   // 누르면 아무 반응 없이 조용히 처리되던 문제를 고친다. mode 선택값을
   // 조용히 기본값으로 대체하지 않고, 선택되지 않았으면 명확한 오류를
   // 표시한다(요청 6).
-  const rawArticleMode = formData.get("articleMode");
+  // Phase 4-1: "마스터 원고 만들기"의 기본 선택지는 "자동 추천"("auto"
+  // sentinel)이다. DB article_mode 컬럼은 여전히 3개 값만 허용하므로,
+  // 검증(isArticleMode) 이전에 반드시 실제 ArticleMode로 바꾼다.
+  const rawArticleModeInput = formData.get("articleMode");
+  const rawArticleMode =
+    rawArticleModeInput === AUTO_MASTER_MANUSCRIPT_DIRECTION
+      ? resolveMasterManuscriptDirection(rawArticleModeInput)
+      : rawArticleModeInput;
   if (!isArticleMode(rawArticleMode)) {
     await logEvent({
       type: "article_generation_blocked_no_mode_selected",
@@ -562,6 +570,28 @@ export async function generateArticleDraft(formData: FormData): Promise<void> {
     targetType: "article",
     targetId: article.id,
   });
+
+  // 4.5) Phase 4-2: 마스터 원고(구조화된 platformBrief 재료)를 계산해
+  // format_metadata.master_manuscript에 저장한다. AI를 다시 호출하지
+  // 않는 순수 계산이라 실패 가능성이 거의 없지만, 혹시 실패해도 이미
+  // 저장된 article 생성 자체는 막지 않는다(부가 데이터이기 때문).
+  try {
+    const masterManuscript = buildMasterManuscript(article, citedSources);
+    await saveArticleMasterManuscript(article.id, masterManuscript);
+  } catch (error) {
+    await logEvent({
+      type: "article_generation_input_warning",
+      status: "info",
+      message: `마스터 원고(platformBrief) 계산/저장에 실패했습니다 — 기사초안 저장에는 영향을 주지 않습니다: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      details: { themeId, articleId: article.id },
+      themeId,
+      articleId: article.id,
+      targetType: "article",
+      targetId: article.id,
+    });
+  }
 
   // 5) AI Evals (FR-8, Phase 2-1) - evaluateArticleForMode가 articleMode에 맞는
   // 평가 기준(evals/*.yaml)과 mock/AI 평가 함수를 선택한다. AI 평가 실패 시에도

@@ -67,6 +67,18 @@ function buildWordPressBlogSourceModeInstruction(usableSourceCount: number): str
   return null;
 }
 
+// Phase 4-4: 비용 최적화 — platformBrief는 이미
+// master-manuscript-builder.ts가 배열 길이를 짧게 잘라서 만들지만,
+// 방어적으로 한 번 더 상한을 둔다(향후 마스터 원고 계산 로직이
+// 바뀌어도 prompt 크기가 갑자기 커지지 않도록 하는 안전장치).
+const MAX_PLATFORM_BRIEF_JSON_LENGTH = 4000;
+
+function formatPlatformBrief(brief: SocialWritingContext["platformBrief"]): string {
+  const json = JSON.stringify(brief, null, 2);
+  if (json.length <= MAX_PLATFORM_BRIEF_JSON_LENGTH) return json;
+  return `${json.slice(0, MAX_PLATFORM_BRIEF_JSON_LENGTH)}\n... (길이 제한으로 생략됨)`;
+}
+
 function buildUserPrompt(context: SocialWritingContext): string {
   const lines: string[] = [
     `article 제목: ${context.title}`,
@@ -86,6 +98,14 @@ function buildUserPrompt(context: SocialWritingContext): string {
           .map((s) => `- [${s.publisher}] ${s.title}: ${s.summary}`)
           .join("\n")}`
       : `출처: ${context.sourceCount}건`,
+    // Phase 4-2: 마스터 원고 전체가 아니라 이 플랫폼에 해당하는
+    // platformBrief만 전달한다(비용 최적화 — 다른 플랫폼 brief나
+    // sourceSummaries 전체를 반복해서 넣지 않는다). article이 Phase
+    // 4-2 이전에 생성되어 마스터 원고가 없으면 이 줄 자체가 생략된다
+    // (기존 excerpt/keyPoints만으로도 생성은 그대로 동작한다).
+    context.platformBrief
+      ? `platform_brief(이 플랫폼 전용 변환 재료 — 참고해서 활용하세요):\n${formatPlatformBrief(context.platformBrief)}`
+      : null,
     // wordpress_blog에서만 usable source 개수에 따른 작성 모드를 명시한다
     // (다른 플랫폼은 이 안내를 받지 않는다 — naver_blog 등 기존 동작 그대로).
     context.platform === "wordpress_blog"
@@ -158,6 +178,7 @@ export function assembleSocialWritingPrompt(context: SocialWritingContext): Asse
     hasTargetKeyword: Boolean(context.targetKeyword),
     keyPointCount: context.keyPoints.length,
     excerptLength: context.excerpt.length,
+    hasPlatformBrief: Boolean(context.platformBrief),
   };
 
   return {

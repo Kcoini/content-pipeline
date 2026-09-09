@@ -103,3 +103,54 @@ export function resolveArticleMode(value: unknown): ArticleMode {
 export function getArticleModeConfig(mode: ArticleMode): ArticleModeConfig {
   return ARTICLE_MODE_CONFIGS[mode];
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4-1: "마스터 원고 중심" 구조 전환 — 1차(용어 정리 + 고급 옵션화).
+//
+// 사용자에게 처음부터 3종류(general_news/source_based_explainer/
+// monetized_blog) 중 하나를 반드시 고르게 하지 않는다. 기본은 "자동
+// 추천"이고, 기존 3종류는 "원고 생성 방향"이라는 고급 옵션으로 남겨둔다.
+// DB의 article_mode 컬럼은 여전히 3개 값만 허용하므로(articles_article_mode_check
+// constraint, db/migrations/011), "자동 추천"은 실제로 저장되는 값이
+// 아니라 UI에서만 쓰는 sentinel("auto")이다 — 제출 시
+// resolveMasterManuscriptDirection()이 실제 ArticleMode로 바꿔서
+// generateArticleDraft에 넘긴다. ArticleMode enum 자체나 기존 3종류는
+// 삭제하지 않는다.
+// ---------------------------------------------------------------------------
+
+/** UI에서만 쓰는 "자동 추천" sentinel 값. DB에는 절대 저장되지 않는다. */
+export const AUTO_MASTER_MANUSCRIPT_DIRECTION = "auto" as const;
+
+export type MasterManuscriptDirectionInput = ArticleMode | typeof AUTO_MASTER_MANUSCRIPT_DIRECTION;
+
+/**
+ * 사용자에게 보여줄 "원고 생성 방향" 라벨. 기존 ArticleModeConfig.label
+ * ("일반 기사형" 등, eval/prompt 파일명과 짝지어진 내부 표기)은 그대로
+ * 두고, 이 맵만 새 사용자 표현으로 분리했다 — 내부 값은 바꾸지 않는다.
+ */
+export const MASTER_MANUSCRIPT_DIRECTION_LABELS: Record<MasterManuscriptDirectionInput, string> = {
+  auto: "자동 추천",
+  general_news: "빠른 기사 중심",
+  source_based_explainer: "해설 중심",
+  monetized_blog: "SEO/수익화 중심",
+};
+
+export function getMasterManuscriptDirectionLabel(value: MasterManuscriptDirectionInput): string {
+  return MASTER_MANUSCRIPT_DIRECTION_LABELS[value];
+}
+
+/** "원고 생성 방향" 선택 목록(고급 옵션 UI용) — 자동 추천 + 기존 3종류. */
+export const MASTER_MANUSCRIPT_DIRECTION_LIST: MasterManuscriptDirectionInput[] = [
+  AUTO_MASTER_MANUSCRIPT_DIRECTION,
+  ...ARTICLE_MODE_LIST.map((m) => m.id),
+];
+
+/**
+ * "자동 추천"(auto)을 실제 ArticleMode로 바꾼다. 그 외 값은 그대로
+ * `resolveArticleMode`(알 수 없는 값이면 기본값)에 위임한다 — DB에
+ * 넘기기 직전에 반드시 이 함수를 거쳐야 한다.
+ */
+export function resolveMasterManuscriptDirection(value: unknown): ArticleMode {
+  if (value === AUTO_MASTER_MANUSCRIPT_DIRECTION) return DEFAULT_ARTICLE_MODE;
+  return resolveArticleMode(value);
+}

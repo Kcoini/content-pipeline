@@ -21,6 +21,17 @@ export interface PlatformWritingTemplate {
 }
 
 export const PLATFORM_WRITING_TEMPLATES: Record<SocialPlatform, PlatformWritingTemplate> = {
+  news_article: {
+    platform: "news_article",
+    structureGuidance: [
+      "리드문(육하원칙) → 본문 → 배경 설명 → 쟁점 → 향후 확인할 점 → 출처 순서로 작성한다.",
+      "중립적이고 간결한 문체를 사용한다.",
+      "사실과 해석(전망)을 분리한다.",
+      "출처 없는 수치를 단정하지 않는다.",
+      "manual export를 전제로 한다 (자동 게시 없음).",
+    ],
+    mockFieldHints: ["post_title", "post_body", "excerpt"],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     structureGuidance: [

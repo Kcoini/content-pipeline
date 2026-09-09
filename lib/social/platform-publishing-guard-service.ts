@@ -175,6 +175,7 @@ function buildCommonGateChecklist(post: SocialPost): PlatformPublishGuardCheckli
 /** 플랫폼별로 반드시 있어야 하는 핵심 필드가 채워져 있는지 확인한다. */
 function hasPlatformPrimaryField(post: SocialPost, platform: SocialPlatform): boolean {
   switch (platform) {
+    case "news_article":
     case "wordpress_blog":
     case "naver_blog":
     case "naver_cafe":
@@ -192,6 +193,7 @@ function hasPlatformPrimaryField(post: SocialPost, platform: SocialPlatform): bo
 
 function describePlatformPrimaryField(platform: SocialPlatform): string {
   switch (platform) {
+    case "news_article":
     case "wordpress_blog":
     case "naver_blog":
     case "naver_cafe":
@@ -214,6 +216,14 @@ function buildPlatformSoftChecklist(post: SocialPost, platform: SocialPlatform):
   const looksLikeMock = (collectText(post).match(/\[mock\]|\[placeholder\]/g) ?? []).length > 0;
 
   switch (platform) {
+    case "news_article": {
+      const titleBodyOk = Boolean(post.postTitle?.trim() && post.postBody?.trim());
+      checklist.push(item("news_article_title_body_present", "title/body 존재", titleBodyOk ? "pass" : "warning", titleBodyOk ? "title/body가 모두 있습니다." : "title 또는 body가 비어 있습니다."));
+      const hasLead = (post.postBody?.trim().length ?? 0) > 0 && (post.postBody?.slice(0, 200).length ?? 0) > 30;
+      checklist.push(item("news_article_lead_present", "리드문 존재", hasLead ? "pass" : "warning", hasLead ? "본문 도입부가 충분한 길이입니다." : "리드문이 너무 짧거나 없습니다."));
+      checklist.push(item("news_article_mock_artifact", "AI/placeholder 흔적 없음", looksLikeMock ? "warning" : "pass", looksLikeMock ? "[mock]/[placeholder] 표시가 남아 있습니다." : "AI/placeholder 흔적이 없습니다."));
+      break;
+    }
     case "wordpress_blog": {
       const titleBodyOk = Boolean(post.postTitle?.trim() && post.postBody?.trim());
       checklist.push(item("wordpress_title_body_present", "title/body 존재", titleBodyOk ? "pass" : "warning", titleBodyOk ? "title/body가 모두 있습니다." : "title 또는 body가 비어 있습니다."));

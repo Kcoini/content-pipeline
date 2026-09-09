@@ -76,6 +76,7 @@ export function validateRequiredFieldsByPlatform(platform: SocialPlatform, outpu
   const errors: string[] = [];
 
   switch (platform) {
+    case "news_article":
     case "wordpress_blog":
     case "naver_blog":
     case "naver_cafe":

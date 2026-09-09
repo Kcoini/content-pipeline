@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getArticleById } from "@/lib/repositories/article-repository";
+import { getArticleById, readArticleMasterManuscript } from "@/lib/repositories/article-repository";
 import { getThemeById } from "@/lib/repositories/theme-repository";
 import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
 import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
@@ -385,6 +385,12 @@ export default async function ArticleDetailPage({
     listSocialPostsByArticle(article.id),
   ]);
 
+  // Phase 4-4: 마스터 원고(Phase 4-2에서 구조화한 platformBrief 재료)를
+  // 사용자에게 처음으로 보여준다. AI를 다시 호출하지 않는 순수 조회이며,
+  // 없으면(Phase 4-2 이전에 생성된 article 등) 섹션 자체를 렌더링하지
+  // 않는다 — 없는 상태를 지어내지 않는다.
+  const masterManuscript = readArticleMasterManuscript(article);
+
   const existingPlatforms = new Set(existingSocialPosts.map((post) => post.platform));
   const recommendedPlatforms = new Set(getRecommendedPlatforms());
   const platformSelectionOptions = SOCIAL_PLATFORMS.map((platform) => ({
@@ -522,6 +528,48 @@ export default async function ArticleDetailPage({
                 </dd>
               </div>
             </dl>
+          </section>
+        )}
+
+        {/* Phase 4-4: 마스터 원고 정보 — Phase 4-2에서 계산해 저장한 구조화된
+            편집 자료(출처 요약/확인된 사실/확인 필요 사항/플랫폼별 변환
+            재료)를 사용자에게 보여준다. raw JSON은 노출하지 않고 개수 요약 +
+            펼치기로만 보여준다. 이 원고 자체는 게시용 콘텐츠가 아니다. */}
+        {masterManuscript && (
+          <section className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-zinc-700">마스터 원고 정보</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              이 기사는 플랫폼별 글을 만들기 위한 마스터 원고로도 쓰입니다. 아래는 플랫폼 글 생성에 참고 자료로만
+              쓰이는 재료 요약이며, 그대로 게시되는 내용이 아닙니다.
+            </p>
+            <dl className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div>
+                <dt className="font-medium text-zinc-600">출처 요약</dt>
+                <dd className="text-zinc-700">{masterManuscript.sourceSummaries.length}건</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">확인된 사실</dt>
+                <dd className="text-zinc-700">{masterManuscript.verifiedFacts.length}건</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">확인 필요 사항</dt>
+                <dd className="text-zinc-700">{masterManuscript.verificationNeeded.length}건</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">플랫폼별 변환 재료</dt>
+                <dd className="text-zinc-700">7개 플랫폼 준비 완료</dd>
+              </div>
+            </dl>
+            {masterManuscript.verificationNeeded.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-zinc-500">확인 필요 사항 보기</summary>
+                <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-zinc-600">
+                  {masterManuscript.verificationNeeded.map((item, index) => (
+                    <li key={index}>· {item}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </section>
         )}
 

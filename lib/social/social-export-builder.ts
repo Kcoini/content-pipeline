@@ -26,6 +26,7 @@ export interface ManualExportResult {
 }
 
 const MANUAL_EXPORT_FORMATS: Record<SocialPost["platform"], string> = {
+  news_article: "news_article_markdown_copy",
   wordpress_blog: "wordpress_markdown",
   naver_blog: "naver_blog_markdown_copy",
   naver_cafe: "naver_cafe_plain_text_copy",
@@ -43,6 +44,23 @@ export function buildManualExportPayload(post: SocialPost): ManualExportResult {
   const exportFormat = MANUAL_EXPORT_FORMATS[post.platform];
 
   switch (post.platform) {
+    case "news_article": {
+      if (!post.postTitle?.trim() || !post.postBody?.trim()) {
+        return { ok: false, platform: post.platform, exportFormat, error: "제목과 본문이 모두 있어야 export할 수 있습니다." };
+      }
+      return {
+        ok: true,
+        platform: post.platform,
+        exportFormat,
+        exportTitle: post.postTitle,
+        exportBody: post.postBody,
+        instructions: [
+          "게시/배포 전 리드문의 육하원칙과 출처 표기를 다시 확인하세요.",
+          "사실과 해석(전망)이 분리되어 있는지 확인하세요.",
+        ],
+      };
+    }
+
     case "wordpress_blog": {
       if (!post.postTitle?.trim() || !post.postBody?.trim()) {
         return { ok: false, platform: post.platform, exportFormat, error: "제목과 본문이 모두 있어야 export할 수 있습니다." };
@@ -198,6 +216,15 @@ export function buildExportPayload(post: SocialPost): SocialPostExportResult {
   const config = getPlatformWritingConfig(post.platform);
 
   switch (post.platform) {
+    case "news_article":
+      return {
+        format: config.exportFormat,
+        payload: {
+          title: post.postTitle ?? "",
+          markdown: buildMarkdownBody(post),
+        },
+      };
+
     case "wordpress_blog":
       return {
         format: config.exportFormat,

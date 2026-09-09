@@ -21,11 +21,29 @@ function isArticleSearchEnabled(): boolean {
 }
 
 /**
+ * Phase 3-27: 수집 결과 화면(성공/부분 성공/결과 없음/실패)을 정확히
+ * 계산할 수 있도록, 그냥 저장된 후보 배열이 아니라 이번 실행에서 무엇을
+ * 찾았고 무엇이 이미 있었는지까지 함께 반환한다.
+ */
+export interface ArticleUrlCollectionResult {
+  /** 이번 실행에서 새로 저장된 후보(이미 존재하던 URL은 제외됨). */
+  saved: ArticleUrlCandidate[];
+  /** 이번 검색으로 찾은 전체 후보 수(저장 여부와 무관, 중복 제거 후). */
+  totalFound: number;
+  /** 찾았지만 이미 후보로 등록되어 있어 새로 저장하지 않은 개수. */
+  duplicateCount: number;
+  /** 실제 API 검색을 시도한 (플랫폼×검색어) 작업 수. mock 모드/키 미설정이면 0. */
+  attemptedTaskCount: number;
+  /** 그중 실패한 작업 수. */
+  failedTaskCount: number;
+}
+
+/**
  * theme의 keywords를 바탕으로 관련 기사 URL 후보를 수집해 article_url_candidates에 저장한다.
  */
 export async function collectArticleUrlCandidates(
   theme: Theme
-): Promise<ArticleUrlCandidate[]> {
+): Promise<ArticleUrlCollectionResult> {
   await logEvent({
     type: "article_url_collection_started",
     status: "info",
@@ -40,6 +58,8 @@ export async function collectArticleUrlCandidates(
     const queries = buildSearchQueries(theme);
     const now = new Date().toISOString();
     let candidateDrafts: Omit<ArticleUrlCandidate, "id">[];
+    let attemptedTaskCount = 0;
+    let failedTaskCount = 0;
 
     if (!isArticleSearchEnabled()) {
       candidateDrafts = [];
@@ -71,18 +91,20 @@ export async function collectArticleUrlCandidates(
           const tasks: Promise<void>[] = [];
 
           if (isNaverKeySet()) {
+            attemptedTaskCount++;
             tasks.push(
               searchNaverNews(query, 5)
                 .then((results) => { allResults.push(...results); })
-                .catch(() => { /* 개별 query 실패는 무시하고 계속 */ })
+                .catch(() => { failedTaskCount++; /* 개별 query 실패는 기록만 하고 계속 */ })
             );
           }
 
           if (isDaumKeySet()) {
+            attemptedTaskCount++;
             tasks.push(
               searchDaumNews(query, 5)
                 .then((results) => { allResults.push(...results); })
-                .catch(() => { /* 개별 query 실패는 무시하고 계속 */ })
+                .catch(() => { failedTaskCount++; /* 개별 query 실패는 기록만 하고 계속 */ })
             );
           }
 
@@ -98,7 +120,12 @@ export async function collectArticleUrlCandidates(
         return true;
       });
 
-      if (unique.length === 0) {
+      // Phase 3-27: 검색어를 시도조차 못했거나(키 미설정) 시도한 작업이
+      // 전부 실패했으면 "실패"로 취급한다. 일부/전체 작업이 성공했는데
+      // 단지 결과가 0건이면(정상적으로 검색은 됐지만 관련 기사가 없는
+      // 경우) 예외를 던지지 않고 "결과 없음"으로 넘어간다 — 호출자가
+      // 이 차이로 "오류" 문구와 "결과 없음" 문구를 다르게 보여준다.
+      if (unique.length === 0 && (attemptedTaskCount === 0 || failedTaskCount >= attemptedTaskCount)) {
         throw new Error(
           "기사 URL을 수집하지 못했습니다. NAVER_CLIENT_ID/NAVER_CLIENT_SECRET 또는 KAKAO_REST_API_KEY를 확인하세요."
         );
@@ -130,10 +157,21 @@ export async function collectArticleUrlCandidates(
       status: "success",
       message: `기사 URL 후보 ${saved.length}건 수집 완료`,
       themeId: theme.id,
-      details: { count: saved.length, themeId: theme.id },
+      details: {
+        count: saved.length,
+        totalFound: candidateDrafts.length,
+        duplicateCount: candidateDrafts.length - saved.length,
+        themeId: theme.id,
+      },
     });
 
-    return saved;
+    return {
+      saved,
+      totalFound: candidateDrafts.length,
+      duplicateCount: candidateDrafts.length - saved.length,
+      attemptedTaskCount,
+      failedTaskCount,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await logEvent({
