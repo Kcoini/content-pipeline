@@ -438,3 +438,16 @@ describe("dashboard 플랫폼 카드 / 출처 목록 축소 / 새 테마 축소 
     expect(pageSource).toMatch(/<span className="group-open:hidden">\+ 새 테마<\/span>/);
   });
 });
+
+describe("dashboard 마스터 원고 갱신 권장 배너 (정적 소스 검사, Phase 1-24)", () => {
+  it("needsMasterManuscriptRefresh 플래그가 있으면 갱신 권장 배너를 표시한다", () => {
+    expect(pageSource).toContain("needsMasterManuscriptRefresh");
+    expect(pageSource).toContain("새 출처가 추가되었습니다.");
+  });
+
+  it("갱신/유지 선택지를 모두 제공하고 자동으로 원고를 덮어쓰지 않는다", () => {
+    expect(pageSource).toContain("마스터 원고 갱신");
+    expect(pageSource).toContain("dismissMasterManuscriptRefreshNotice");
+    expect(pageSource).toContain("기존 원고 유지");
+  });
+});

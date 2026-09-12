@@ -2,7 +2,13 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { DashboardTopNav } from "@/components/navigation/dashboard-top-nav";
 import { ThemeSearchList } from "@/components/dashboard/theme-search-list";
-import { addSource, archiveThemeAction, createTheme, generateArticleDraft } from "./actions";
+import {
+  addSource,
+  archiveThemeAction,
+  createTheme,
+  generateArticleDraft,
+  dismissMasterManuscriptRefreshNotice,
+} from "./actions";
 import { getLogs } from "@/lib/harness/logger";
 import { getLatestContractCheck, type ContractCheckRecord } from "@/lib/repositories/log-repository";
 import { getThemes, getThemeRelatedCounts } from "@/lib/repositories/theme-repository";
@@ -545,6 +551,47 @@ export default async function DashboardPage({
         출처를 바탕으로 모든 플랫폼 글의 기준이 되는 마스터 원고를 만듭니다. 이 원고는 그대로 게시하지 않고, 이후 각
         플랫폼에 맞게 변환됩니다.
       </p>
+
+      {/* Phase 1-24: 자동테마 "기존 테마에 추가"로 새 출처가 등록되면
+          theme.metadata.needsMasterManuscriptRefresh가 켜진다. 자동으로
+          원고/플랫폼 글을 다시 만들지 않고, 사용자가 갱신/유지를 직접
+          선택하게 안내만 한다. */}
+      {Boolean(selectedTheme?.metadata?.needsMasterManuscriptRefresh) && selectedTheme && (
+        <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+          <p className="font-medium">새 출처가 추가되었습니다.</p>
+          <p className="mt-1 break-keep">기존 마스터 원고에 새 자료를 반영할지 확인하세요.</p>
+          {typeof selectedTheme.metadata?.lastCrossDayAddedSourceCount === "number" && (
+            <p className="mt-1 break-keep text-blue-700">
+              추가된 출처: {selectedTheme.metadata?.lastCrossDayAddedSourceCount as number}개
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a
+              href="#generate-draft"
+              className="rounded border border-blue-400 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+            >
+              마스터 원고 갱신
+            </a>
+            <form action={dismissMasterManuscriptRefreshNotice}>
+              <input type="hidden" name="themeId" value={selectedTheme.id} />
+              <button
+                type="submit"
+                className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+              >
+                기존 원고 유지
+              </button>
+            </form>
+            <details className="inline-block">
+              <summary className="cursor-pointer select-none rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                변경 내용 보기
+              </summary>
+              <p className="mt-1 max-w-xs break-keep text-blue-700">
+                아래 &ldquo;등록된 출처&rdquo; 목록에서 최근 추가된 출처를 확인할 수 있습니다.
+              </p>
+            </details>
+          </div>
+        </div>
+      )}
 
       {/* Phase 2-22: 이미 이 테마로 생성된 기사가 있는 상태에서 기사초안
           생성을 누르면, 조용히 덮어쓰거나 무반응으로 끝나지 않고 항상

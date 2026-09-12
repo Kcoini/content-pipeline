@@ -6,6 +6,9 @@ import {
   collectTrendCandidates,
   clusterCommonThemes,
   createThemeFromCluster,
+  addClusterEvidenceToExistingTheme,
+  dismissThemeClusterCandidate,
+  logThemeCandidateSelectionOutcome,
 } from "@/lib/trends/trend-service";
 
 export interface TrendActionResult {
@@ -73,5 +76,77 @@ export async function selectClusterAsTheme(clusterId: string): Promise<TrendActi
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     return { success: false, message: "테마 생성에 실패했습니다.", error };
+  }
+}
+
+/**
+ * Phase 1-24: merged/duplicate 후보 클릭 시 "선택 불가"로 끝내지 않고
+ * 대표 후보(대표 테마)를 대신 선택한다. selectClusterAsTheme와 동작은
+ * 같지만, "병합된 후보를 대신 대표 후보로 연결했다"는 로그를 남긴다.
+ */
+export async function selectCanonicalClusterForMergedCandidate(
+  mergedCandidateId: string,
+  representativeClusterId: string
+): Promise<TrendActionResult> {
+  await logThemeCandidateSelectionOutcome({
+    clusterId: mergedCandidateId,
+    outcome: "merged_redirected_to_canonical",
+    canonicalClusterId: representativeClusterId,
+  });
+  return selectClusterAsTheme(representativeClusterId);
+}
+
+/** 오늘 후보를 기존 테마와 다른 새 테마로 분리 생성한다(needs_review/existing_theme_update의 "새 하위 주제로 분리"). */
+export async function splitClusterAsNewTheme(clusterId: string): Promise<TrendActionResult> {
+  await logThemeCandidateSelectionOutcome({ clusterId, outcome: "split_as_new_theme" });
+  return selectClusterAsTheme(clusterId);
+}
+
+/** duplicate_theme 후보를 클릭했을 때 "기존 테마 보기"로 연결한다(무반응 방지). */
+export async function goToExistingThemeFromDuplicate(
+  clusterId: string,
+  existingThemeId: string
+): Promise<void> {
+  await logThemeCandidateSelectionOutcome({
+    clusterId,
+    outcome: "duplicate_redirected_to_existing",
+    existingThemeId,
+  });
+  redirect(`/dashboard?themeId=${existingThemeId}`);
+}
+
+/** duplicate_theme 후보를 "다시 표시하지 않기" 처리한다. */
+export async function dismissClusterCandidate(clusterId: string): Promise<void> {
+  await dismissThemeClusterCandidate(clusterId);
+  revalidatePath("/trends");
+  redirect(`/trends?msg=${encodeURIComponent("중복 후보를 다시 표시하지 않도록 처리했습니다.")}&type=success`);
+}
+
+/**
+ * existing_theme_update 후보의 새 출처를 기존 테마에 추가한다. 결과를
+ * query param으로 넘겨 /trends에서 "추가 결과 요약 + 다음 작업" 카드를
+ * 보여준다(추가 후 무반응 상태로 끝내지 않는다).
+ */
+export async function addClusterToExistingTheme(
+  clusterId: string,
+  existingThemeId: string
+): Promise<void> {
+  try {
+    const result = await addClusterEvidenceToExistingTheme(clusterId, existingThemeId);
+    revalidatePath("/trends");
+    revalidatePath("/dashboard");
+
+    const params = new URLSearchParams({
+      updateThemeId: result.themeId,
+      updateThemeTitle: result.themeTitle,
+      updateAdded: String(result.addedCount),
+      updateSkipped: String(result.skippedDuplicateCount),
+      updateFailed: String(result.failedCount),
+    });
+    redirect(`/trends?${params.toString()}`);
+  } catch (err) {
+    if (isNextRedirectError(err)) throw err;
+    const error = err instanceof Error ? err.message : String(err);
+    redirect(`/trends?msg=${encodeURIComponent(`기존 테마 업데이트에 실패했습니다: ${error}`)}&type=error`);
   }
 }

@@ -213,3 +213,71 @@ describe("trends 페이지 - 대표 테마 선택 중심 UI 개편 (정적 소�
     expect(pageSource).toContain("candidates.slice(0, 20).map((c)");
   });
 });
+
+describe("trends 페이지 - 자동테마 후보 cross-day 중복/업데이트 분류 UI (정적 소스 검사, Phase 1-24)", () => {
+  it("cross-day 분류 함수를 호출해 대표 후보를 기존 테마와 비교한다", () => {
+    expect(pageSource).toContain("classifyThemeClustersAgainstExistingThemes");
+  });
+
+  it("상단 요약에 신규/기존 업데이트/중복/확인 필요 개수를 표시한다", () => {
+    expect(pageSource).toContain("classificationCounts.new_theme");
+    expect(pageSource).toContain("classificationCounts.existing_theme_update");
+    expect(pageSource).toContain("classificationCounts.duplicate_theme");
+    expect(pageSource).toContain("classificationCounts.needs_review");
+  });
+
+  it("상태별 필터(전체/신규/기존 업데이트/중복/확인 필요)를 제공한다", () => {
+    expect(pageSource).toContain('{ value: "all"');
+    expect(pageSource).toContain('{ value: "new_theme"');
+    expect(pageSource).toContain('{ value: "existing_theme_update"');
+    expect(pageSource).toContain('{ value: "duplicate_theme"');
+    expect(pageSource).toContain('{ value: "needs_review"');
+  });
+
+  it("raw enum 값을 직접 노출하지 않고 ClassificationBadge/한국어 라벨을 사용한다", () => {
+    expect(pageSource).toContain("ClassificationBadge");
+    expect(pageSource).toContain("THEME_CANDIDATE_CLASSIFICATION_LABEL");
+  });
+
+  it("existing_theme_update 카드에는 [기존 테마에 추가]/[기존 테마 보기]/[새 하위 주제로 분리] 버튼이 있다", () => {
+    expect(pageSource).toContain('classification.classification === "existing_theme_update"');
+    expect(pageSource).toContain("기존 테마에 추가");
+    expect(pageSource).toContain("새 하위 주제로 분리");
+  });
+
+  it("duplicate_theme 카드에는 [기존 테마 보기]/[다시 표시하지 않기] 버튼이 있고 무반응 상태로 끝나지 않는다", () => {
+    expect(pageSource).toContain('classification.classification === "duplicate_theme"');
+    expect(pageSource).toContain("다시 표시하지 않기");
+    expect(pageSource).toContain("dismissClusterCandidate");
+  });
+
+  it("needs_review 카드에는 기존 테마/오늘 후보 비교와 [기존 테마에 추가]/[새 테마로 만들기]/[기존 테마 보기] 선택지가 있다", () => {
+    expect(pageSource).toContain('classification.classification === "needs_review"');
+    expect(pageSource).toContain("commonKeywords");
+    expect(pageSource).toContain("onlyExistingKeywords");
+    expect(pageSource).toContain("onlyCandidateKeywords");
+    expect(pageSource).toContain("splitClusterAsNewTheme");
+  });
+
+  it("merged candidate(MergedCandidateRow)는 대표 테마 선택 버튼과 이유 설명을 항상 제공한다(선택 불가로 끝내지 않는다)", () => {
+    const match = pageSource.match(/function MergedCandidateRow[\s\S]*?\n}\n/);
+    expect(match).not.toBeNull();
+    const rowSource = match![0];
+    expect(rowSource).toContain("selectCanonicalClusterForMergedCandidate");
+    expect(rowSource).toContain("대표 테마 선택");
+    expect(rowSource).not.toContain("이 테마로 기사 작성 시작");
+  });
+
+  it("merged candidate가 기존 테마와 매칭되면 기존 테마 보기 링크를 제공한다", () => {
+    const match = pageSource.match(/function MergedCandidateRow[\s\S]*?\n}\n/);
+    expect(match).not.toBeNull();
+    expect(match![0]).toContain("matchedExistingThemeId");
+    expect(match![0]).toContain("기존 테마 보기");
+  });
+
+  it("기존 테마 업데이트 실행 결과 카드에 추가/중복 제외 요약과 마스터 원고 갱신 확인/대시보드 이동 링크가 있다", () => {
+    expect(pageSource).toContain("기존 테마 업데이트 완료");
+    expect(pageSource).toContain("마스터 원고 갱신 확인");
+    expect(pageSource).toContain("대시보드로 이동");
+  });
+});

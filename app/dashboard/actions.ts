@@ -22,6 +22,7 @@ import {
   getThemeById,
   archiveTheme,
   getThemeRelatedCounts,
+  updateThemeMetadata,
 } from "@/lib/repositories/theme-repository";
 import { addSource as addSourceRecord, getSourcesByThemeId, updateSourceFetchResult, updateSourceSummary, skipSourceSummary, DuplicateSourceError } from "@/lib/repositories/source-repository";
 import { fetchUrlContent } from "@/lib/services/url-fetcher";
@@ -729,4 +730,19 @@ export async function archiveThemeAction(formData: FormData): Promise<void> {
 
   revalidatePath("/dashboard");
   redirect(`/dashboard?deleteMessage=${encodeURIComponent(`테마를 삭제했습니다: ${theme.title}`)}`);
+}
+
+/**
+ * Phase 1-24: cross-day 테마 업데이트로 새 출처가 추가되면
+ * theme.metadata.needsMasterManuscriptRefresh 플래그가 설정된다(자동테마
+ * "기존 테마에 추가" 흐름). "기존 원고 유지"를 누르면 이 플래그만 끄고
+ * 원고/플랫폼 글은 그대로 둔다 — 자동으로 갱신하거나 덮어쓰지 않는다.
+ */
+export async function dismissMasterManuscriptRefreshNotice(formData: FormData): Promise<void> {
+  const themeId = String(formData.get("themeId") ?? "");
+  if (!themeId) return;
+
+  await updateThemeMetadata(themeId, { needsMasterManuscriptRefresh: false });
+  revalidatePath("/dashboard");
+  redirect(`/dashboard?themeId=${themeId}`);
 }

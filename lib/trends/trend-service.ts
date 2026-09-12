@@ -22,10 +22,18 @@ import {
   type UpsertThemeClusterInput,
   type TrendCandidateCounts,
 } from "@/lib/repositories/trend-repository";
-import { createTheme } from "@/lib/repositories/theme-repository";
+import { createTheme, getThemes, updateThemeMetadata } from "@/lib/repositories/theme-repository";
+import { addSource, getSourcesByThemeId, DuplicateSourceError } from "@/lib/repositories/source-repository";
+import { getArticleByThemeId } from "@/lib/repositories/article-repository";
+import { listSocialPostsByArticle } from "@/lib/repositories/social-posts-repository";
 import { logEvent } from "@/lib/repositories/log-repository";
 import type { TrendCandidate, ThemeCluster, Theme } from "@/lib/types/domain";
 import type { TrendSearchResult } from "./types";
+import {
+  classifyThemeCandidate,
+  type ExistingThemeContext,
+  type ThemeCandidateClassificationResult,
+} from "./theme-candidate-classifier";
 
 export function isTrendEnabled(): boolean {
   return process.env.TREND_COLLECTION_ENABLED === "true";
@@ -440,6 +448,219 @@ function findLatestCollectedAt(candidates: TrendCandidate[]): string | null {
     if (!latest) return c.collectedAt;
     return new Date(c.collectedAt).getTime() > new Date(latest).getTime() ? c.collectedAt : latest;
   }, null);
+}
+
+/**
+ * Phase 1-24: cross-day 중복/업데이트 판단에 쓸 기존 테마 컨텍스트를
+ * 모은다 — 보관되지 않은(활성) 테마마다 등록된 출처 URL, 마스터
+ * 원고/플랫폼 글 존재 여부, 최근 갱신 시각을 함께 담는다. DB schema는
+ * 바꾸지 않고 기존 조회 함수만 조합한다.
+ */
+export async function getExistingThemeContextsForCrossDayCheck(): Promise<ExistingThemeContext[]> {
+  const themes = await getThemes();
+
+  return Promise.all(
+    themes.map(async (theme): Promise<ExistingThemeContext> => {
+      const sources = await getSourcesByThemeId(theme.id);
+      const article = await getArticleByThemeId(theme.id);
+      const socialPosts = article ? await listSocialPostsByArticle(article.id) : [];
+
+      const lastSourceAt = sources.reduce<string | null>((latest, s) => {
+        if (!latest) return s.createdAt;
+        return new Date(s.createdAt).getTime() > new Date(latest).getTime() ? s.createdAt : latest;
+      }, null);
+
+      return {
+        theme,
+        sourceUrls: sources.map((s) => s.url),
+        sourceCount: sources.length,
+        hasMasterManuscript: Boolean(article),
+        hasSocialPosts: socialPosts.length > 0,
+        lastUpdatedAt: lastSourceAt ?? theme.createdAt,
+      };
+    })
+  );
+}
+
+/**
+ * 공통 테마 후보 목록을 기존 테마와 비교해 분류 결과 맵(clusterId →
+ * 분류 결과)을 만든다. 화면(/trends)에서 대표 후보마다 배지/버튼을
+ * 결정하는 데 사용한다.
+ */
+export async function classifyThemeClustersAgainstExistingThemes(
+  clusters: ThemeCluster[]
+): Promise<Map<string, ThemeCandidateClassificationResult>> {
+  await logEvent({
+    type: "theme_candidate_cross_day_check_started",
+    status: "info",
+    message: `cross-day 중복 검사 시작 (후보 ${clusters.length}건)`,
+    details: { candidateCount: clusters.length },
+  });
+
+  const existingContexts = await getExistingThemeContextsForCrossDayCheck();
+  const result = new Map<string, ThemeCandidateClassificationResult>();
+  const summary = { new_theme: 0, existing_theme_update: 0, duplicate_theme: 0, needs_review: 0 };
+
+  for (const cluster of clusters) {
+    const classification = classifyThemeCandidate(cluster, existingContexts);
+    result.set(cluster.id, classification);
+    summary[classification.classification]++;
+
+    const eventTypeByClassification = {
+      new_theme: "theme_candidate_classified_new",
+      existing_theme_update: "theme_candidate_classified_existing_update",
+      duplicate_theme: "theme_candidate_classified_duplicate",
+      needs_review: "theme_candidate_classified_needs_review",
+    } as const;
+
+    await logEvent({
+      type: eventTypeByClassification[classification.classification],
+      status: "info",
+      message: `테마 후보 "${cluster.title}" → ${classification.classification}`,
+      details: {
+        candidateId: cluster.id,
+        normalizedThemeKey: cluster.normalizedKey,
+        existingThemeId: classification.matchedExistingTheme?.id ?? null,
+        classification: classification.classification,
+        newUrlCount: classification.newUrlCount,
+        duplicateUrlCount: classification.duplicateUrlCount,
+        similarityScore: classification.similarityScore,
+      },
+    });
+  }
+
+  await logEvent({
+    type: "theme_candidate_cross_day_check_completed",
+    status: "success",
+    message: `cross-day 중복 검사 완료 (신규 ${summary.new_theme} · 기존 업데이트 ${summary.existing_theme_update} · 중복 ${summary.duplicate_theme} · 확인 필요 ${summary.needs_review})`,
+    details: { ...summary, candidateCount: clusters.length },
+  });
+
+  return result;
+}
+
+/** "기존 테마 보기/자료 추가" 클릭 시 이유 없이 막히지 않았음을 남기는 로그. */
+export async function logThemeCandidateSelectionOutcome(input: {
+  clusterId: string;
+  outcome: "duplicate_redirected_to_existing" | "merged_redirected_to_canonical" | "split_as_new_theme";
+  existingThemeId?: string;
+  canonicalClusterId?: string;
+}): Promise<void> {
+  const eventTypeMap = {
+    duplicate_redirected_to_existing: "theme_candidate_duplicate_redirected_to_existing",
+    merged_redirected_to_canonical: "theme_candidate_merged_redirected_to_canonical",
+    split_as_new_theme: "theme_candidate_split_as_new_theme",
+  } as const;
+
+  await logEvent({
+    type: eventTypeMap[input.outcome],
+    status: "info",
+    message: `후보 선택 결과: ${input.outcome}`,
+    details: {
+      candidateId: input.clusterId,
+      existingThemeId: input.existingThemeId ?? null,
+      canonicalClusterId: input.canonicalClusterId ?? null,
+    },
+  });
+}
+
+export interface AddClusterToExistingThemeResult {
+  themeId: string;
+  themeTitle: string;
+  addedCount: number;
+  skippedDuplicateCount: number;
+  failedCount: number;
+}
+
+/**
+ * existing_theme_update로 분류된 공통 테마 후보의 근거 URL을 기존 테마의
+ * 출처(sources)로 등록한다. 이미 등록된 URL은 sources 테이블의
+ * (theme_id, url) unique 제약(DuplicateSourceError)으로 자동 제외된다.
+ * 기존 마스터 원고/플랫폼 글은 절대 자동으로 덮어쓰지 않는다 — 대신
+ * theme.metadata에 "갱신 권장" 플래그만 남긴다(사용자가 직접 갱신 여부를
+ * 선택하도록 /dashboard에서 안내).
+ */
+export async function addClusterEvidenceToExistingTheme(
+  clusterId: string,
+  existingThemeId: string
+): Promise<AddClusterToExistingThemeResult> {
+  const cluster = await getThemeClusterById(clusterId);
+  if (!cluster) {
+    throw new Error(`테마 클러스터를 찾을 수 없습니다: ${clusterId}`);
+  }
+
+  const existingSources = await getSourcesByThemeId(existingThemeId);
+  const existingUrls = new Set(existingSources.map((s) => s.url));
+
+  const uniqueEvidence = cluster.evidence.filter((item, index, all) => {
+    if (!item.url) return false;
+    return all.findIndex((other) => other.url === item.url) === index;
+  });
+
+  let addedCount = 0;
+  let skippedDuplicateCount = 0;
+  let failedCount = 0;
+
+  for (const item of uniqueEvidence) {
+    if (!item.url) continue;
+    if (existingUrls.has(item.url)) {
+      skippedDuplicateCount++;
+      continue;
+    }
+    try {
+      await addSource({
+        themeId: existingThemeId,
+        url: item.url,
+        title: item.title,
+        publisher: item.platform,
+        publishedAt: "",
+        summary: "",
+        metadata: { collection_method: "theme_candidate_cross_day_update", source_cluster_id: clusterId },
+      });
+      addedCount++;
+    } catch (err) {
+      if (err instanceof DuplicateSourceError) {
+        skippedDuplicateCount++;
+      } else {
+        failedCount++;
+      }
+    }
+  }
+
+  const theme = (await getExistingThemeContextsForCrossDayCheck()).find((c) => c.theme.id === existingThemeId)?.theme;
+  const themeTitle = theme?.title ?? existingThemeId;
+
+  if (addedCount > 0) {
+    // 자동으로 마스터 원고/플랫폼 글을 재생성하지 않는다 — "갱신 권장"
+    // 플래그만 남기고, 실제 갱신 여부는 /dashboard에서 사용자가 선택한다.
+    await updateThemeMetadata(existingThemeId, {
+      needsMasterManuscriptRefresh: true,
+      lastCrossDayUpdateAt: new Date().toISOString(),
+      lastCrossDayAddedSourceCount: addedCount,
+      lastCrossDaySourceClusterId: clusterId,
+    });
+  }
+
+  await logEvent({
+    type: "theme_candidate_existing_theme_updated",
+    status: "success",
+    message: `기존 테마 "${themeTitle}"에 후보 "${cluster.title}"의 출처 ${addedCount}건 추가 (중복 제외 ${skippedDuplicateCount}건, 실패 ${failedCount}건)`,
+    themeId: existingThemeId,
+    details: { clusterId, existingThemeId, addedCount, skippedDuplicateCount, failedCount },
+  });
+
+  return { themeId: existingThemeId, themeTitle, addedCount, skippedDuplicateCount, failedCount };
+}
+
+/** duplicate_theme 후보를 "다시 표시하지 않기" 처리한다(soft: status를 dismissed로 변경, 삭제하지 않음). */
+export async function dismissThemeClusterCandidate(clusterId: string): Promise<void> {
+  await updateThemeClusterStatus(clusterId, "dismissed");
+  await logEvent({
+    type: "theme_candidate_selection_blocked_with_reason",
+    status: "info",
+    message: `중복 후보 "다시 표시하지 않기" 처리: ${clusterId}`,
+    details: { clusterId, reason: "duplicate_theme_dismissed_by_user" },
+  });
 }
 
 /**

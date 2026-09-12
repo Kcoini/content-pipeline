@@ -444,7 +444,21 @@ export type LogEventType =
   | "related_url_collection_add_more_clicked"
   | "related_url_collection_finished_by_user"
   | "related_url_collection_go_dashboard_clicked"
-  | "related_url_collection_go_generate_clicked";
+  | "related_url_collection_go_generate_clicked"
+  // Phase 1-24: 자동테마 후보 cross-day 중복/업데이트 분류 이벤트
+  | "theme_candidate_cross_day_check_started"
+  | "theme_candidate_cross_day_check_completed"
+  | "theme_candidate_classified_new"
+  | "theme_candidate_classified_existing_update"
+  | "theme_candidate_classified_duplicate"
+  | "theme_candidate_classified_needs_review"
+  | "theme_candidate_existing_theme_selected"
+  | "theme_candidate_existing_theme_updated"
+  | "theme_candidate_duplicate_redirected_to_existing"
+  | "theme_candidate_merged_redirected_to_canonical"
+  | "theme_candidate_split_as_new_theme"
+  | "theme_candidate_selection_blocked_with_reason"
+  | "theme_candidate_no_silent_selection_failure";
 
 export type LogStatus = "success" | "failed" | "info";
 

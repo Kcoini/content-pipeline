@@ -3,9 +3,27 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getTrendPageData, isTrendEnabled, isNaverKeySet, isDaumKeySet } from "@/lib/trends/trend-service";
+import {
+  getTrendPageData,
+  isTrendEnabled,
+  isNaverKeySet,
+  isDaumKeySet,
+  classifyThemeClustersAgainstExistingThemes,
+} from "@/lib/trends/trend-service";
 import { groupThemeClustersForDisplay, type DisplayThemeCluster } from "@/lib/trends/theme-cluster-display";
-import { runTrendCollection, selectClusterAsTheme } from "./actions";
+import {
+  THEME_CANDIDATE_CLASSIFICATION_LABEL,
+  type ThemeCandidateClassification,
+  type ThemeCandidateClassificationResult,
+} from "@/lib/trends/theme-candidate-classifier";
+import {
+  runTrendCollection,
+  selectClusterAsTheme,
+  selectCanonicalClusterForMergedCandidate,
+  splitClusterAsNewTheme,
+  dismissClusterCandidate,
+  addClusterToExistingTheme,
+} from "./actions";
 import type { TrendCandidate, ThemeCluster } from "@/lib/types/domain";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +37,22 @@ function PlatformBadge({ platform }: { platform: string }) {
   return (
     <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colorMap[platform] ?? "bg-zinc-100 text-zinc-600"}`}>
       {platform}
+    </span>
+  );
+}
+
+/** Phase 1-24: raw enum(new_theme 등)을 그대로 노출하지 않고 배지 색상 + 한국어 라벨만 표시한다. */
+const CLASSIFICATION_BADGE_CLASSES: Record<ThemeCandidateClassification, string> = {
+  new_theme: "bg-emerald-100 text-emerald-700",
+  existing_theme_update: "bg-blue-100 text-blue-700",
+  duplicate_theme: "bg-zinc-200 text-zinc-600",
+  needs_review: "bg-amber-100 text-amber-700",
+};
+
+function ClassificationBadge({ classification }: { classification: ThemeCandidateClassification }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${CLASSIFICATION_BADGE_CLASSES[classification]}`}>
+      {THEME_CANDIDATE_CLASSIFICATION_LABEL[classification]}
     </span>
   );
 }
@@ -64,8 +98,26 @@ function CandidateRow({ candidate }: { candidate: TrendCandidate }) {
 
 const MAX_VISIBLE_SUBTOPICS = 3;
 
-/** 병합된 후보 하나의 요약 정보 — "이 테마로 기사 작성 시작" 버튼은 표시하지 않는다. */
-function MergedCandidateRow({ candidate }: { candidate: ThemeCluster }) {
+/**
+ * 병합된 후보 하나의 요약 정보. "이 테마로 기사 작성 시작" 버튼은 표시하지
+ * 않지만 — Phase 1-24: 클릭했을 때 아무 반응 없이 막히는 문제(항목 8)를
+ * 고치기 위해 "왜 직접 선택할 수 없는지" 설명 + 대표 테마로 연결하는
+ * 버튼을 반드시 함께 보여준다. 대표 후보가 이미 기존 테마와 매칭됐다면
+ * "기존 테마 보기" 링크도 함께 제공한다.
+ */
+function MergedCandidateRow({
+  candidate,
+  representativeId,
+  representativeTitle,
+  representativeSelectable,
+  matchedExistingThemeId,
+}: {
+  candidate: ThemeCluster;
+  representativeId: string;
+  representativeTitle: string;
+  representativeSelectable: boolean;
+  matchedExistingThemeId: string | null;
+}) {
   return (
     <li className="rounded border border-zinc-200 bg-white px-3 py-2">
       <div className="flex items-start justify-between gap-2">
@@ -93,11 +145,50 @@ function MergedCandidateRow({ candidate }: { candidate: ThemeCluster }) {
           하위 주제: {candidate.subtopics.join(", ")}
         </p>
       )}
+      <p className="mt-2 break-keep text-xs text-zinc-500">
+        이 후보는 대표 테마 &ldquo;{representativeTitle}&rdquo;에 병합되었습니다. 같은 이슈로 판단되어 이
+        후보만 따로 선택할 수는 없습니다 — 대신 대표 테마를 선택하거나 이미 있는 기존 테마를 확인하세요.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {representativeSelectable && (
+          <form
+            action={async () => {
+              "use server";
+              const result = await selectCanonicalClusterForMergedCandidate(candidate.id, representativeId);
+              if (result.success && result.data) {
+                const { themeId } = result.data as { themeId: string };
+                redirect(`/dashboard?themeId=${themeId}`);
+              }
+            }}
+          >
+            <button
+              type="submit"
+              className="rounded border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+            >
+              대표 테마 선택
+            </button>
+          </form>
+        )}
+        {matchedExistingThemeId && (
+          <Link
+            href={`/dashboard?themeId=${matchedExistingThemeId}`}
+            className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            기존 테마 보기
+          </Link>
+        )}
+      </div>
     </li>
   );
 }
 
-function ClusterCard({ group }: { group: DisplayThemeCluster }) {
+function ClusterCard({
+  group,
+  classification,
+}: {
+  group: DisplayThemeCluster;
+  classification: ThemeCandidateClassificationResult;
+}) {
   const {
     representative,
     mergedCandidates,
@@ -114,6 +205,9 @@ function ClusterCard({ group }: { group: DisplayThemeCluster }) {
   const hasMerged = mergedCandidates.length > 0;
   const visibleSubtopics = aggregatedSubtopics.slice(0, MAX_VISIBLE_SUBTOPICS);
   const hiddenSubtopics = aggregatedSubtopics.slice(MAX_VISIBLE_SUBTOPICS);
+  const matchedThemeId = classification.matchedExistingTheme?.id ?? null;
+  const matchedThemeTitle = classification.matchedExistingTheme?.title ?? null;
+  const matchedThemeContext = classification.matchedExistingThemeContext;
 
   return (
     <div className={`rounded-lg border p-4 ${isSelected ? "border-green-300 bg-green-50" : isDismissed ? "border-zinc-200 bg-zinc-50 opacity-60" : "border-zinc-200 bg-white"}`}>
@@ -139,8 +233,9 @@ function ClusterCard({ group }: { group: DisplayThemeCluster }) {
         </p>
       )}
 
-      {/* badge: 대표 후보 / 기사 작성 가능 / 유사 후보 병합됨 */}
+      {/* badge: 상태 분류 / 대표 후보 / 기사 작성 가능 / 유사 후보 병합됨 */}
       <div className="mt-2 flex flex-wrap gap-1">
+        <ClassificationBadge classification={classification.classification} />
         <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">대표 후보</span>
         {!isSelected && !isDismissed && (
           <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">기사 작성 가능</span>
@@ -224,7 +319,14 @@ function ClusterCard({ group }: { group: DisplayThemeCluster }) {
           </summary>
           <ul className="mt-2 space-y-2">
             {mergedCandidates.map((candidate) => (
-              <MergedCandidateRow key={candidate.id} candidate={candidate} />
+              <MergedCandidateRow
+                key={candidate.id}
+                candidate={candidate}
+                representativeId={representative.id}
+                representativeTitle={representative.title}
+                representativeSelectable={!isSelected && !isDismissed}
+                matchedExistingThemeId={matchedThemeId}
+              />
             ))}
           </ul>
         </details>
@@ -248,8 +350,12 @@ function ClusterCard({ group }: { group: DisplayThemeCluster }) {
         </details>
       )}
 
-      {/* 기사 작성 시작은 대표 후보에서만 가능하다 — 병합된 후보에는 이 버튼을 두지 않는다. */}
-      {!isSelected && !isDismissed && (
+      {/* Phase 1-24: 상태 분류에 따라 primary action을 하나만 강조한다.
+          - new_theme: 기존과 같은 "이 테마로 기사 작성 시작"(=새 테마로 만들기).
+          - existing_theme_update/needs_review/duplicate_theme: 각각 전용
+            안내 카드 + 버튼을 보여준다. "선택 불가"로 끝내지 않고 항상
+            다음 행동(기존 테마 보기/자료 추가/새 테마로 분리)을 제공한다. */}
+      {!isSelected && !isDismissed && classification.classification === "new_theme" && (
         <form
           action={async () => {
             "use server";
@@ -268,6 +374,169 @@ function ClusterCard({ group }: { group: DisplayThemeCluster }) {
             이 테마로 기사 작성 시작 →
           </button>
         </form>
+      )}
+
+      {!isSelected && !isDismissed && classification.classification === "existing_theme_update" && matchedThemeId && (
+        <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+          <p className="font-medium">기존 테마 업데이트</p>
+          <p className="mt-1 break-keep">{classification.reason}</p>
+          <p className="mt-1 break-keep text-blue-700">
+            기존 테마: {matchedThemeTitle} · 출처 {matchedThemeContext?.sourceCount ?? 0}개
+            {matchedThemeContext?.hasMasterManuscript ? " · 원고 생성 완료" : ""}
+          </p>
+          <p className="mt-1 break-keep text-blue-700">
+            오늘 새 자료: 새 URL {classification.newUrlCount}개 · 중복 {classification.duplicateUrlCount}개 제외
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <form
+              action={async () => {
+                "use server";
+                await addClusterToExistingTheme(representative.id, matchedThemeId);
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-blue-400 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+              >
+                기존 테마에 추가
+              </button>
+            </form>
+            <Link
+              href={`/dashboard?themeId=${matchedThemeId}`}
+              className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+            >
+              기존 테마 보기
+            </Link>
+            <form
+              action={async () => {
+                "use server";
+                const result = await splitClusterAsNewTheme(representative.id);
+                if (result.success && result.data) {
+                  const { themeId } = result.data as { themeId: string };
+                  redirect(`/dashboard?themeId=${themeId}`);
+                }
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                새 하위 주제로 분리
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {!isSelected && !isDismissed && classification.classification === "duplicate_theme" && matchedThemeId && (
+        <div className="mt-3 rounded border border-zinc-300 bg-zinc-50 p-3 text-xs text-zinc-700">
+          <p className="font-medium">중복 테마</p>
+          <p className="mt-1 break-keep">{classification.reason}</p>
+          <p className="mt-1 break-keep text-zinc-500">
+            기존 테마: {matchedThemeTitle} · 출처 {matchedThemeContext?.sourceCount ?? 0}개 · 최근 업데이트{" "}
+            {matchedThemeContext ? new Date(matchedThemeContext.lastUpdatedAt).toLocaleDateString("ko-KR") : ""}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Link
+              href={`/dashboard?themeId=${matchedThemeId}`}
+              className="rounded border border-zinc-400 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-100"
+            >
+              기존 테마 보기
+            </Link>
+            <form
+              action={async () => {
+                "use server";
+                await dismissClusterCandidate(representative.id);
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100"
+              >
+                다시 표시하지 않기
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {!isSelected && !isDismissed && classification.classification === "needs_review" && matchedThemeId && (
+        <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          <p className="font-medium">확인 필요</p>
+          <p className="mt-1 break-keep">{classification.reason}</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="rounded border border-amber-200 bg-white p-2">
+              <p className="font-medium text-amber-800">기존 테마</p>
+              <p className="mt-0.5 break-keep">{matchedThemeTitle}</p>
+              {classification.matchedExistingTheme?.description && (
+                <p className="mt-0.5 break-keep text-amber-700">{classification.matchedExistingTheme.description}</p>
+              )}
+            </div>
+            <div className="rounded border border-amber-200 bg-white p-2">
+              <p className="font-medium text-amber-800">오늘 후보</p>
+              <p className="mt-0.5 break-keep">{representative.title}</p>
+              {representative.description && (
+                <p className="mt-0.5 break-keep text-amber-700">{representative.description}</p>
+              )}
+            </div>
+          </div>
+          {(classification.commonKeywords.length > 0 ||
+            classification.onlyExistingKeywords.length > 0 ||
+            classification.onlyCandidateKeywords.length > 0) && (
+            <div className="mt-2 space-y-1">
+              {classification.commonKeywords.length > 0 && (
+                <p className="break-keep">공통 키워드: {classification.commonKeywords.join(", ")}</p>
+              )}
+              {classification.onlyExistingKeywords.length > 0 && (
+                <p className="break-keep">기존 테마만: {classification.onlyExistingKeywords.join(", ")}</p>
+              )}
+              {classification.onlyCandidateKeywords.length > 0 && (
+                <p className="break-keep">오늘 후보만: {classification.onlyCandidateKeywords.join(", ")}</p>
+              )}
+            </div>
+          )}
+          <p className="mt-1 break-keep">
+            새 URL {classification.newUrlCount}개 · 중복 URL {classification.duplicateUrlCount}개
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <form
+              action={async () => {
+                "use server";
+                await addClusterToExistingTheme(representative.id, matchedThemeId);
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-amber-400 bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-200"
+              >
+                기존 테마에 추가
+              </button>
+            </form>
+            <form
+              action={async () => {
+                "use server";
+                const result = await splitClusterAsNewTheme(representative.id);
+                if (result.success && result.data) {
+                  const { themeId } = result.data as { themeId: string };
+                  redirect(`/dashboard?themeId=${themeId}`);
+                }
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
+              >
+                새 테마로 만들기
+              </button>
+            </form>
+            <Link
+              href={`/dashboard?themeId=${matchedThemeId}`}
+              className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              기존 테마 보기
+            </Link>
+          </div>
+        </div>
       )}
 
       {isSelected && (
@@ -320,6 +589,12 @@ export default async function TrendsPage({
     daumCount?: string;
     naverError?: string;
     daumError?: string;
+    filter?: string;
+    updateThemeId?: string;
+    updateThemeTitle?: string;
+    updateAdded?: string;
+    updateSkipped?: string;
+    updateFailed?: string;
   }>;
 }) {
   const {
@@ -331,11 +606,55 @@ export default async function TrendsPage({
     daumCount: lastDaumCount,
     naverError,
     daumError,
+    filter: rawFilter,
+    updateThemeId,
+    updateThemeTitle,
+    updateAdded,
+    updateSkipped,
+    updateFailed,
   } = await searchParams;
   const { candidates, clusters, counts, lastCollectedAt } = await getTrendPageData();
   // 목록에는 대표 후보만 표시한다 — 유사/중복 후보는 대표 후보 카드 안의
   // "병합된 후보 보기" 접기 영역에서만 확인할 수 있다(lib/trends/theme-cluster-display.ts).
   const displayGroups = groupThemeClustersForDisplay(clusters);
+
+  // Phase 1-24: 오늘 병합된 대표 후보를 기존 테마와 비교해
+  // new_theme/existing_theme_update/duplicate_theme/needs_review로
+  // 분류한다(cross-day duplicate check). DB는 수정하지 않고 화면
+  // 표시/필터/버튼 결정에만 사용한다.
+  const classificationMap = await classifyThemeClustersAgainstExistingThemes(
+    displayGroups.map((group) => group.representative)
+  );
+  const classificationCounts = {
+    new_theme: 0,
+    existing_theme_update: 0,
+    duplicate_theme: 0,
+    needs_review: 0,
+  };
+  for (const group of displayGroups) {
+    const classification = classificationMap.get(group.representative.id)?.classification;
+    if (classification) classificationCounts[classification]++;
+  }
+
+  const validFilters: ThemeCandidateClassification[] = [
+    "new_theme",
+    "existing_theme_update",
+    "duplicate_theme",
+    "needs_review",
+  ];
+  const activeFilter: ThemeCandidateClassification | "all" = validFilters.includes(
+    rawFilter as ThemeCandidateClassification
+  )
+    ? (rawFilter as ThemeCandidateClassification)
+    : "all";
+  const filteredDisplayGroups =
+    activeFilter === "all"
+      ? displayGroups
+      : displayGroups.filter((group) => classificationMap.get(group.representative.id)?.classification === activeFilter);
+
+  const updateResultAddedCount = updateAdded ? Number(updateAdded) : null;
+  const updateResultSkippedCount = updateSkipped ? Number(updateSkipped) : null;
+  const updateResultFailedCount = updateFailed ? Number(updateFailed) : null;
 
   // 서버 컴포넌트에서 안전하게 key 설정 여부만 확인 (값 자체는 노출하지 않음)
   const mockMode = !isTrendEnabled();
@@ -405,6 +724,44 @@ export default async function TrendsPage({
           </div>
         )}
 
+        {/* Phase 1-24: "기존 테마에 추가" 실행 결과 — 추가한 뒤에도 사용자가
+            멈추지 않도록 결과 요약 + 다음 작업(기존 테마 보기/마스터 원고
+            갱신 확인/대시보드로 이동)을 항상 함께 보여준다. */}
+        {updateThemeId && updateResultAddedCount !== null && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="font-medium">기존 테마 업데이트 완료</p>
+            <p className="mt-1 break-keep">
+              &ldquo;{updateThemeTitle ?? updateThemeId}&rdquo; 테마에 새 출처 {updateResultAddedCount}개를
+              추가했습니다. 중복 URL {updateResultSkippedCount ?? 0}개는 제외했습니다.
+              {updateResultFailedCount ? ` (실패 ${updateResultFailedCount}건)` : ""}
+            </p>
+            <p className="mt-1 break-keep text-xs text-blue-700">
+              새 출처가 추가되었습니다. 기존 마스터 원고에 새 자료를 반영할지 확인하세요. 자동으로 원고나 플랫폼
+              글을 다시 만들지는 않습니다 — 아래에서 직접 선택하세요.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Link
+                href={`/dashboard?themeId=${updateThemeId}#generate-draft`}
+                className="rounded border border-blue-400 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+              >
+                마스터 원고 갱신 확인
+              </Link>
+              <Link
+                href={`/dashboard?themeId=${updateThemeId}`}
+                className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+              >
+                기존 테마 보기
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                대시보드로 이동
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* 플랫폼별 수집 결과 상태 */}
         {(naverStatus || daumStatus) && naverStatus !== "skipped" && (
           <div className="mb-4 flex flex-wrap items-center gap-4 rounded-md border border-zinc-200 bg-white px-4 py-2.5">
@@ -463,14 +820,72 @@ export default async function TrendsPage({
               공통 테마 후보{" "}
               <span className="font-normal text-zinc-500">({displayGroups.length}건, 점수 높은 순)</span>
             </h2>
+
+            {/* Phase 1-24: 자동테마 분석 결과 요약 + 상태별 필터. raw enum을
+                노출하지 않고 한국어 라벨/개수만 보여준다. */}
+            {displayGroups.length > 0 && (
+              <div className="mb-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600">
+                <p className="font-medium text-zinc-700">
+                  신규 테마 {classificationCounts.new_theme}개 · 기존 테마 업데이트{" "}
+                  {classificationCounts.existing_theme_update}개 · 중복 테마 {classificationCounts.duplicate_theme}개
+                  · 확인 필요 {classificationCounts.needs_review}개
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {(
+                    [
+                      { value: "all", label: `전체 (${displayGroups.length})` },
+                      { value: "new_theme", label: `신규 (${classificationCounts.new_theme})` },
+                      { value: "existing_theme_update", label: `기존 업데이트 (${classificationCounts.existing_theme_update})` },
+                      { value: "duplicate_theme", label: `중복 (${classificationCounts.duplicate_theme})` },
+                      { value: "needs_review", label: `확인 필요 (${classificationCounts.needs_review})` },
+                    ] as const
+                  ).map((option) => (
+                    <Link
+                      key={option.value}
+                      href={option.value === "all" ? "/trends" : `/trends?filter=${option.value}`}
+                      className={`rounded px-2 py-1 text-xs font-medium ${
+                        activeFilter === option.value
+                          ? "bg-zinc-900 text-white"
+                          : "border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100"
+                      }`}
+                    >
+                      {option.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {displayGroups.length === 0 ? (
               <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500">
                 추출된 공통 테마가 없습니다. 트렌드를 먼저 수집하세요.
               </p>
+            ) : filteredDisplayGroups.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-zinc-300 py-8 text-center text-sm text-zinc-500">
+                이 상태에 해당하는 공통 테마 후보가 없습니다.
+              </p>
             ) : (
               <div className="flex flex-col gap-3">
-                {displayGroups.map((group) => (
-                  <ClusterCard key={group.representative.id} group={group} />
+                {filteredDisplayGroups.map((group) => (
+                  <ClusterCard
+                    key={group.representative.id}
+                    group={group}
+                    classification={
+                      classificationMap.get(group.representative.id) ?? {
+                        classification: "new_theme",
+                        matchedExistingTheme: null,
+                        matchedExistingThemeContext: null,
+                        newUrls: [],
+                        newUrlCount: 0,
+                        duplicateUrlCount: 0,
+                        similarityScore: null,
+                        reason: "",
+                        commonKeywords: [],
+                        onlyExistingKeywords: [],
+                        onlyCandidateKeywords: [],
+                      }
+                    }
+                  />
                 ))}
               </div>
             )}

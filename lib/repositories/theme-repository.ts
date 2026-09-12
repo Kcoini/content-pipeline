@@ -87,6 +87,39 @@ export async function getThemeById(themeId: string): Promise<Theme | undefined> 
   return data ? mapThemeRowToTheme(data) : undefined;
 }
 
+/**
+ * Phase 1-24: 테마 metadata에 필드를 병합(merge)한다 — 기존 필드는
+ * 유지하고 patch에 있는 키만 덮어쓴다. DB schema를 바꾸지 않고
+ * (themes.metadata는 이미 jsonb) cross-day 업데이트 관련 플래그
+ * (예: needsMasterManuscriptRefresh)를 저장하는 데 사용한다.
+ */
+export async function updateThemeMetadata(
+  themeId: string,
+  patch: Record<string, unknown>
+): Promise<Theme> {
+  const supabase = createServerSupabaseClient();
+
+  const existing = await getThemeById(themeId);
+  if (!existing) {
+    throw new Error(`테마를 찾을 수 없습니다: ${themeId}`);
+  }
+
+  const mergedMetadata = { ...(existing.metadata ?? {}), ...patch };
+
+  const { data, error } = await supabase
+    .from("themes")
+    .update({ metadata: mergedMetadata, updated_at: new Date().toISOString() })
+    .eq("id", themeId)
+    .select()
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error(`테마 metadata 업데이트에 실패했습니다: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapThemeRowToTheme(data);
+}
+
 /** 테마 삭제(보관 처리) — hard delete가 아니라 archived_at = now()만 설정한다. */
 export async function archiveTheme(themeId: string): Promise<Theme> {
   const supabase = createServerSupabaseClient();

@@ -534,6 +534,11 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 사용자 플랫폼 UI를 "행동 중심"으로 정리(Phase 3-22, 진행 단계 표시/상태 문구 번역/카드당 주요 버튼 하나): [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
 - 대시보드를 "작업 흐름 중심 화면"으로 재구성(Phase 3-23, 현재 상태/다음 작업 카드 확장 + 대시보드 내 플랫폼별 글 생성 섹션 신설): [`phase-3-23-dashboard-workflow-ui.md`](./phase-3-23-dashboard-workflow-ui.md)
 - 수익형 블로그 구조 강화(Phase 2-24, SEO/AEO/GEO/E-E-A-T/체류시간/모바일): [`phase-2-24-monetized-blog-structure-enhancement.md`](./phase-2-24-monetized-blog-structure-enhancement.md)
+- 자동테마 후보 cross-day 중복/업데이트 분류(Phase 1-24, 신규/기존
+  업데이트/중복/확인 필요 4가지 상태 + merged/duplicate 후보 선택 불가
+  문제 수정): [`theme-candidate-deduplication.md`](./theme-candidate-deduplication.md)
+- 기존 테마에 새 출처 추가 + 마스터 원고 갱신 권장(Phase 1-24):
+  [`automatic-theme-update-workflow.md`](./automatic-theme-update-workflow.md)
 - `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
 - "관련 기사 URL 수집" 버튼 클릭 후 결과 요약 + 다음 행동 UI 추가(Phase 3-27, 무반응 방지): [`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
 - "마스터 원고 중심" 구조 전환 1차 — 용어 정리 + 고급 옵션화(Phase 4-1): [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

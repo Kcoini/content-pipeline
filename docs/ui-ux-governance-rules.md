@@ -562,4 +562,30 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   짝지어진 표기)은 그대로 두고, 사용자 표현은 별도 매핑 함수로
   분리한다 — 한쪽을 바꾼다고 다른 쪽(문서/파일명 참조)이 깨지지
   않게 하기 위함이다.
+
+## 자동테마 후보(merged/duplicate)는 "선택 불가"로 끝내지 않는다 (Phase 1-24)
+
+`/trends`의 공통 테마 후보는 항상 4가지 상태 중 하나로 분류되어 표시된다
+(내부 값은 사용자에게 노출하지 않고 한국어 라벨만 보여준다):
+신규 테마 / 기존 테마 업데이트 / 중복 테마 / 확인 필요. 자세한 판단
+기준은 [`docs/theme-candidate-deduplication.md`](./theme-candidate-deduplication.md)를 따른다.
+
+- **병합된(merged) 후보를 클릭했을 때 아무 반응도 없거나 disabled
+  버튼만 보여주는 것을 금지한다.** 이 후보가 대표 테마로 병합된
+  이유를 문장으로 보여주고, [대표 테마 선택]/[대표 테마 보기] 같은
+  대체 행동을 반드시 함께 제공한다(`MergedCandidateRow`).
+- **중복(duplicate) 후보도 숨기지 않는다.** 왜 중복으로 판단했는지
+  보여주고, [기존 테마 보기]/[다시 표시하지 않기]를 제공한다.
+  "다시 표시하지 않기"는 soft 처리(`theme_clusters.status =
+  'dismissed'`)이며 raw 데이터를 삭제하지 않는다.
+- **확인 필요(needs_review) 후보는 사람이 판단할 수 있게 차이를
+  보여준다.** 기존 테마와 오늘 후보의 설명/공통 키워드/차이 키워드를
+  나란히 보여주고, [기존 테마에 추가]/[새 테마로 만들기]/[기존 테마
+  보기] 중에서 사용자가 직접 고르게 한다 — 자동으로 병합하거나
+  자동으로 새 테마로 만들지 않는다.
+- 카드 하나에는 상태에 맞는 primary action **하나만** 강조한다(나머지는
+  보조 버튼).
+- 같은 제목의 테마가 여러 개 보일 수 있는 화면(테마 목록, 자동테마
+  결과)에서는 항상 출처 수/상태/최근 갱신일 같은 구분 정보를 함께
+  보여준다 — 제목만으로 구분하게 하지 않는다.
 - 실제 적용 사례: [`docs/phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md), [`docs/phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md)(마스터 원고를 구조화된 platformBrief로 계산 — AI를 다시 호출하지 않는 결정적 계산이라는 점이 특히 이 원칙과 관련 있다), [`docs/phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)(플랫폼 하나를 추가할 때 exhaustive `Record`/`switch`를 그대로 따라가며 채우는 방법), [`docs/phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)(마스터 원고 구조화 데이터를 처음으로 화면에 노출하면서도 개수 요약 + 펼치기로만 보여준 사례), [`docs/master-manuscript-generation-strategy.md`](./master-manuscript-generation-strategy.md)(사실과 해석을 분리하고, 확인 필요 사항을 확인된 사실과 절대 섞지 않는 구조 — "확인되지 않은 내용을 단정하지 않는다" 원칙을 데이터 구조 수준에서 강제한 사례).
