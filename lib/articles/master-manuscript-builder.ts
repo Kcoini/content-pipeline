@@ -320,12 +320,28 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
   const targetKeyword = article.targetKeyword ?? null;
   const keywords = [targetKeyword, ...article.secondaryKeywords].filter((k): k is string => Boolean(k));
 
+  const factInterpretationSplit = buildFactInterpretationSplit(verifiedFacts);
+
   const platformBriefs: MasterManuscriptPlatformBriefs = {
     newsArticle: {
       angle: "사실 전달 · 중립적 설명",
       leadPoints: supportingMessages,
       factsToUse: verifiedFacts.map((f) => f.fact),
       avoid: [...CAREFUL_EXPRESSIONS],
+    },
+    // Phase 4-5: 칼럼은 "사실 전달"이 아니라 "관점 전달"이 목적이므로
+    // factsToUse 대신 mainMessage/issues/readerMeaning을 채운다.
+    // factInterpretationSplit을 그대로 재사용해 "이 재료는 확인된 사실,
+    // 이건 해석"이 프롬프트 단계에서부터 구분되게 한다.
+    opinionColumn: {
+      mainMessage: article.title,
+      issues: supportingMessages,
+      readerMeaning: `"${article.title}"이 독자에게 어떤 의미인지, 왜 지금 생각해봐야 하는지를 중심으로 쓴다.`,
+      factInterpretationSplit,
+      limitations: [
+        ...verificationNeeded,
+        "이 칼럼은 특정 관점을 담은 의견형 글이며, 다른 해석이 있을 수 있다.",
+      ],
     },
     wordpressBlog: {
       seoKeywords: keywords,
@@ -374,7 +390,7 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
     },
     sourceSummaries,
     verifiedFacts,
-    factInterpretationSplit: buildFactInterpretationSplit(verifiedFacts),
+    factInterpretationSplit,
     mainMessage,
     supportingMessages,
     background,
@@ -420,6 +436,7 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
 /** 플랫폼(SocialPlatform) → platformBriefs의 어느 필드를 쓸지 매핑한다. */
 const BRIEF_KEY_BY_PLATFORM: Record<SocialPlatform, keyof MasterManuscriptPlatformBriefs> = {
   news_article: "newsArticle",
+  opinion_column: "opinionColumn",
   wordpress_blog: "wordpressBlog",
   naver_blog: "naverBlog",
   naver_cafe: "naverCafe",

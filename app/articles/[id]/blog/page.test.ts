@@ -359,6 +359,28 @@ describe("SEO Plugin Metadata (blog 카드 내부, 정적 소스 검사)", () =>
     expect(sectionIndex).toBeGreaterThan(wordpressBlockStart);
     expect(sectionIndex).toBeLessThan(naverContentSafetyBlockStart);
   });
+
+  it("기본 화면에는 사용자 친화적 한 줄 요약만 보이고, provider/raw status/provider 변경 폼은 접힘 영역 안에 있다 (Phase 4-6)", () => {
+    const sectionStart = pageSource.indexOf("SEO 정보 반영 상태</p>");
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const detailsStart = pageSource.indexOf("<details", sectionStart);
+    expect(detailsStart).toBeGreaterThan(sectionStart);
+
+    const beforeDetails = pageSource.slice(sectionStart, detailsStart);
+    expect(beforeDetails).toContain("seoPluginWriteFriendlyLabel");
+    expect(beforeDetails).not.toContain("현재 provider");
+    expect(beforeDetails).not.toContain("SEO Plugin update status");
+    expect(beforeDetails).not.toContain('name="seoPluginProvider"');
+
+    const detailsEnd = pageSource.indexOf("</details>", detailsStart);
+    const detailsContent = pageSource.slice(detailsStart, detailsEnd);
+    expect(detailsContent).toContain("SEO 반영 상세 보기");
+    expect(detailsContent).toContain("현재 provider");
+    expect(detailsContent).toContain("SEO Plugin update status");
+    expect(detailsContent).toContain('name="seoPluginProvider"');
+    // 기능(provider 변경/반영 폼)은 삭제되지 않고 접힘 안에 그대로 있다.
+    expect(detailsContent).toContain("updateWordPressSeoPluginMetadataFromBlogPostAction");
+  });
 });
 
 describe("대표 이미지 없이 진행 (waive, blog 카드 내부, 정적 소스 검사)", () => {

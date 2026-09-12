@@ -279,3 +279,70 @@ describe("마스터 원고 정보 섹션 (정적 소스 검사, Phase 4-4)", () 
     expect(pageSource).toContain("그대로 게시되는 내용이 아닙니다");
   });
 });
+
+describe("SEO 정보 반영 상태 요약 카드 + 개발자용 상세 정보 접힘 처리 (정적 소스 검사, Phase 4-6)", () => {
+  function getSeoWriteStatusSectionSource(): string {
+    const start = pageSource.indexOf("SEO 정보 반영 상태</h2>");
+    const end = pageSource.indexOf("Phase 2-14: WordPress Final Draft Payload Review");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return pageSource.slice(start, end);
+  }
+
+  it("summarizeSeoPluginWriteStatus로 계산한 사용자 친화적 요약을 사용한다", () => {
+    expect(pageSource).toContain("summarizeSeoPluginWriteStatus");
+    expect(pageSource).toContain("seoWriteSummary");
+  });
+
+  it("기본 화면(요약 카드)에는 raw env 이름/provider/endpoint path가 노출되지 않는다", () => {
+    const section = getSeoWriteStatusSectionSource();
+    const beforeDetails = section.slice(0, section.indexOf("<details"));
+    expect(beforeDetails).not.toContain("SEO_PLUGIN_PROVIDER");
+    expect(beforeDetails).not.toContain("SEO_PLUGIN_WRITE_ENABLED");
+    expect(beforeDetails).not.toContain("WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED");
+    expect(beforeDetails).not.toContain("custom endpoint path");
+    expect(beforeDetails).not.toContain("Custom Endpoint");
+    expect(beforeDetails).not.toContain("SEO Plugin Actual Write");
+  });
+
+  it("요약 카드에는 SEO 제목/메타 설명/Focus Keyword/WordPress Draft 준비 여부가 표시된다", () => {
+    const section = getSeoWriteStatusSectionSource();
+    const beforeDetails = section.slice(0, section.indexOf("<details"));
+    expect(beforeDetails).toContain("seoWriteSummary.seoTitleReady");
+    expect(beforeDetails).toContain("seoWriteSummary.metaDescriptionReady");
+    expect(beforeDetails).toContain("seoWriteSummary.focusKeywordReady");
+    expect(beforeDetails).toContain("seoWriteSummary.wordpressDraftConnected");
+    expect(beforeDetails).toContain("다음 작업");
+  });
+
+  it("상태별 primary action(SEO 정보 생성/반영하기/확인/Draft 보기/다시 시도)이 모두 있다", () => {
+    const section = getSeoWriteStatusSectionSource();
+    expect(section).toContain("SEO 정보 생성");
+    expect(section).toContain('"write_seo"');
+    expect(section).toContain('"check_status"');
+    expect(section).toContain('"view_draft"');
+    expect(section).toContain('"retry"');
+  });
+
+  it("개발자용 상세 정보는 기본 접힘(<details>) 영역 안에서만 노출되고 기능은 삭제되지 않는다", () => {
+    const section = getSeoWriteStatusSectionSource();
+    expect(section).toContain("<details");
+    expect(section).toContain("SEO 반영 상세 보기");
+    const detailsStart = section.indexOf("<details");
+    const detailsContent = section.slice(detailsStart);
+    expect(detailsContent).toContain("SEO_PLUGIN_PROVIDER");
+    expect(detailsContent).toContain("SEO_PLUGIN_WRITE_ENABLED");
+    expect(detailsContent).toContain("WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED");
+    expect(detailsContent).toContain("custom endpoint path");
+    expect(detailsContent).toContain("Custom Endpoint (Rank Math 전용)");
+    // 기존 액션(실제 반영 테스트/custom endpoint write)은 삭제되지 않고 접힘 안에 남아 있다.
+    expect(detailsContent).toContain("writeSeoPluginMetadataToWordPressAction");
+    expect(detailsContent).toContain("writeRankMathSeoViaCustomEndpointAction");
+  });
+
+  it("반영 버튼을 누를 수 없을 때 이유를 함께 보여준다(무반응 disabled 금지)", () => {
+    const section = getSeoWriteStatusSectionSource();
+    expect(section).toContain("primaryActionDisabledReason");
+    expect(section).toContain("title={seoWriteSummary.primaryActionDisabledReason");
+  });
+});

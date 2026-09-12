@@ -156,14 +156,14 @@ describe("generateSelectedPlatformPosts (Phase 3-21)", () => {
 });
 
 describe("generateAllPlatformPosts (Phase 3-21: 고급 옵션 — 전체 플랫폼)", () => {
-  it("전체 7개 플랫폼(news_article 포함, Phase 4-3)을 대상으로 한다", async () => {
+  it("전체 8개 플랫폼(news_article, opinion_column 포함, Phase 4-3/4-5)을 대상으로 한다", async () => {
     generateSocialDraft.mockResolvedValue({ success: true, message: "완료", socialPost: { id: "p1" } });
 
     const summary = await generateAllPlatformPosts({ articleId: "article-1", toneMode: "auto_recommended" });
 
-    expect(summary.results).toHaveLength(7);
+    expect(summary.results).toHaveLength(8);
     expect(summary.results.map((r) => r.platform).sort()).toEqual(
-      ["instagram", "naver_blog", "naver_cafe", "news_article", "threads", "wordpress_blog", "x"].sort()
+      ["instagram", "naver_blog", "naver_cafe", "news_article", "opinion_column", "threads", "wordpress_blog", "x"].sort()
     );
   });
 

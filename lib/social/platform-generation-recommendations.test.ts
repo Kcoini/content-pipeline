@@ -50,6 +50,14 @@ describe("getRecommendedPlatforms (Phase 3-21: 추천 플랫폼 선택)", () => 
     expect(getRecommendedPlatforms("breaking_news")).not.toContain("news_article");
     expect(getRecommendedPlatforms("visual_checklist_tip")).not.toContain("news_article");
   });
+
+  it("opinion_column도 news_article과 마찬가지로 기본 추천에 자동 포함되지 않는다 (Phase 4-5)", () => {
+    expect(getRecommendedPlatforms()).not.toContain("opinion_column");
+    expect(getRecommendedPlatforms("economic_daily_life")).not.toContain("opinion_column");
+    expect(getRecommendedPlatforms("policy_support")).not.toContain("opinion_column");
+    expect(getRecommendedPlatforms("breaking_news")).not.toContain("opinion_column");
+    expect(getRecommendedPlatforms("visual_checklist_tip")).not.toContain("opinion_column");
+  });
 });
 
 describe("getRecommendedToneForPlatform (Phase 3-21: 플랫폼별 추천 문체)", () => {
@@ -75,6 +83,10 @@ describe("getRecommendedToneForPlatform (Phase 3-21: 플랫폼별 추천 문체)
 
   it("news_article은 informational(정보형)을 추천한다 (Phase 4-3)", () => {
     expect(getRecommendedToneForPlatform("news_article")).toBe("informational");
+  });
+
+  it("opinion_column은 persuasive(설득형)를 추천한다 (Phase 4-5)", () => {
+    expect(getRecommendedToneForPlatform("opinion_column")).toBe("persuasive");
   });
 });
 

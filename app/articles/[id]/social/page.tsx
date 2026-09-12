@@ -29,6 +29,7 @@ import {
   describeApprovalReadiness,
   describeAutoReviewNotRunYet,
 } from "@/lib/social/social-post-auto-review";
+import { getPlatformReviewCriteria } from "@/lib/social/platform-review-criteria";
 import {
   generatePlaceholderSocialPostAction,
   generateSocialDraftAction,
@@ -297,9 +298,15 @@ export default async function ArticleSocialPage({
                               ? "border-amber-200 bg-amber-50 text-amber-800"
                               : "border-green-200 bg-green-50 text-green-800";
 
+                      const reviewCriteria = getPlatformReviewCriteria(post.platform);
+
                       return (
                         <div className={`mt-2 rounded border p-2 text-[11px] ${toneClass}`}>
-                          <div className="flex flex-wrap items-center justify-between gap-1">
+                          {/* Phase 4-5: 글 유형별 기준이 섞이지 않았음을 항상 먼저 보여준다. */}
+                          <p className="text-zinc-600">
+                            글 유형: {PLATFORM_LABELS[post.platform]} · 검토 기준: {reviewCriteria.criteriaSummary}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
                             <p className="font-semibold">자동 검토 결과: {review.overallLabel}</p>
                             <span className="rounded-full bg-white/60 px-1.5 py-0.5 font-medium">
                               위험도 {describeAutoReviewRiskLevel(review.riskLevel)}

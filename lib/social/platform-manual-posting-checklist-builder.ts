@@ -39,6 +39,13 @@ function platformChecklist(platform: SocialPost["platform"]): { key: string; lab
         checklistItem("news_article_neutral_tone_check", "중립적 톤/과장 제목 여부 확인"),
         checklistItem("news_article_copy_url", "게시(배포) 후 URL 또는 위치 기록"),
       ];
+    case "opinion_column":
+      return [
+        checklistItem("opinion_column_viewpoint_check", "관점(중심 주장)이 명확한지 확인"),
+        checklistItem("opinion_column_fact_opinion_check", "사실과 의견이 구분되는지 확인"),
+        checklistItem("opinion_column_counterargument_check", "반론/한계 문단 확인"),
+        checklistItem("opinion_column_copy_url", "게시(배포) 후 URL 또는 위치 기록"),
+      ];
     case "wordpress_blog":
       return [
         checklistItem("wordpress_workflow_duplicate_check", "WordPress 자동 게시 workflow와 중복 여부 확인"),
@@ -100,6 +107,8 @@ function platformInstructions(platform: SocialPost["platform"]): string[] {
   switch (platform) {
     case "news_article":
       return ["게시/배포 전 리드문의 육하원칙과 출처 표기를 다시 확인하세요."];
+    case "opinion_column":
+      return ["게시/배포 전 사실과 의견이 뒤섞이지 않았는지, 반론/한계 문단이 있는지 다시 확인하세요."];
     case "wordpress_blog":
       return ["기존 WordPress 자동 게시 workflow가 있다면 중복 게시가 아닌지 먼저 확인하세요."];
     case "naver_blog":

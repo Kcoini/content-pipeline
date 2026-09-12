@@ -25,6 +25,12 @@ const RULES: Record<SocialPlatform, PlatformPerformanceComparisonRules> = {
     secondaryMetrics: ["impressions"],
     notes: "언론 기사는 조회수를 우선하고 댓글/공유를 함께 본다.",
   },
+  opinion_column: {
+    platform: "opinion_column",
+    primaryMetrics: ["views", "comments", "shares"],
+    secondaryMetrics: ["impressions"],
+    notes: "칼럼은 조회수를 우선하고, 댓글/공유(반응·논쟁 유발 정도)를 함께 본다.",
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     primaryMetrics: ["clicks", "views", "conversionCount", "comments"],

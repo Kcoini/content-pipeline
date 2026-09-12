@@ -27,6 +27,7 @@ export interface ManualExportResult {
 
 const MANUAL_EXPORT_FORMATS: Record<SocialPost["platform"], string> = {
   news_article: "news_article_markdown_copy",
+  opinion_column: "opinion_column_markdown_copy",
   wordpress_blog: "wordpress_markdown",
   naver_blog: "naver_blog_markdown_copy",
   naver_cafe: "naver_cafe_plain_text_copy",
@@ -57,6 +58,23 @@ export function buildManualExportPayload(post: SocialPost): ManualExportResult {
         instructions: [
           "게시/배포 전 리드문의 육하원칙과 출처 표기를 다시 확인하세요.",
           "사실과 해석(전망)이 분리되어 있는지 확인하세요.",
+        ],
+      };
+    }
+
+    case "opinion_column": {
+      if (!post.postTitle?.trim() || !post.postBody?.trim()) {
+        return { ok: false, platform: post.platform, exportFormat, error: "제목과 본문이 모두 있어야 export할 수 있습니다." };
+      }
+      return {
+        ok: true,
+        platform: post.platform,
+        exportFormat,
+        exportTitle: post.postTitle,
+        exportBody: post.postBody,
+        instructions: [
+          "게시/배포 전 관점(중심 주장)이 명확한지 다시 확인하세요.",
+          "사실과 의견이 구분되어 있는지, 반론/한계 문단이 있는지 확인하세요.",
         ],
       };
     }
@@ -217,6 +235,7 @@ export function buildExportPayload(post: SocialPost): SocialPostExportResult {
 
   switch (post.platform) {
     case "news_article":
+    case "opinion_column":
       return {
         format: config.exportFormat,
         payload: {

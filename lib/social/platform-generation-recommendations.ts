@@ -11,6 +11,7 @@ export type PlatformCostLevel = "low" | "medium" | "high";
 
 export const PLATFORM_COST_LEVELS: Record<SocialPlatform, PlatformCostLevel> = {
   news_article: "medium",
+  opinion_column: "medium",
   wordpress_blog: "high",
   naver_blog: "medium",
   naver_cafe: "low",
@@ -21,6 +22,7 @@ export const PLATFORM_COST_LEVELS: Record<SocialPlatform, PlatformCostLevel> = {
 
 export const PLATFORM_LABELS: Record<SocialPlatform, string> = {
   news_article: "언론 기사",
+  opinion_column: "칼럼",
   wordpress_blog: "WordPress 블로그",
   naver_blog: "네이버 블로그",
   naver_cafe: "네이버 카페",
@@ -31,6 +33,7 @@ export const PLATFORM_LABELS: Record<SocialPlatform, string> = {
 
 export const PLATFORM_SHORT_DESCRIPTIONS: Record<SocialPlatform, string> = {
   news_article: "스트레이트 기사·보도 기사 형식 (사실 전달, 중립적 설명, 육하원칙, 수동 export)",
+  opinion_column: "관점과 해석이 중심인 의견형 글 (근거, 반론/한계, 사실-의견 구분, 수동 export)",
   wordpress_blog: "WordPress 게시용 긴 SEO 블로그 글 (HTML 변환, SEO metadata, 대표 이미지)",
   naver_blog: "네이버 블로그용 모바일 친화 글 (자연스러운 블로그 말투, 수동 export)",
   naver_cafe: "네이버 카페용 커뮤니티 글 (plain text, 질문형/공감형, 수동 복사)",
@@ -84,6 +87,9 @@ export function getRecommendedToneForPlatform(platform: SocialPlatform): ToneSty
     case "news_article":
       // 사실 전달/중립적 설명 — 언론 기사는 항상 explanatory·informational 계열이다.
       return "informational";
+    case "opinion_column":
+      // 관점을 설득력 있게 전달하는 것이 핵심 — persuasive를 기본값으로 쓴다.
+      return "persuasive";
     case "wordpress_blog":
       return "explanatory";
     case "naver_blog":
@@ -110,6 +116,7 @@ export function getRecommendedToneForPlatform(platform: SocialPlatform): ToneSty
 /** 플랫폼별 권장 tone_style 목록(문체 수동 선택 UI에서 안내용으로 사용). */
 export const RECOMMENDED_TONE_STYLES_BY_PLATFORM: Record<SocialPlatform, ToneStyle[]> = {
   news_article: ["informational", "explanatory"],
+  opinion_column: ["persuasive", "explanatory", "comparison"],
   wordpress_blog: ["explanatory", "informational", "comparison", "warning", "loss_aversion"],
   naver_blog: ["explanatory", "informational", "comparison", "story", "persuasive"],
   naver_cafe: ["story", "curiosity", "warning"],

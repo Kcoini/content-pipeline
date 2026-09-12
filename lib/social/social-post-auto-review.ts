@@ -79,6 +79,10 @@ const AXIS_BY_KEY: Record<string, AutoReviewAxis> = {
   // Phase 4-3: news_article(언론 기사).
   news_article_lead_present: "structure",
   news_article_no_unsourced_claim: "source",
+  // Phase 4-5: opinion_column(칼럼).
+  opinion_column_viewpoint_present: "structure",
+  opinion_column_fact_opinion_distinction: "tone",
+  opinion_column_counterargument_present: "structure",
 };
 
 function resolveAxis(key: string): AutoReviewAxis {

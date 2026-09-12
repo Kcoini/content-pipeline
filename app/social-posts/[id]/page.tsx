@@ -36,6 +36,8 @@ import {
 } from "@/lib/social/social-post-platform-preview";
 import { ensureWordPressHtmlContent } from "@/lib/wordpress/markdown-to-wordpress-html";
 import { PLATFORM_WRITING_CONFIGS } from "@/lib/social/platform-writing-config";
+import { getPlatformReviewCriteria } from "@/lib/social/platform-review-criteria";
+import { detectContentTypeMismatch } from "@/lib/social/content-type-mismatch";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +140,12 @@ export default async function SocialPostDetailPage({
     hasBlockingIssues: hasBlockingChecklistIssues,
   });
   const primaryAction = getSocialPostWorkspacePrimaryAction(p.qualityStatus, p.approvalStatus, review);
+
+  // Phase 4-5: 글 유형별 생성·검토 기준 분리 — 자동 검토 결과에 "이 글이
+  // 어떤 유형/기준으로 검토됐는지"를 항상 먼저 보여주고, 본문 형태가
+  // 설정된 글 유형과 맞지 않아 보이면 "글 유형 확인 필요"로 안내한다.
+  const reviewCriteria = getPlatformReviewCriteria(p.platform);
+  const contentTypeMismatch = detectContentTypeMismatch(p.platform, p.postBody);
 
   // Phase 3-21: capability/readiness는 순수 계산(환경변수 존재 여부만 확인)이라 렌더링 중 호출해도 안전하다 — DB를 바꾸지 않는다.
   const apiCapability = getPlatformApiCapability(p.platform);
@@ -356,6 +364,32 @@ export default async function SocialPostDetailPage({
                 [본문 위치 보기] 액션 링크를 붙여 수정 흐름과 연결한다. */}
             <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-zinc-700">자동 검토 결과</h2>
+
+              {/* Phase 4-5: 글 유형(platform)과 본문 형태가 서로 다른
+                  기준을 요구하는 조합으로 보이면(예: news_article인데
+                  칼럼형 본문), 자동 검토 점수와 별개로 항상 안내한다 —
+                  "선택 불가"로 끝내지 않고 보완 방향과 수정 탭 링크를
+                  함께 제공한다. */}
+              {contentTypeMismatch.mismatched && (
+                <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="font-medium">글 유형 확인 필요</p>
+                  <p className="mt-1 break-keep">{contentTypeMismatch.message}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Link
+                      href={`${buildTabHref(p.id, "edit", returnTo)}#edit-panel`}
+                      className="rounded border border-amber-400 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                    >
+                      본문 수정하기
+                    </Link>
+                    {contentTypeMismatch.suggestedPlatform && (
+                      <span className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-700">
+                        참고: {PLATFORM_LABELS[contentTypeMismatch.suggestedPlatform]} 기준에 더 가까워 보입니다
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {!hasRunReview ? (
                 <div className="mt-2 flex flex-col gap-2">
                   <p className="text-xs text-zinc-500">{describeAutoReviewNotRunYet(p.qualityStatus)}</p>
@@ -384,7 +418,15 @@ export default async function SocialPostDetailPage({
 
                   return (
                     <div className={`mt-2 rounded border p-3 text-xs ${toneClass}`}>
-                      <div className="flex flex-wrap items-center justify-between gap-1">
+                      {/* Phase 4-5: 글 유형/적용 기준을 항상 먼저 보여준다 —
+                          기사 본문에 블로그 기준(FAQ/체크리스트 등)이
+                          잘못 적용되지 않았음을 사용자가 확인할 수 있게 한다. */}
+                      <p className="font-medium">글 유형: {PLATFORM_LABELS[p.platform]}</p>
+                      <p className="mt-0.5">
+                        검토 기준: {reviewCriteria.criteriaSummary}을(를) 중심으로 검토했습니다.
+                      </p>
+                      {reviewCriteria.notEnforced && <p className="mt-0.5">주의: {reviewCriteria.notEnforced}</p>}
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-1">
                         <p className="font-semibold">{review.overallLabel}</p>
                         <span className="rounded-full bg-white/60 px-1.5 py-0.5 text-[11px] font-medium">
                           위험도 {describeAutoReviewRiskLevel(review.riskLevel)}

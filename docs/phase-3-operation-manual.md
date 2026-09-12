@@ -539,6 +539,10 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
   문제 수정): [`theme-candidate-deduplication.md`](./theme-candidate-deduplication.md)
 - 기존 테마에 새 출처 추가 + 마스터 원고 갱신 권장(Phase 1-24):
   [`automatic-theme-update-workflow.md`](./automatic-theme-update-workflow.md)
+- 글 유형별(news_article/opinion_column/wordpress_blog 등) 생성·검토
+  기준 분리(Phase 4-5): [`phase-4-5-content-type-review-separation.md`](./phase-4-5-content-type-review-separation.md)
+- SEO Plugin Actual Write/Custom Endpoint 등 개발자·운영자용 정보를
+  기본 글쓰기 화면에서 숨김 처리(Phase 4-6): [`phase-4-6-developer-info-hiding.md`](./phase-4-6-developer-info-hiding.md)
 - `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
 - "관련 기사 URL 수집" 버튼 클릭 후 결과 요약 + 다음 행동 UI 추가(Phase 3-27, 무반응 방지): [`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
 - "마스터 원고 중심" 구조 전환 1차 — 용어 정리 + 고급 옵션화(Phase 4-1): [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

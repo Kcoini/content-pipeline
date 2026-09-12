@@ -589,3 +589,49 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   결과)에서는 항상 출처 수/상태/최근 갱신일 같은 구분 정보를 함께
   보여준다 — 제목만으로 구분하게 하지 않는다.
 - 실제 적용 사례: [`docs/phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md), [`docs/phase-4-2-platform-brief-structuring.md`](./phase-4-2-platform-brief-structuring.md)(마스터 원고를 구조화된 platformBrief로 계산 — AI를 다시 호출하지 않는 결정적 계산이라는 점이 특히 이 원칙과 관련 있다), [`docs/phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)(플랫폼 하나를 추가할 때 exhaustive `Record`/`switch`를 그대로 따라가며 채우는 방법), [`docs/phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)(마스터 원고 구조화 데이터를 처음으로 화면에 노출하면서도 개수 요약 + 펼치기로만 보여준 사례), [`docs/master-manuscript-generation-strategy.md`](./master-manuscript-generation-strategy.md)(사실과 해석을 분리하고, 확인 필요 사항을 확인된 사실과 절대 섞지 않는 구조 — "확인되지 않은 내용을 단정하지 않는다" 원칙을 데이터 구조 수준에서 강제한 사례).
+
+## 글 유형(platform/contentType)별로 다른 검토 기준을 적용한다 (Phase 4-5)
+
+하나의 기준으로 모든 글을 평가하지 않는다. 자동 검토(quality gate,
+`lib/social/social-quality-gate.ts`)는 이미 `switch (platform)`로 완전히
+분리되어 있고, 마스터 원고(원고) 레벨도 `ArticleMode`별 별도 eval
+기준 파일을 쓴다 — 새 플랫폼/모드를 추가할 때도 이 분리를 깨지 않는다.
+
+- **기사 본문(news_article)에는 FAQ, 체크리스트, 광고 배치 기준을
+  강제하지 않는다** — 그 기준은 wordpress_blog 전용이다.
+- **칼럼(opinion_column)에는 중립적 사실 전달 기준(리드문/육하원칙)만
+  으로 평가하지 않는다** — 관점/사실-의견 구분/반론·한계를 본다.
+- **블로그 글(wordpress_blog)에는 기사 기준(리드문/육하원칙)만 보고
+  통과 처리하지 않는다** — SEO 구조/요약 박스/FAQ/체크리스트를 본다.
+- 자동 검토 리포트에는 **글 유형과 적용된 검토 기준을 항상 먼저**
+  보여준다(`getPlatformReviewCriteria`, "글 유형: OO · 검토 기준: ...").
+  raw enum(`opinion_column` 등)을 그대로 노출하지 않고 `PLATFORM_LABELS`
+  한국어 라벨만 쓴다.
+- 글 유형과 실제 본문 형태가 서로 다른 기준을 요구하는 조합으로 보이면
+  (예: news_article로 설정했는데 본문이 칼럼형 해설문) "글 유형 확인
+  필요"로 표시하고, 무반응으로 끝내지 않고 수정 탭 등 다음 행동을
+  제공한다(`detectContentTypeMismatch`). 불확실한 경우까지 매번
+  경고하지 않는다 — 정반대 기준을 요구하는 조합만 다룬다.
+- 자동 검토는 최종 승인을 대체하지 않는다 — 새 플랫폼(opinion_column
+  등)을 추가해도 이 원칙과 자동 public publish 금지 원칙은 그대로다.
+- 실제 적용 사례: [`docs/phase-4-5-content-type-review-separation.md`](./phase-4-5-content-type-review-separation.md).
+
+## 개발자·운영자용 정보는 기본 글쓰기 UI에 노출하지 않는다 (Phase 4-6)
+
+기능은 유지하되, 일반 사용자가 글을 작성·검토·승인하는 기본 화면에는
+"준비됐는지 / 반영됐는지 / 다음에 무엇을 할지"만 보여준다.
+
+- raw env 이름(`SEO_PLUGIN_PROVIDER`, `WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED`
+  등), provider enum, endpoint path, internal id, raw DB status, raw
+  payload/JSON은 기본 화면에 그대로 노출하지 않는다.
+- "SEO Plugin Actual Write", "Custom Endpoint" 같은 개발자용 기능
+  이름은 영어 그대로 기본 화면 제목으로 쓰지 않는다 — "SEO 정보 반영
+  상태"처럼 사용자 친화적 표현으로 바꾸고, 원래 이름/raw 값은 "SEO
+  반영 상세 보기"/"내부 상태값 보기"/"고급 설정 보기" 같은 `<details>`
+  (기본 닫힘) 안에서만 보여준다.
+- 상태 카드 하나에는 primary action **하나만** 강조한다(상태별로
+  [SEO 정보 생성]/[SEO 정보 반영하기]/[반영 상태 확인]/[WordPress
+  Draft 보기]/[다시 시도] 중 하나).
+- 기능 자체(actual write/custom endpoint 등)는 절대 삭제하지 않는다 —
+  화면 배치만 "요약 먼저, 상세는 접어서"로 바꾼다.
+- 실제 적용 사례: [`docs/phase-4-6-developer-info-hiding.md`](./phase-4-6-developer-info-hiding.md).

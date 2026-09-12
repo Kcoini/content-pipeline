@@ -40,6 +40,17 @@ const CAFE_PROMOTIONAL_PATTERNS = ["홍보합니다", "판매합니다", "문의
 /** news_article(언론 기사)에서 경계하는 출처 없는 단정적 전망 표현. */
 const NEWS_ARTICLE_ABSOLUTE_PREDICTION_PATTERNS = ["반드시 ~할 것이다", "틀림없이", "무조건 오른다", "무조건 내린다", "확실시된다"];
 
+// Phase 4-5: opinion_column(칼럼) 전용 검사 패턴. news_article과 정반대로
+// "중립적 사실 전달"이 아니라 "관점이 명확하고, 사실과 의견이 구분되며,
+// 반론/한계가 있는가"를 본다 — rule-based 한계상 정교한 의미 분석 대신
+// 최소한의 형식적 신호(마커 단어 존재 여부)만 확인한다.
+/** 글쓴이의 관점/주장이 드러나는 표현. 하나도 없으면 "칼럼형 글임이 드러나지 않음"으로 본다. */
+const OPINION_COLUMN_VIEWPOINT_MARKERS = ["필자는", "나는", "생각한다", "본다", "봐야 한다", "주장한다", "판단된다", "결론적으로"];
+/** 사실과 의견/해석을 구분하는 표현. */
+const OPINION_COLUMN_FACT_OPINION_MARKERS = ["사실은", "이는 사실이지만", "이는 개인적인", "필자의 의견", "해석이다", "이는 해석", "사실과 별개로"];
+/** 반론/한계를 인정하는 표현. */
+const OPINION_COLUMN_COUNTERARGUMENT_MARKERS = ["반론", "한계", "다른 시각", "다만", "물론", "비판적 시각", "다른 의견"];
+
 // Phase 3-20: naver_cafe는 plain text 커뮤니티 글이어야 한다 — 아래
 // 기준은 lib/social/naver-cafe-plain-text-sanitizer.ts가 저장/표시/export
 // 시점에 실제로 정리하는 대상과 동일한 패턴이다(정리되지 않은 원본이
@@ -649,6 +660,45 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
             unsourcedClaimFound.length > 0
               ? `단정적 전망 표현이 발견되었습니다: ${unsourcedClaimFound.join(", ")} — 출처 기반 사실과 전망을 분리했는지 확인하세요.`
               : "단정적 전망 표현이 발견되지 않았습니다."
+          )
+        );
+        break;
+      }
+
+      case "opinion_column": {
+        const hasViewpoint = OPINION_COLUMN_VIEWPOINT_MARKERS.some((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "opinion_column_viewpoint_present",
+            "관점(중심 주장) 존재",
+            hasViewpoint ? "pass" : "fail",
+            hasViewpoint
+              ? "글쓴이의 관점/주장이 드러나는 표현이 있습니다."
+              : "관점/주장이 드러나는 표현이 보이지 않습니다 — 칼럼형 글임을 명확히 표시하세요."
+          )
+        );
+
+        const hasFactOpinionDistinction = OPINION_COLUMN_FACT_OPINION_MARKERS.some((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "opinion_column_fact_opinion_distinction",
+            "사실과 의견 구분",
+            hasFactOpinionDistinction ? "pass" : "warning",
+            hasFactOpinionDistinction
+              ? "사실과 의견/해석을 구분하는 표현이 있습니다."
+              : "사실과 의견을 구분하는 표현이 뚜렷하지 않습니다 — 어디까지가 확인된 사실이고 어디부터가 해석인지 표시하는 것을 권장합니다."
+          )
+        );
+
+        const hasCounterargument = OPINION_COLUMN_COUNTERARGUMENT_MARKERS.some((pattern) => text.includes(pattern));
+        checklist.push(
+          checklistItem(
+            "opinion_column_counterargument_present",
+            "반론/한계 존재",
+            hasCounterargument ? "pass" : "fail",
+            hasCounterargument
+              ? "반론 또는 한계를 인정하는 문단이 있습니다."
+              : "반론이나 한계를 인정하는 문단이 보이지 않습니다 — 칼럼은 반론/한계를 다뤄야 합니다."
           )
         );
         break;

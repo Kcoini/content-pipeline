@@ -87,6 +87,7 @@ import { isWordPressMediaUploadEnabled } from "@/lib/publish/wordpress-media-con
 import { isImageGenerationEnabled } from "@/lib/images/image-generation-config";
 import { getSeoPluginProvider, isSeoPluginWriteEnabled } from "@/lib/seo/seo-plugin-config";
 import { isSeoCustomEndpointEnabled, getSeoCustomEndpointPath } from "@/lib/seo/wordpress-seo-custom-endpoint-client";
+import { summarizeSeoPluginWriteStatus, type SeoWriteSummaryStatus } from "@/lib/seo/seo-plugin-status-summary";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 
 export const dynamic = "force-dynamic";
@@ -248,6 +249,15 @@ const SEO_PLUGIN_CUSTOM_ENDPOINT_STATUS_STYLE: Record<SeoPluginCustomEndpointSta
   skipped_missing_target_keyword: "bg-amber-100 text-amber-700",
   success: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
+};
+
+/** Phase 4-6: SEO 정보 반영 상태 요약 카드의 배지 색상. */
+const SEO_WRITE_SUMMARY_STATUS_STYLE: Record<SeoWriteSummaryStatus, string> = {
+  not_ready: "bg-zinc-100 text-zinc-500",
+  ready_to_write: "bg-blue-100 text-blue-700",
+  written_unconfirmed: "bg-amber-100 text-amber-700",
+  confirmed: "bg-green-100 text-green-700",
+  error: "bg-red-100 text-red-700",
 };
 
 const FINAL_DRAFT_REVIEW_STATUS_LABEL: Record<WordPressFinalDraftReviewStatus, string> = {
@@ -412,6 +422,21 @@ export default async function ArticleDetailPage({
   const hasArticleFeaturedImage = Boolean(article.featuredImageWordpressMediaId);
   const hasFocusKeyword = Boolean(article.targetKeyword && article.targetKeyword.trim());
   const seoPluginPayload = article.seoPluginPayload as unknown as Partial<SeoPluginPayload>;
+  // Phase 4-6: SEO Plugin Actual Write/Custom Endpoint 상태를 "SEO 정보
+  // 준비 → 반영 → 확인" 5단계로 요약한다. raw env/provider/endpoint 값은
+  // 이 요약에 포함하지 않는다(접힘 영역에서만 보여준다).
+  const seoWriteSummary = summarizeSeoPluginWriteStatus({
+    seoTitle: article.seoTitle,
+    metaDescription: article.metaDescription,
+    targetKeyword: article.targetKeyword,
+    hasWordPressDraft: hasWordPressSuccess,
+    actualWriteStatus: article.seoPluginActualWriteStatus,
+    actualWriteVerified: article.seoPluginActualWriteVerified,
+    actualWriteError: article.seoPluginActualWriteError,
+    customEndpointStatus: article.seoPluginCustomEndpointStatus,
+    customEndpointVerified: article.seoPluginCustomEndpointVerified,
+    customEndpointError: article.seoPluginCustomEndpointError,
+  });
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -557,7 +582,7 @@ export default async function ArticleDetailPage({
               </div>
               <div>
                 <dt className="font-medium text-zinc-600">플랫폼별 변환 재료</dt>
-                <dd className="text-zinc-700">7개 플랫폼 준비 완료</dd>
+                <dd className="text-zinc-700">{SOCIAL_PLATFORMS.length}개 플랫폼 준비 완료</dd>
               </div>
             </dl>
             {masterManuscript.verificationNeeded.length > 0 && (
@@ -882,7 +907,7 @@ export default async function ArticleDetailPage({
         </section>
 
         {/* Phase 2-4: SEO Plugin Metadata (Yoast/Rank Math/AIOSEO) */}
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+        <section id="seo-plugin-metadata" className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-zinc-700">SEO Plugin Metadata</h2>
             <div className="flex gap-1">
@@ -1769,10 +1794,105 @@ export default async function ArticleDetailPage({
           </div>
         </section>
 
-        {/* Phase 2-12: SEO Plugin Actual Metadata Test */}
+        {/*
+          Phase 2-12/2-13 + Phase 4-6: SEO Plugin Actual Write / Custom
+          Endpoint. 기능은 그대로 유지하되, 기본 화면에는 "SEO 정보가
+          준비/반영/확인됐는지"만 보여준다 — provider/env flag/endpoint
+          path 같은 개발자·운영자용 상세 정보는 아래 "SEO 반영 상세
+          보기"(기본 접힘) 안에서만 확인할 수 있다.
+        */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-zinc-700">SEO Plugin Actual Write</h2>
+            <h2 className="text-sm font-semibold text-zinc-700">SEO 정보 반영 상태</h2>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SEO_WRITE_SUMMARY_STATUS_STYLE[seoWriteSummary.status]}`}>
+              {seoWriteSummary.statusLabel}
+            </span>
+          </div>
+
+          <ul className="mt-3 grid grid-cols-1 gap-1 text-xs text-zinc-600 sm:grid-cols-2">
+            <li>SEO 제목: {seoWriteSummary.seoTitleReady ? "준비됨" : "준비 전"}</li>
+            <li>메타 설명: {seoWriteSummary.metaDescriptionReady ? "준비됨" : "준비 전"}</li>
+            <li>Focus Keyword: {seoWriteSummary.focusKeywordReady ? "준비됨" : "준비 전"}</li>
+            <li>WordPress Draft: {seoWriteSummary.wordpressDraftConnected ? "연결됨" : "아직 없음"}</li>
+          </ul>
+
+          <p className="mt-2 text-xs text-zinc-600">다음 작업: {seoWriteSummary.nextActionLabel}</p>
+
+          {seoWriteSummary.errorMessage && (
+            <p className="mt-2 text-xs text-red-600">오류: {seoWriteSummary.errorMessage}</p>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {seoWriteSummary.primaryAction === "generate_seo" && (
+              <a
+                href="#seo-plugin-metadata"
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+              >
+                SEO 정보 생성
+              </a>
+            )}
+            {seoWriteSummary.primaryAction === "write_seo" && (
+              <form action={writeSeoPluginMetadataToWordPressAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  disabled={Boolean(seoWriteSummary.primaryActionDisabledReason)}
+                  title={seoWriteSummary.primaryActionDisabledReason ?? undefined}
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {seoWriteSummary.primaryActionLabel}
+                </button>
+              </form>
+            )}
+            {seoWriteSummary.primaryAction === "check_status" && (
+              <form action={checkSeoPluginActualWriteStatusAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  {seoWriteSummary.primaryActionLabel}
+                </button>
+              </form>
+            )}
+            {seoWriteSummary.primaryAction === "view_draft" &&
+              (latestWordPressLog?.postUrl ? (
+                <Link
+                  href={latestWordPressLog.postUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  {seoWriteSummary.primaryActionLabel}
+                </Link>
+              ) : (
+                <span className="rounded border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-400">
+                  {seoWriteSummary.primaryActionLabel} (URL 없음)
+                </span>
+              ))}
+            {seoWriteSummary.primaryAction === "retry" && (
+              <form action={writeSeoPluginMetadataToWordPressAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                >
+                  {seoWriteSummary.primaryActionLabel}
+                </button>
+              </form>
+            )}
+            {seoWriteSummary.primaryActionDisabledReason && (
+              <span className="text-[11px] font-medium text-amber-700">
+                {seoWriteSummary.primaryActionDisabledReason}
+              </span>
+            )}
+          </div>
+
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-zinc-500">SEO 반영 상세 보기</summary>
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold text-zinc-700">SEO Plugin Actual Write</h3>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${SEO_PLUGIN_ACTUAL_WRITE_STATUS_STYLE[article.seoPluginActualWriteStatus]}`}
             >
@@ -1955,6 +2075,7 @@ export default async function ArticleDetailPage({
               </form>
             </div>
           </div>
+          </details>
         </section>
 
         {/* Phase 2-14: WordPress Final Draft Payload Review */}

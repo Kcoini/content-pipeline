@@ -420,6 +420,11 @@ export default async function ArticleBlogPage({
                         이 글은 언론 기사형(스트레이트 기사) 수동 게시용 글입니다.
                       </p>
                     )}
+                    {post.platform === "opinion_column" && (
+                      <p className="mt-1 rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] text-violet-800">
+                        이 글은 칼럼(의견형 글) 수동 게시용 글입니다.
+                      </p>
+                    )}
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || "(제목 없음)"}</p>
                     <p className="mt-1 text-zinc-500">{(post.excerpt || post.postBody || "").slice(0, 140) || "(본문 없음)"}{(post.excerpt || post.postBody || "").length > 140 ? "…" : ""}</p>
                     {/* Phase 3-22: raw 상태값 나열 대신 사용자 친화적 한 줄 요약 +
@@ -553,6 +558,14 @@ export default async function ArticleBlogPage({
                         const seoPluginWriteStatus = typeof seoPluginWriteRaw?.status === "string" ? seoPluginWriteRaw.status : "not_ready";
                         const seoPluginWriteUpdatedAt = typeof seoPluginWriteRaw?.updatedAt === "string" ? seoPluginWriteRaw.updatedAt : null;
                         const seoPluginWriteError = typeof seoPluginWriteRaw?.errorMessage === "string" ? seoPluginWriteRaw.errorMessage : null;
+                        // Phase 4-6: raw provider/status(enum)는 접힘 영역 안에서만 보여주고,
+                        // 기본 화면에는 사용자 친화적 한 줄 요약만 보여준다.
+                        const seoPluginWriteFriendlyLabel =
+                          seoPluginWriteStatus === "success"
+                            ? "SEO 정보가 반영되었습니다."
+                            : seoPluginWriteStatus === "failed"
+                              ? "SEO 정보 반영에 실패했습니다."
+                              : "SEO 정보가 아직 반영되지 않았습니다.";
                         const imageGeneration = readWordPressBlogImageGenerationState(post.platformMetadata);
                         const featuredImageAttached = featuredImage.attachStatus === "attached";
                         const checklistStatusInput: ManualPostingChecklistStatusInput = {
@@ -1311,55 +1324,65 @@ export default async function ArticleBlogPage({
                             {activeTab === "wordpress" && (
                               <>
                             <div className="mt-3 rounded border border-indigo-200 bg-white p-2">
-                              <p className="text-[11px] font-semibold text-indigo-900">SEO Plugin Metadata</p>
-                              <p className="mt-1 text-[10px] text-zinc-600">
-                                Rank Math/Custom Endpoint는 실제로 WordPress에 반영되고, Yoast/AIOSEO도
-                                표준 REST 경로로 반영을 시도합니다. article과 같은 WordPress post를
-                                대상으로 하지만, wordpress_blog 자신의 seoTitle/metaDescription/
-                                targetKeyword만 사용하며 결과도 이 글 기준으로 별도 표시합니다.
-                              </p>
-                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
-                                <div>
-                                  <dt className="font-medium">현재 provider</dt>
-                                  <dd>{seoPluginProvider}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">SEO Plugin update status</dt>
-                                  <dd>{seoPluginWriteStatus}</dd>
-                                </div>
-                                <div>
-                                  <dt className="font-medium">last updated at</dt>
-                                  <dd>{seoPluginWriteUpdatedAt ?? "-"}</dd>
-                                </div>
-                                {seoPluginWriteError && (
-                                  <div className="sm:col-span-2">
-                                    <dt className="font-medium text-red-700">error message</dt>
-                                    <dd className="text-red-700">{seoPluginWriteError}</dd>
+                              <p className="text-[11px] font-semibold text-indigo-900">SEO 정보 반영 상태</p>
+                              <p className="mt-1 text-[11px] text-indigo-800">{seoPluginWriteFriendlyLabel}</p>
+                              {seoPluginWriteError && (
+                                <p className="mt-1 text-[11px] text-red-700">오류: {seoPluginWriteError}</p>
+                              )}
+                              {/* Phase 4-6: provider/raw status/endpoint 값과 provider 변경 폼은
+                                  일반 글쓰기 흐름에서는 필요 없는 개발자·운영자용 설정이다 —
+                                  기능은 유지하고 기본 접힘 영역 안으로만 옮긴다. */}
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-[10px] font-medium text-zinc-500">SEO 반영 상세 보기</summary>
+                                <p className="mt-2 text-[10px] text-zinc-600">
+                                  Rank Math/Custom Endpoint는 실제로 WordPress에 반영되고, Yoast/AIOSEO도
+                                  표준 REST 경로로 반영을 시도합니다. article과 같은 WordPress post를
+                                  대상으로 하지만, wordpress_blog 자신의 seoTitle/metaDescription/
+                                  targetKeyword만 사용하며 결과도 이 글 기준으로 별도 표시합니다.
+                                </p>
+                                <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
+                                  <div>
+                                    <dt className="font-medium">현재 provider</dt>
+                                    <dd>{seoPluginProvider}</dd>
                                   </div>
-                                )}
-                              </dl>
-                              <form action={updateWordPressSeoPluginMetadataFromBlogPostAction} className="mt-2 flex flex-wrap items-end gap-2 text-[11px]">
-                                <input type="hidden" name="articleId" value={article.id} />
-                                <input type="hidden" name="socialPostId" value={post.id} />
-                                <input type="hidden" name="returnTo" value={selfReturnTo} />
-                                <label className="flex flex-col text-indigo-700">
-                                  SEO Plugin Provider
-                                  <select
-                                    name="seoPluginProvider"
-                                    defaultValue={seoPluginProvider}
-                                    className="mt-1 w-40 rounded border border-zinc-300 px-1.5 py-1"
-                                  >
-                                    {WORDPRESS_BLOG_SEO_PLUGIN_PROVIDERS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <button type="submit" className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-50">
-                                  SEO Plugin Metadata 반영
-                                </button>
-                              </form>
+                                  <div>
+                                    <dt className="font-medium">SEO Plugin update status</dt>
+                                    <dd>{seoPluginWriteStatus}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-medium">last updated at</dt>
+                                    <dd>{seoPluginWriteUpdatedAt ?? "-"}</dd>
+                                  </div>
+                                  {seoPluginWriteError && (
+                                    <div className="sm:col-span-2">
+                                      <dt className="font-medium text-red-700">error message</dt>
+                                      <dd className="text-red-700">{seoPluginWriteError}</dd>
+                                    </div>
+                                  )}
+                                </dl>
+                                <form action={updateWordPressSeoPluginMetadataFromBlogPostAction} className="mt-2 flex flex-wrap items-end gap-2 text-[11px]">
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <label className="flex flex-col text-indigo-700">
+                                    SEO Plugin Provider
+                                    <select
+                                      name="seoPluginProvider"
+                                      defaultValue={seoPluginProvider}
+                                      className="mt-1 w-40 rounded border border-zinc-300 px-1.5 py-1"
+                                    >
+                                      {WORDPRESS_BLOG_SEO_PLUGIN_PROVIDERS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <button type="submit" className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-50">
+                                    SEO Plugin Metadata 반영
+                                  </button>
+                                </form>
+                              </details>
                             </div>
 
                             {(!effectiveReady || personalInfoOverrideEligibility.suspects.length > 0) && (

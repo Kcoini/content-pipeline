@@ -182,6 +182,18 @@ badge를 붙이지 않는다).
   그대로 보여주지 않고, 한국어 상태(완료/승인됨/내보내기 완료/기록
   필요 등)로 변환해서 보여준다. 원본 문자열이 필요한 사람(개발자/
   관리자)을 위해서만 "내부 상태값 보기"에 그대로 남겨둔다.
+- **SEO Plugin Actual Write / Custom Endpoint도 같은 원칙을 따른다
+  (Phase 4-6)**: `SEO_PLUGIN_PROVIDER`/`SEO_PLUGIN_WRITE_ENABLED`/
+  `WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED`/custom endpoint path 같은 env
+  이름과 raw provider 값은 기본 화면에 두지 않는다. 기본 화면에는
+  "SEO 정보 반영 상태" 요약(SEO 제목/메타 설명/Focus Keyword 준비
+  여부, WordPress Draft 연결 여부, 반영 여부, 다음 작업, primary
+  action 1개)만 두고, provider/env flag/endpoint path/마지막 시도
+  raw 값과 "SEO plugin metadata 실제 반영 테스트"/"Rank Math custom
+  endpoint로 SEO 반영" 같은 개발자용 버튼은 "SEO 반영 상세 보기"
+  안으로 옮긴다. 기능 자체(actual write/custom endpoint)는 삭제하지
+  않는다 — `lib/seo/seo-plugin-status-summary.ts`의
+  `summarizeSeoPluginWriteStatus()`가 순수 함수로 상태만 재계산한다.
 
 ## 본문 구조(post_body) 품질 기준 (Phase 2-24)
 

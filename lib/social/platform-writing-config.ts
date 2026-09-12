@@ -50,6 +50,35 @@ export const PLATFORM_WRITING_CONFIGS: Record<SocialPlatform, PlatformWritingCon
     prohibitedPatterns: [...BASE_PROHIBITED_PATTERNS],
     qualityChecklistKeys: [...BASE_CHECKLIST_KEYS, "length_check", "news_article_lead_present", "news_article_no_unsourced_claim"],
   },
+  // Phase 4-5: 칼럼(의견형 글). news_article과 같은 장문·manual export
+  // 구조를 쓰지만, 검토 기준은 정반대다 — "중립적 사실 전달"이 아니라
+  // "관점이 명확하고, 사실과 의견이 구분되며, 반론/한계가 있는가"를 본다.
+  opinion_column: {
+    platform: "opinion_column",
+    purpose: "opinion/perspective column with clear viewpoint, evidence, and counterargument",
+    supportsTitle: true,
+    supportsBody: true,
+    supportsCaption: false,
+    supportsHashtags: false,
+    supportsThreads: false,
+    supportsImages: true,
+    requiresImage: false,
+    preferredLength: "medium",
+    exportFormat: "markdown_copy",
+    maxLength: 3500,
+    minLength: 500,
+    recommendedHashtagCount: 0,
+    requiresHumanApproval: true,
+    allowAutoPublish: false,
+    prohibitedPatterns: [...BASE_PROHIBITED_PATTERNS],
+    qualityChecklistKeys: [
+      ...BASE_CHECKLIST_KEYS,
+      "length_check",
+      "opinion_column_viewpoint_present",
+      "opinion_column_fact_opinion_distinction",
+      "opinion_column_counterargument_present",
+    ],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     purpose: "SEO/AEO/GEO/E-E-A-T problem-solving long-form blog post",
@@ -186,6 +215,7 @@ export function getPlatformWritingConfig(platform: SocialPlatform): PlatformWrit
 /** platform → `contracts/social/*.schema.json` 파일명 매핑 (Phase 3-2). */
 export const SOCIAL_OUTPUT_CONTRACT_FILENAMES: Record<SocialPlatform, string> = {
   news_article: "news-article.schema.json",
+  opinion_column: "opinion-column.schema.json",
   wordpress_blog: "wordpress-blog.schema.json",
   naver_blog: "naver-blog.schema.json",
   naver_cafe: "naver-cafe.schema.json",
@@ -197,6 +227,7 @@ export const SOCIAL_OUTPUT_CONTRACT_FILENAMES: Record<SocialPlatform, string> = 
 /** platform → `prompts/social/*.md` 파일명 매핑 (Phase 3-2). */
 export const SOCIAL_PLATFORM_PROMPT_FILENAMES: Record<SocialPlatform, string> = {
   news_article: "news-article.md",
+  opinion_column: "opinion-column.md",
   wordpress_blog: "wordpress-blog.md",
   naver_blog: "naver-blog.md",
   naver_cafe: "naver-cafe.md",

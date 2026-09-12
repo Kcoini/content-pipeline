@@ -11,6 +11,7 @@ export type ContentGroup = "original_article" | "blog" | "community" | "social" 
 export type ContentType =
   | "article"
   | "news_article"
+  | "opinion_column"
   | "wordpress_blog"
   | "naver_blog"
   | "monetized_blog"
@@ -38,7 +39,9 @@ export type ClassifyContentInput =
 export function getPlatformGroup(platform: SocialPlatform): PlatformGroup {
   switch (platform) {
     // Phase 4-3: news_article은 커뮤니티/SNS보다 블로그(장문·manual export)에 더 가깝다.
+    // Phase 4-5: opinion_column도 같은 이유로 블로그 그룹에 둔다.
     case "news_article":
+    case "opinion_column":
     case "wordpress_blog":
     case "naver_blog":
       return "blog";
@@ -102,6 +105,8 @@ export function classifyContentType(input: ClassifyContentInput): ContentType {
       switch (input.platform) {
         case "news_article":
           return "news_article";
+        case "opinion_column":
+          return "opinion_column";
         case "wordpress_blog":
           return "wordpress_blog";
         case "naver_blog":
@@ -140,6 +145,7 @@ export function getContentGroupLabel(group: ContentGroup): string {
 const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   article: "기사 원문",
   news_article: "언론 기사",
+  opinion_column: "칼럼",
   wordpress_blog: "WordPress 블로그 글",
   naver_blog: "네이버 블로그 글",
   monetized_blog: "수익형 블로그 글",
@@ -161,6 +167,7 @@ export function getContentTypeLabel(type: ContentType): string {
 
 const PLATFORM_DISPLAY_LABELS: Record<SocialPlatform, string> = {
   news_article: "News Article",
+  opinion_column: "Opinion Column",
   wordpress_blog: "WordPress Blog",
   naver_blog: "Naver Blog",
   naver_cafe: "Naver Cafe",

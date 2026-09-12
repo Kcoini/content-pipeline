@@ -715,4 +715,82 @@ describe("runSocialPostQualityGate", () => {
       expect(item?.status).toBe("pass");
     });
   });
+
+  describe("opinion_column (Phase 4-5): 칼럼(의견형 글) rule-based 검사", () => {
+    it("관점(주장) 표현이 있으면 pass한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "정책 변화, 신중해야 한다",
+        postBody: "이번 정책 변화는 신중하게 접근해야 한다고 필자는 생각한다.",
+      });
+      const item = result.checklist.find((c) => c.key === "opinion_column_viewpoint_present");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("관점 표현이 없으면 fail한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "제목",
+        postBody: "이번 정책이 발표되었다. 여러 반응이 있었다.",
+      });
+      const item = result.checklist.find((c) => c.key === "opinion_column_viewpoint_present");
+      expect(item?.status).toBe("fail");
+    });
+
+    it("사실-의견 구분 표현이 있으면 pass, 없으면 warning이다", () => {
+      const withDistinction = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "제목",
+        postBody: "필자는 이렇게 생각한다. 사실은 통계가 이렇게 나왔다는 것이고, 이는 개인적인 해석이다.",
+      });
+      expect(withDistinction.checklist.find((c) => c.key === "opinion_column_fact_opinion_distinction")?.status).toBe(
+        "pass"
+      );
+
+      const withoutDistinction = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "제목",
+        postBody: "필자는 이렇게 생각한다.",
+      });
+      expect(
+        withoutDistinction.checklist.find((c) => c.key === "opinion_column_fact_opinion_distinction")?.status
+      ).toBe("warning");
+    });
+
+    it("반론/한계 표현이 있으면 pass, 없으면 fail한다", () => {
+      const withCounter = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "제목",
+        postBody: "필자는 이렇게 생각한다. 물론 다른 시각도 있을 수 있다.",
+      });
+      expect(withCounter.checklist.find((c) => c.key === "opinion_column_counterargument_present")?.status).toBe(
+        "pass"
+      );
+
+      const withoutCounter = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "제목",
+        postBody: "필자는 이렇게 생각한다.",
+      });
+      expect(withoutCounter.checklist.find((c) => c.key === "opinion_column_counterargument_present")?.status).toBe(
+        "fail"
+      );
+    });
+
+    it("FAQ/체크리스트가 없다는 이유만으로 실패하지 않는다 (wordpress_blog 기준을 강제하지 않는다)", () => {
+      const result = runSocialPostQualityGate({
+        platform: "opinion_column",
+        toneStyle: "persuasive",
+        postTitle: "정책 변화, 신중해야 한다",
+        postBody: "필자는 이렇게 생각한다. 물론 다른 시각도 있을 수 있다.",
+      });
+      expect(result.checklist.some((c) => c.key.startsWith("wordpress_blog_"))).toBe(false);
+    });
+  });
 });

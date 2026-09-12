@@ -126,6 +126,7 @@ function formatInstagram(post: SocialPost): SocialPostPreview {
 export function formatSocialPostPreview(post: SocialPost): SocialPostPreview {
   switch (post.platform) {
     case "news_article":
+    case "opinion_column":
       return formatNewsArticle(post);
     case "wordpress_blog":
       return formatWordpressBlog(post);
@@ -165,7 +166,8 @@ export function formatExportPreview(post: SocialPost): SocialPostPreview {
   }
 
   switch (post.platform) {
-    case "news_article": {
+    case "news_article":
+    case "opinion_column": {
       return {
         platform: post.platform,
         heading: result.exportTitle ?? "(제목 없음)",

@@ -11,6 +11,7 @@ export interface PlatformRewriteStrategy {
 
 const PLATFORM_REWRITE_STRATEGIES: Record<SocialPlatform, string[]> = {
   news_article: ["리드문 명확화", "육하원칙 보강", "사실-해석 구분 강화", "출처 표기 보강", "과장 제목 완화"],
+  opinion_column: ["관점(중심 주장) 명확화", "근거 보강", "반론/한계 문단 추가", "사실-의견 구분 강화", "과도한 단정 완화"],
   wordpress_blog: [
     "title 개선",
     "excerpt 개선",

@@ -3,6 +3,7 @@
 // 파일도 외부 API를 호출하지 않는다.
 
 import { newsArticleApiPublishAdapter } from "./news-article-api-publish-adapter";
+import { opinionColumnApiPublishAdapter } from "./opinion-column-api-publish-adapter";
 import { wordpressApiPublishAdapter } from "./wordpress-api-publish-adapter";
 import { naverBlogApiPublishAdapter } from "./naver-blog-api-publish-adapter";
 import { naverCafeApiPublishAdapter } from "./naver-cafe-api-publish-adapter";
@@ -14,6 +15,7 @@ import type { SocialPlatform } from "../social-platform-types";
 
 const ADAPTERS: Record<SocialPlatform, PlatformPublishAdapter> = {
   news_article: newsArticleApiPublishAdapter,
+  opinion_column: opinionColumnApiPublishAdapter,
   wordpress_blog: wordpressApiPublishAdapter,
   naver_blog: naverBlogApiPublishAdapter,
   naver_cafe: naverCafeApiPublishAdapter,
@@ -28,6 +30,7 @@ export function getPlatformPublishAdapter(platform: SocialPlatform): PlatformPub
 
 export {
   newsArticleApiPublishAdapter,
+  opinionColumnApiPublishAdapter,
   wordpressApiPublishAdapter,
   naverBlogApiPublishAdapter,
   naverCafeApiPublishAdapter,

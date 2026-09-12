@@ -7,8 +7,14 @@
 // news_article을 추가한다. news_article은 마스터 원고 자체가 아니라
 // 마스터 원고를 바탕으로 생성되는 플랫폼별 출력물 중 하나다(사실
 // 전달/중립적 설명/육하원칙 중심의 스트레이트 기사 형식).
+//
+// Phase 4-5: 글 유형별 생성·검토 기준 분리 — 칼럼(opinion_column)을
+// news_article과 같은 패턴(장문·manual export·사람 승인 필수)으로
+// 추가한다. opinion_column은 관점/해석이 중심인 의견형 글로, 사실과
+// 의견을 구분하는지가 news_article과는 다른 핵심 검토 기준이다.
 export type SocialPlatform =
   | "news_article"
+  | "opinion_column"
   | "wordpress_blog"
   | "naver_blog"
   | "naver_cafe"
@@ -18,6 +24,7 @@ export type SocialPlatform =
 
 export const SOCIAL_PLATFORMS: readonly SocialPlatform[] = [
   "news_article",
+  "opinion_column",
   "wordpress_blog",
   "naver_blog",
   "naver_cafe",

@@ -241,3 +241,18 @@ describe("Phase 3-26: 단일 글 상세 검토·수정·승인 화면", () => {
     expect(pageSource).not.toMatch(/다음 작업<\/dt>\s*<dd[^>]*>\{p\.qualityStatus\}/);
   });
 });
+
+describe("social post detail page — 글 유형별 검토 기준 표시 + 불일치 감지 (정적 소스 검사, Phase 4-5)", () => {
+  it("자동 검토 결과에 글 유형과 적용된 검토 기준을 항상 먼저 보여준다", () => {
+    expect(pageSource).toContain("getPlatformReviewCriteria");
+    expect(pageSource).toContain("글 유형: {PLATFORM_LABELS[p.platform]}");
+    expect(pageSource).toContain("reviewCriteria.criteriaSummary");
+  });
+
+  it("글 유형과 본문 형태가 어긋나면 '글 유형 확인 필요'로 표시하고 수정 탭으로 연결한다", () => {
+    expect(pageSource).toContain("detectContentTypeMismatch");
+    expect(pageSource).toContain("글 유형 확인 필요");
+    expect(pageSource).toContain("contentTypeMismatch.mismatched");
+    expect(pageSource).toMatch(/buildTabHref\(p\.id, "edit", returnTo\)#edit-panel|buildTabHref\(p\.id, "edit", returnTo\)\}#edit-panel/);
+  });
+});

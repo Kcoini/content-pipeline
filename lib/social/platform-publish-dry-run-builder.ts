@@ -51,6 +51,29 @@ export function buildPlatformPublishDryRunPayload(post: SocialPost): PlatformPub
       return { ok: true, platform: post.platform, dryRunPayload, handoffPayload: dryRunPayload, checklist, warnings: [] };
     }
 
+    case "opinion_column": {
+      if (!post.postTitle?.trim() || !post.postBody?.trim()) {
+        return {
+          ok: false,
+          platform: post.platform,
+          dryRunPayload: {},
+          handoffPayload: {},
+          checklist: [],
+          warnings: [],
+          error: "post_title/post_body가 모두 있어야 dry-run을 생성할 수 있습니다.",
+        };
+      }
+      const checklist = [...baseFinalChecklist(), "사실과 의견이 구분되는지, 반론/한계 문단이 있는지 다시 확인하세요."];
+      const dryRunPayload = {
+        type: "opinion_column_manual_export",
+        title: post.postTitle,
+        contentPreviewLength: post.postBody.length,
+        excerpt: post.excerpt ?? null,
+        note: "칼럼은 manual export 전제입니다 — 실제 배포는 사람이 직접 진행합니다.",
+      };
+      return { ok: true, platform: post.platform, dryRunPayload, handoffPayload: dryRunPayload, checklist, warnings: [] };
+    }
+
     case "wordpress_blog": {
       if (!post.postTitle?.trim() || !post.postBody?.trim()) {
         return {

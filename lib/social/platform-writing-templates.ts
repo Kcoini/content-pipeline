@@ -32,6 +32,17 @@ export const PLATFORM_WRITING_TEMPLATES: Record<SocialPlatform, PlatformWritingT
     ],
     mockFieldHints: ["post_title", "post_body", "excerpt"],
   },
+  opinion_column: {
+    platform: "opinion_column",
+    structureGuidance: [
+      "제목 → 문제 제기 → 중심 관점 → 근거 → 해석 → 반론 또는 한계 → 결론 순서로 작성한다.",
+      "이 글이 의견형(칼럼)임이 드러나야 한다.",
+      "사실과 의견을 명확히 구분한다.",
+      "과도한 단정이나 비방 표현을 쓰지 않는다.",
+      "manual export를 전제로 한다 (자동 게시 없음).",
+    ],
+    mockFieldHints: ["post_title", "post_body", "excerpt"],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     structureGuidance: [

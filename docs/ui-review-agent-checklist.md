@@ -34,6 +34,22 @@
       (`Content Dashboard`, `A/B Test`, `Chart Overview` 같은 표현 금지)?
 - [ ] `placeholder`/`dry-run`/`handoff`/`readiness` 같은 개발자 용어가
       사용자 친화적 한국어로 바뀌었는가?
+- [ ] **글 유형별 검토 기준이 표시**되는가(자동 검토 리포트에 "글 유형:
+      OO · 검토 기준: ..."이 먼저 보이는가, `getPlatformReviewCriteria`
+      사용, Phase 4-5)?
+- [ ] **기사 본문에 블로그 기준(FAQ/체크리스트/표)을 강제하지 않는가**,
+      반대로 **블로그 글에 기사 기준(리드문/육하원칙)만으로 통과 처리하지
+      않는가**?
+- [ ] 글 유형과 본문 형태가 어긋나 보이면 "글 유형 확인 필요"로 표시하고
+      수정 탭 등 다음 행동을 제공하는가(무반응으로 끝나지 않는가,
+      `detectContentTypeMismatch`, Phase 4-5)?
+- [ ] **개발자·운영자용 정보**(raw env 이름, provider enum, endpoint
+      path, internal id, raw DB status/payload)가 기본 글쓰기 화면에
+      그대로 노출되지 않고 `<details>`(기본 접힘) 안에만 있는가
+      (Phase 4-6, `docs/phase-4-6-developer-info-hiding.md`)?
+- [ ] "SEO Plugin Actual Write"/"Custom Endpoint" 같은 개발자용 기능
+      이름 대신 "SEO 정보 반영 상태" 같은 사용자 친화적 라벨을
+      기본 화면에 쓰는가?
 
 ## 사용 방법
 
@@ -56,3 +72,4 @@
 - [`docs/wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md) — wordpress_blog 카드에 이 체크리스트를 적용한 구체적인 구조
 - [`docs/ui-audit-wordpress-blog-card.md`](./ui-audit-wordpress-blog-card.md) — 이 체크리스트로 wordpress_blog 카드를 점검한 결과 예시
 - [`docs/phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md) — 이 체크리스트를 `/social-posts/[id]`(단일 글 최종 검토·수정·승인 화면)에 적용한 사례
+- [`docs/phase-4-6-developer-info-hiding.md`](./phase-4-6-developer-info-hiding.md) — `/articles/[id]`의 SEO Plugin Actual Write/Custom Endpoint를 이 체크리스트 기준으로 점검·정리한 사례, 다른 글쓰기 페이지(`/articles/[id]/social`, `/rewrite`, `/social-posts/[id]`)는 이미 이 원칙을 따르고 있었다는 점검 결과 포함

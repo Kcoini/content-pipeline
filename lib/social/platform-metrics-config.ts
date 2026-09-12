@@ -13,6 +13,13 @@ export const PLATFORM_METRICS_CONFIGS: Record<SocialPlatform, PlatformMetricsCon
     scoreWeights: { views: 60, comments: 20, shares: 20 },
     engagementDenominatorPriority: ["impressions", "reach", "views"],
   },
+  opinion_column: {
+    platform: "opinion_column",
+    requiredMetrics: ["views"],
+    optionalMetrics: ["comments", "shares"],
+    scoreWeights: { views: 50, comments: 30, shares: 20 },
+    engagementDenominatorPriority: ["impressions", "reach", "views"],
+  },
   wordpress_blog: {
     platform: "wordpress_blog",
     requiredMetrics: ["views"],

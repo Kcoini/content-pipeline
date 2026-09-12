@@ -31,6 +31,13 @@ export function getPlatformPublishingRules(platform: SocialPlatform): Publishing
         { key: "news_article_lead_present", label: "리드문(육하원칙) 존재" },
         { key: "news_article_no_unsourced_claim", label: "출처 없는 단정 표현 없음" },
       ];
+    case "opinion_column":
+      return [
+        { key: "opinion_column_title_body_present", label: "post_title/post_body 존재" },
+        { key: "opinion_column_viewpoint_present", label: "관점(중심 주장) 존재" },
+        { key: "opinion_column_fact_opinion_distinction", label: "사실과 의견 구분" },
+        { key: "opinion_column_counterargument_present", label: "반론/한계 문단 존재" },
+      ];
     case "wordpress_blog":
       return [
         { key: "wordpress_title_body_present", label: "post_title/post_body 존재" },

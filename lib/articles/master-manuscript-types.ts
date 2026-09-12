@@ -70,6 +70,22 @@ export interface NewsArticleBrief {
   avoid: string[];
 }
 
+/**
+ * Phase 4-5: 칼럼(opinion_column)용 brief. news_article과 달리 "중립적
+ * 사실 전달"이 아니라 "관점을 뒷받침하는 재료"를 담는다 — 그래서
+ * factsToUse 대신 mainMessage(중심 관점)/issues(다룰 쟁점)/
+ * readerMeaning(독자에게 주는 의미)을 쓰고, factInterpretationSplit을
+ * 그대로 재사용해 "이 재료는 사실, 이건 해석"이 분명하게 구분되도록
+ * 한다. limitations는 칼럼에 필수인 반론/한계 문단의 재료다.
+ */
+export interface OpinionColumnBrief {
+  mainMessage: string;
+  issues: string[];
+  readerMeaning: string;
+  factInterpretationSplit: MasterManuscriptFactInterpretation[];
+  limitations: string[];
+}
+
 export interface WordPressBlogBrief {
   seoKeywords: string[];
   searchIntent: string | null;
@@ -107,6 +123,7 @@ export interface InstagramBrief {
 
 export interface MasterManuscriptPlatformBriefs {
   newsArticle: NewsArticleBrief;
+  opinionColumn: OpinionColumnBrief;
   wordpressBlog: WordPressBlogBrief;
   naverBlog: NaverBlogBrief;
   naverCafe: NaverCafeBrief;
