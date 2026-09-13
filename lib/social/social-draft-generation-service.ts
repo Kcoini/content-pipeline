@@ -21,6 +21,7 @@ import { applyToneTransform } from "./tone-transformer-rules";
 import { getPlatformWritingTemplate } from "./platform-writing-templates";
 import { generateWordPressBlogMetadata } from "./wordpress-blog-metadata-generator";
 import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 import {
   isSocialAiGenerationEnabled,
   getSocialAiMaxTokens,
@@ -562,12 +563,20 @@ export async function generateSocialDraft(
       warnings: validation.warnings,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
-    await logSocialEvent("social_draft_generation_failed", "failed", `social draft 생성 실패: ${message}`, articleId, {
+    const rawMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    // Phase 4-9: "Cannot read properties of undefined (reading 'filter')" 같은
+    // raw runtime 에러 텍스트를 사용자에게 그대로 보여주지 않는다 — 로그에는
+    // 원문을 남기고(디버깅용), 사용자에게는 복구 방법을 안내하는 문장을 준다.
+    const { userMessage, wasRawRuntimeError } = describeUnexpectedError(
+      rawMessage,
+      "글 생성 중 필요한 데이터 일부를 읽지 못했습니다. 마스터 원고 또는 플랫폼 정보가 부족할 수 있습니다. 마스터 원고를 다시 생성한 뒤 다시 시도해 주세요."
+    );
+    await logSocialEvent("social_draft_generation_failed", "failed", `social draft 생성 실패: ${rawMessage}`, articleId, {
       platform,
       toneStyle,
       aiEnabled,
+      wasRawRuntimeError,
     });
-    return { success: false, message };
+    return { success: false, message: userMessage };
   }
 }

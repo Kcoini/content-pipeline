@@ -519,6 +519,36 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 복구(un-archive) UI는 아직 없다 — DB에는 기록이 남아 있으므로
   (hard delete가 아니므로) 나중에 추가할 수 있다.
 
+## SNS/커뮤니티 글 목록 카드에서 본문 확인 + 승인/export까지 (Phase 4-14)
+
+`/articles/[id]/social` 목록 카드는 이제 게시용 본문을 카드 안에서
+최대한 보여준다(1,200자 이하는 전체, 초과하면 접기/펼치기). 자동
+검토가 통과하면 [승인] 버튼이 바로 primary로 보이고("승인 요청"
+단계 없이), 승인 완료 후에는 [복사/export 준비]가 primary가 된다.
+품질검사/승인 요청 같은 재실행용 버튼은 삭제되지 않고 "상세 상태
+보기 / 보조 작업" 접힘 안에 있다. 상세는
+[`phase-4-14-social-post-list-inline-body.md`](./phase-4-14-social-post-list-inline-body.md) 참고.
+
+## WordPress 게시 준비 화면 단순화 (Phase 4-13)
+
+wordpress_blog 카드 기본 화면은 "WordPress 게시 준비" 요약 카드
+하나로 정리되어 있다 — 현재 상태, 완료된 작업, 남은 작업, primary
+버튼 1개, secondary 버튼 0~3개를 보여준다. 품질검사/승인
+요청/승인/수동 내보내기/체크리스트 준비 같은 개별 버튼은 삭제되지
+않고 카드 안 "고급 작업 보기" 접힘 영역으로 이동했다. 상세는
+[`phase-4-13-wordpress-publish-prep-simplification.md`](./phase-4-13-wordpress-publish-prep-simplification.md) 참고.
+
+## WordPress 게시 준비 자동화 (Phase 4-10)
+
+wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
+있다 — 승인(approval_status → approved)과 WordPress Draft
+생성/업데이트/SEO/대표 이미지 반영을 한 번에 실행한다. 승인 전에만
+보이며, quality gate를 통과하지 못했거나 원본 기사가 승인되지
+않았으면 비활성화된다. 이미 승인된 글은 기존 "WordPress에
+반영하기" 버튼으로 재실행한다. 상세는
+[`phase-4-10-wordpress-auto-publishing-preparation.md`](./phase-4-10-wordpress-auto-publishing-preparation.md)와
+[`wordpress-safety-rules.md`](./wordpress-safety-rules.md) 참고.
+
 ## 관련 문서
 
 - 전체 개요: [`phase-3-final-overview.md`](./phase-3-final-overview.md)
@@ -550,6 +580,9 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 마스터 원고 생성 품질 개선 — 최상위 evidenceMap/issues/readerMeaning/
   factType, 마스터 원고 자체 자동 검토, 플랫폼 글 생성 prompt 근거
   하이라이트(Phase 4-8): [`phase-4-8-master-manuscript-evidence-quality.md`](./phase-4-8-master-manuscript-evidence-quality.md)
+- 구버전 마스터 원고를 읽을 때 발생한 "Cannot read properties of
+  undefined (reading 'filter')" 오류 수정 — 마스터 원고 정규화 +
+  raw runtime 에러 메시지 사용자 친화화(Phase 4-9): [`phase-4-9-master-manuscript-undefined-filter-fix.md`](./phase-4-9-master-manuscript-undefined-filter-fix.md)
 - `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
 - "관련 기사 URL 수집" 버튼 클릭 후 결과 요약 + 다음 행동 UI 추가(Phase 3-27, 무반응 방지): [`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
 - "마스터 원고 중심" 구조 전환 1차 — 용어 정리 + 고급 옵션화(Phase 4-1): [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

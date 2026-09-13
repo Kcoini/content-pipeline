@@ -52,10 +52,10 @@ describe("article social page pagination (정적 소스 검사, Phase 3-18)", ()
 });
 
 describe("카드 상태 요약/주요 버튼 강조 (정적 소스 검사, Phase 3-22)", () => {
-  it("raw 상태값을 그대로 나열하지 않고 getUserFacingStatus/getNextRecommendedAction을 사용한다", () => {
+  it("Phase 4-14: raw 상태값을 그대로 나열하지 않고 getUserFacingStatus/getSocialPostCardActionState를 사용한다", () => {
     expect(pageSource).toContain("getUserFacingStatus(post)");
-    expect(pageSource).toContain("getNextRecommendedAction(post)");
-    expect(pageSource).toContain("다음 작업:");
+    expect(pageSource).toContain("getSocialPostCardActionState(post)");
+    expect(pageSource).toContain("cardState.statusBadge");
   });
 
   it("raw 상태값(quality/approval/export 등)은 '상세 상태 보기' 접힘 안에만 있다", () => {
@@ -70,11 +70,10 @@ describe("카드 상태 요약/주요 버튼 강조 (정적 소스 검사, Phase
     expect(pageSource).toContain("approveSocialPostAction");
   });
 
-  it("현재 상태에 맞는 버튼 하나만 primary 스타일(bg-indigo-600)로 강조한다", () => {
-    expect(pageSource).toContain("nextAction.kind === \"quality_check\" ? primaryClass : secondaryClass");
-    expect(pageSource).toContain("nextAction.kind === \"review\" ? primaryClass : secondaryClass");
-    expect(pageSource).toContain("nextAction.kind === \"approve\" ? primaryClass : secondaryClass");
-    expect(pageSource).toContain("nextAction.kind === \"export\" ? primaryClass : secondaryClass");
+  it("Phase 4-14: 현재 상태에 맞는 primaryAction 버튼 하나만 primary 스타일(bg-indigo-600)로 강조하고, secondaryActions는 secondary 스타일이다", () => {
+    expect(pageSource).toContain("renderAction(cardState.primaryAction, primaryClass)");
+    expect(pageSource).toContain("renderAction(action, secondaryClass)");
+    expect(pageSource).toContain('const primaryClass = "rounded bg-indigo-600');
   });
 
   it("게시 준비 확인/게시 전 미리보기/수동 게시 준비/체크리스트 등 보조 작업은 접힘 영역 안으로 옮겨졌다 (Phase 3-24: 영어 버튼명도 한국어로 변경)", () => {
@@ -167,5 +166,58 @@ describe("자동 검토 리포트 (정적 소스 검사, Phase 3-25)", () => {
   it("리포트는 DB에 새로 쓰지 않고 항상 저장된 checklist로부터 다시 계산한다(quality gate 재실행 action을 그대로 재사용)", () => {
     expect(pageSource).toContain("runSocialPostQualityGateAction");
     expect(pageSource).toContain("post.qualitySummary");
+  });
+});
+
+describe("Phase 4-14: SNS/커뮤니티 글 목록 카드 본문 확장/버튼 정리 (정적 소스 검사)", () => {
+  it("ExpandableText로 게시용 본문을 카드 안에서 보여준다(getSocialPostDisplayBody 재사용)", () => {
+    expect(pageSource).toContain('from "@/components/social/expandable-text"');
+    expect(pageSource).toContain("<ExpandableText");
+    expect(pageSource).toContain("getSocialPostDisplayBody(post)");
+  });
+
+  it("게시용 본문은 자동 검토 결과보다 먼저(소스 상으로도 앞에) 표시된다", () => {
+    const bodyLabelIdx = pageSource.indexOf("게시용 본문");
+    const reviewResultIdx = pageSource.indexOf("자동 검토 결과:");
+    expect(bodyLabelIdx).toBeGreaterThan(-1);
+    expect(bodyLabelIdx).toBeLessThan(reviewResultIdx);
+  });
+
+  it("본문이 없으면 '(본문 없음)'만 보여주지 않고 이유와 다음 작업을 안내한다", () => {
+    expect(pageSource).toContain("게시용 본문이 아직 없습니다");
+    expect(pageSource).not.toContain('|| "(본문 없음)"');
+  });
+
+  it("getSocialPostCardActionState를 사용해 상태 배지 + primary action 1개 + secondary action을 렌더링한다", () => {
+    expect(pageSource).toContain('from "@/lib/social/social-post-card-action-state"');
+    expect(pageSource).toContain("getSocialPostCardActionState(post)");
+    expect(pageSource).toContain("cardState.primaryAction");
+    expect(pageSource).toContain("cardState.secondaryActions.map");
+  });
+
+  it("품질검사/승인 요청/승인/복사export 4개 버튼을 동시에 같은 수준으로 나열하지 않는다(기본 흐름에는 primary 1개만)", () => {
+    const cardActionBlockStart = pageSource.indexOf("getSocialPostCardActionState(post)");
+    const detailsStart = pageSource.indexOf("상세 상태 보기 / 보조 작업");
+    const mainFlowBlock = pageSource.slice(cardActionBlockStart, detailsStart);
+    // 기본 흐름 블록 안에는 4개 action을 무조건 나열하는 이전 패턴
+    // (nextAction.kind === "quality_check" 같은 4중 분기)이 없어야 한다.
+    expect(mainFlowBlock).not.toContain("nextAction.kind");
+  });
+
+  it("승인 요청/품질검사 재실행은 '상세 상태 보기 / 보조 작업' 접힘 영역으로 이동했다(기능 삭제 없음)", () => {
+    const detailsStart = pageSource.indexOf("상세 상태 보기 / 보조 작업");
+    const detailsEnd = pageSource.indexOf("게시 결과 기록 / Metrics 입력", detailsStart);
+    const detailsBlock = pageSource.slice(detailsStart, detailsEnd);
+    expect(detailsBlock).toContain("action={requestSocialPostApprovalAction}");
+    expect(detailsBlock).toContain("품질검사 다시 실행");
+  });
+
+  it("approved 상태에서는 승인 버튼이 기본 흐름에서 사라지고 '복사/export 준비'가 대신 primary가 된다(getSocialPostCardActionState의 approve 분기 재사용)", () => {
+    expect(pageSource).toContain('case "approve":');
+    expect(pageSource).toContain('case "prepare_export":');
+  });
+
+  it("전체 본문 보기를 위해 상세 페이지 이동을 강제하지 않는다 — ExpandableText가 카드 안에서 처리한다", () => {
+    expect(pageSource).not.toMatch(/getSocialPostDisplayBody\(post\)\.slice\(0,\s*140\)/);
   });
 });

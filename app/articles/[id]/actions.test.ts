@@ -229,6 +229,18 @@ describe("wordpress_blog 게시 준비 action들 (정적 소스 검사)", () => 
     expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|approvePublicPublish/);
   });
 
+  it("Phase 4-10: approveAndPrepareWordPressBlogPostForPublishingAction은 승인+게시준비 통합 함수를 호출하고 raw 런타임 에러를 사용자에게 그대로 노출하지 않는다", () => {
+    const start = actionsSource.indexOf("export async function approveAndPrepareWordPressBlogPostForPublishingAction");
+    const closingMatch = /\r?\n\}\r?\n/.exec(actionsSource.slice(start));
+    const end = closingMatch ? start + closingMatch.index + closingMatch[0].length : actionsSource.length;
+    const fnBody = actionsSource.slice(start, end);
+    expect(fnBody).toContain("approveAndPrepareWordPressBlogPostForPublishing(");
+    expect(fnBody).toContain("describeUnexpectedError(");
+    expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|approvePublicPublish/);
+    expect(fnBody).toContain("redirectToSafeTarget(");
+    expect(fnBody).toContain("buildArticleBlogUrl(articleId");
+  });
+
   it("다섯 개 action 모두 wordpress_blog 카드로 돌아가는 redirectToSafeTarget을 사용한다", () => {
     for (const fnName of [
       "updateWordPressDraftFromBlogPostAction",
@@ -236,6 +248,7 @@ describe("wordpress_blog 게시 준비 action들 (정적 소스 검사)", () => 
       "saveWordPressFeaturedImageMediaForBlogPostAction",
       "attachWordPressFeaturedImageFromBlogPostAction",
       "prepareWordPressBlogPostForPublishingAction",
+      "approveAndPrepareWordPressBlogPostForPublishingAction",
     ]) {
       const start = actionsSource.indexOf(`export async function ${fnName}`);
       const closingMatch = /\r?\n\}\r?\n/.exec(actionsSource.slice(start));

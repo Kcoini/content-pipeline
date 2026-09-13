@@ -243,6 +243,44 @@ social-post-user-facing-status.ts`) 기반의 한 줄 요약으로 바뀌었다.
 [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
 참고.
 
+## "현재 상태 + 남은 작업 + 다음 버튼 1개" 원칙 (Phase 4-13)
+
+wordpress_blog 카드 기본 화면은 여러 버튼을 나열하지 않는다. 대신
+"WordPress 게시 준비" 요약 카드 하나가 현재 상태 한 줄 요약, 완료된
+작업 배지, 남은 작업 목록, primary action 버튼 1개, secondary
+action 0~3개를 보여준다(`getWordPressPublishPrepState`,
+`lib/social/wordpress-blog-publish-prep-state.ts`). 규칙:
+
+- 완료된 작업(품질검사/승인/Draft/SEO/대표 이미지/체크리스트)은
+  버튼이 아니라 상태 배지("완료됨: ...")로만 표시한다. 특히
+  `approval_status === "approved"`면 "승인" 버튼을 기본 화면에
+  다시 보여주지 않는다.
+- `publish_guard_status`가 `blocked`/`failed`이면 "WordPress에
+  반영하기" 계열 버튼을 primary로 보여주지 않는다 — 남은 작업을
+  해결하는 버튼을 primary로 둔다.
+- 품질검사/승인 요청/승인/수동 내보내기/체크리스트 준비 같은
+  고급·재실행용 버튼은 삭제하지 않고 "고급 작업 보기" 접힘
+  영역으로 옮긴다.
+- raw status(quality_status 원문 등)는 기본 화면에 나열하지 않고
+  "단계별 상태 자세히 보기"/"상세 상태 보기" 접힘 안에만 둔다.
+- 상단 버튼과 중간 primary 버튼의 의미가 겹치면 하나로 합친다(예:
+  "승인하고 WordPress Draft 만들기"는 별도 버튼이 아니라 이 카드의
+  "승인" primary action이 재사용한다).
+- 상세는 [`phase-4-13-wordpress-publish-prep-simplification.md`](./phase-4-13-wordpress-publish-prep-simplification.md) 참고.
+
+## 승인 + Draft 생성 통합 버튼 (Phase 4-10)
+
+"승인하고 WordPress Draft 만들기" 버튼은 승인(approval_status →
+approved)과 WordPress 게시 준비(Draft/SEO/대표 이미지 반영)를 한
+클릭으로 처리한다. `post.approvalStatus !== "approved"`일 때만
+보이고(승인 후에는 기존 "WordPress에 반영하기" 버튼만 남는다),
+quality gate를 통과하지 못했거나 원본 기사가 아직 승인되지
+않았으면 비활성화된다. SEO plugin 반영이나 대표 이미지 연결처럼
+부가적인 단계가 실패해도 이 버튼은 실패로 표시하지 않고 "확인
+필요" 상태(부분 성공)로 안내한다. 상세는
+[`phase-4-10-wordpress-auto-publishing-preparation.md`](./phase-4-10-wordpress-auto-publishing-preparation.md)
+참고.
+
 ## 관련 문서
 
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 문서의 근거가 되는 프로젝트 전체 규칙

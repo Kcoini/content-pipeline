@@ -173,6 +173,29 @@ describe("generateSocialDraft", () => {
     expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "social_draft_generation_failed" }));
   });
 
+  it("사람이 쓴 도메인 에러 메시지는 그대로 사용자에게 보여준다", async () => {
+    buildSocialWritingContext.mockRejectedValue(new Error("기사를 찾을 수 없습니다"));
+    const result = await generateSocialDraft("missing", "naver_blog", "informational");
+    expect(result.message).toBe("기사를 찾을 수 없습니다");
+  });
+
+  it("Phase 4-9: raw runtime 에러(undefined.filter 등)는 사용자 친화적 메시지로 바뀌고 원문은 로그에만 남는다", async () => {
+    buildSocialWritingContext.mockRejectedValue(new TypeError("Cannot read properties of undefined (reading 'filter')"));
+
+    const result = await generateSocialDraft("article-1", "naver_cafe", "informational");
+
+    expect(result.success).toBe(false);
+    expect(result.message).not.toContain("Cannot read properties of undefined");
+    expect(result.message).toContain("마스터 원고");
+
+    const failedLogCall = logEvent.mock.calls.find(
+      (call) => (call[0] as { type: string }).type === "social_draft_generation_failed"
+    );
+    expect(failedLogCall?.[0]).toEqual(
+      expect.objectContaining({ message: expect.stringContaining("Cannot read properties of undefined") })
+    );
+  });
+
   it("logs에 full prompt/article content/API key/auth token이 저장되지 않는다", async () => {
     await generateSocialDraft("article-1", "naver_blog", "informational");
 

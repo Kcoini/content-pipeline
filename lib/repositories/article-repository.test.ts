@@ -416,9 +416,24 @@ describe("readArticleMasterManuscript (Phase 4-2, 순수 함수)", () => {
     expect(readArticleMasterManuscript({ formatMetadata: {} })).toBeNull();
   });
 
-  it("format_metadata.master_manuscript가 있으면 그대로 반환한다", () => {
-    const master = { mainMessage: "핵심 메시지" };
-    expect(readArticleMasterManuscript({ formatMetadata: { master_manuscript: master } })).toEqual(master);
+  it("format_metadata.master_manuscript가 있으면 값을 보존한다(완전한 shape이면 그대로)", () => {
+    const master = { mainMessage: "핵심 메시지" } as unknown as import("@/lib/articles/master-manuscript-types").MasterManuscript;
+    const result = readArticleMasterManuscript({ formatMetadata: { master_manuscript: master } });
+    expect(result?.mainMessage).toBe("핵심 메시지");
+  });
+
+  it("Phase 4-9: 구버전 마스터 원고(evidenceMap/issues/readerMeaning 없음)를 읽어도 정규화되어 배열 필드가 채워진다(undefined.filter 재발 방지)", () => {
+    const oldShapeMaster = { mainMessage: "핵심 메시지", verifiedFacts: [{ fact: "사실", sourceIds: ["s1"], confidence: "high" }] };
+    const result = readArticleMasterManuscript({ formatMetadata: { master_manuscript: oldShapeMaster } });
+
+    expect(result).not.toBeNull();
+    expect(() => result!.evidenceMap.filter(Boolean)).not.toThrow();
+    expect(() => result!.issues.filter(Boolean)).not.toThrow();
+    expect(() => result!.readerMeaning.filter(Boolean)).not.toThrow();
+    expect(result!.evidenceMap).toEqual([]);
+    expect(result!.issues).toEqual([]);
+    expect(result!.readerMeaning).toEqual([]);
+    expect(result!.mainMessage).toBe("핵심 메시지");
   });
 });
 

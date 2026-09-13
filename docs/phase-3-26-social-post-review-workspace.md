@@ -192,9 +192,21 @@ AI 수정 제안, "문제 아님으로 표시", 안전한 자동 정리는 이�
 - `npm run lint`: 0 오류.
 - `npm run build`: 성공.
 
+## 후속: 목록 카드에서도 본문/승인/export까지 가능하게 (Phase 4-14)
+
+이 문서가 만든 "본문 확인 → 검토 → 승인 → export" 흐름은 원래
+`/social-posts/[id]` 상세 페이지 전용이었다. Phase 4-14는 같은
+원칙(본문을 먼저 보여주고, primary action 1개만 강조)을
+`/articles/[id]/social` 목록 카드에도 적용해, 짧은 SNS/커뮤니티
+글은 상세 페이지로 이동하지 않고도 목록에서 바로 읽고 승인/export
+준비까지 끝낼 수 있게 했다. `getSocialPostDisplayBody()` 재사용
+원칙은 그대로 유지된다. 상세는
+[`phase-4-14-social-post-list-inline-body.md`](./phase-4-14-social-post-list-inline-body.md) 참고.
+
 ## 관련 문서
 
 - [`phase-3-25-auto-review-editor-workflow.md`](./phase-3-25-auto-review-editor-workflow.md)
 - [`phase-3-1-multi-platform-writing-foundation.md`](./phase-3-1-multi-platform-writing-foundation.md)
+- [`phase-4-14-social-post-list-inline-body.md`](./phase-4-14-social-post-list-inline-body.md)
 - [`ui-ux-governance-rules.md`](./ui-ux-governance-rules.md)
 - [`ui-review-agent-checklist.md`](./ui-review-agent-checklist.md)

@@ -7,6 +7,7 @@
 // 사람의 최종 승인을 절대 대체하지 않는다.
 
 import type { MasterManuscript } from "./master-manuscript-types";
+import { asArray } from "@/lib/utils/safe-array";
 
 /** 마스터 원고 생성 최소 출처 수(다른 곳의 MIN_SOURCE_COUNT와 동일한 기준). */
 const MIN_SOURCE_COUNT_FOR_MASTER_MANUSCRIPT = 3;
@@ -53,23 +54,33 @@ export function reviewMasterManuscript(master: MasterManuscript | null | undefin
     return { status: "not_created", statusLabel: STATUS_LABEL.not_created, checklist: [], failedItemLabels: [] };
   }
 
-  const hasSourceSummaries = master.sourceSummaries.length > 0;
-  const hasVerifiedFacts = master.verifiedFacts.length > 0;
-  const allFactsHaveSourceId = master.verifiedFacts.every((f) => f.sourceIds.length > 0);
-  const hasFactInterpretationSplit = master.factInterpretationSplit.length > 0;
-  const hasEvidenceMap = master.evidenceMap.length > 0;
-  const hasVerificationNeeded = master.verificationNeeded.length > 0;
-  const hasProhibitedOrCareful =
-    master.prohibitedOrCarefulExpressions.prohibited.length > 0 ||
-    master.prohibitedOrCarefulExpressions.careful.length > 0;
-  const hasPlatformBriefs = Object.keys(master.platformBriefs).length > 0;
+  // Phase 4-9: master가 정상적으로 normalizeMasterManuscript()를 거쳤다면
+  // 이미 완전한 배열/객체 shape이지만, 이 함수가 다른 경로(테스트, 향후
+  // 다른 caller)로 정규화되지 않은 값을 받을 가능성까지 방어한다 —
+  // "undefined.filter" 재발을 이 계층에서도 한 번 더 막는다.
+  const sourceSummaries = asArray(master.sourceSummaries);
+  const verifiedFacts = asArray(master.verifiedFacts);
+  const factInterpretationSplit = asArray(master.factInterpretationSplit);
+  const evidenceMap = asArray(master.evidenceMap);
+  const verificationNeeded = asArray(master.verificationNeeded);
+  const prohibited = asArray(master.prohibitedOrCarefulExpressions?.prohibited);
+  const careful = asArray(master.prohibitedOrCarefulExpressions?.careful);
+
+  const hasSourceSummaries = sourceSummaries.length > 0;
+  const hasVerifiedFacts = verifiedFacts.length > 0;
+  const allFactsHaveSourceId = verifiedFacts.every((f) => asArray(f.sourceIds).length > 0);
+  const hasFactInterpretationSplit = factInterpretationSplit.length > 0;
+  const hasEvidenceMap = evidenceMap.length > 0;
+  const hasVerificationNeeded = verificationNeeded.length > 0;
+  const hasProhibitedOrCareful = prohibited.length > 0 || careful.length > 0;
+  const hasPlatformBriefs = Object.keys(master.platformBriefs ?? {}).length > 0;
   const hasLongFormSupport = Boolean(master.longFormSupport);
   const hasOptimizationSupport = Boolean(master.optimizationSupport);
   // 출처 없는 수치 단정: factType이 "number"인데 sourceIds가 비어 있으면 위반.
-  const noUnsourcedNumberClaim = master.verifiedFacts.every((f) => f.factType !== "number" || f.sourceIds.length > 0);
+  const noUnsourcedNumberClaim = verifiedFacts.every((f) => f.factType !== "number" || asArray(f.sourceIds).length > 0);
   // 확인 필요 사항이 확인된 사실 문장 그대로 섞여 들어가지 않았는가(원문 그대로 중복 여부만 기계적으로 확인).
-  const verifiedFactTexts = new Set(master.verifiedFacts.map((f) => f.fact));
-  const verificationNeededNotLeakedIntoFacts = !master.verificationNeeded.some((v) => verifiedFactTexts.has(v));
+  const verifiedFactTexts = new Set(verifiedFacts.map((f) => f.fact));
+  const verificationNeededNotLeakedIntoFacts = !verificationNeeded.some((v) => verifiedFactTexts.has(v));
 
   const checklist: MasterManuscriptReviewChecklistItem[] = [
     checklistItem("has_source_summaries", "출처별 요약이 있는가", hasSourceSummaries),
@@ -99,7 +110,7 @@ export function reviewMasterManuscript(master: MasterManuscript | null | undefin
   const hasHardFail = checklist.some((c) => hardFailKeys.has(c.key) && !c.pass);
 
   let status: MasterManuscriptReviewStatus;
-  if (master.sourceSummaries.length < MIN_SOURCE_COUNT_FOR_MASTER_MANUSCRIPT) {
+  if (sourceSummaries.length < MIN_SOURCE_COUNT_FOR_MASTER_MANUSCRIPT) {
     status = "insufficient_sources";
   } else if (hasHardFail) {
     status = "regenerate_recommended";

@@ -18,7 +18,9 @@ import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-c
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
 import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-types";
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
-import { getUserFacingStatus, getNextRecommendedAction } from "@/lib/social/social-post-user-facing-status";
+import { getUserFacingStatus } from "@/lib/social/social-post-user-facing-status";
+import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
+import { ExpandableText } from "@/components/social/expandable-text";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
@@ -255,134 +257,197 @@ export default async function ArticleSocialPage({
                       </form>
                     </div>
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || post.caption || "(제목/캡션 없음)"}</p>
-                    <p className="mt-1 text-zinc-500">
-                      {/* Phase 3-19: naver_cafe/threads처럼 본문이 postBody에 저장되는
-                          플랫폼은 caption/threadItems/cardItems만 확인하면 본문이 있어도
-                          "(본문 없음)"으로 보인다 — getSocialPostDisplayBody가 플랫폼별
-                          지원 필드(PLATFORM_WRITING_CONFIGS)를 기준으로 올바른 필드를 고른다. */}
-                      {getSocialPostDisplayBody(post).slice(0, 140) || "(본문 없음)"}
-                    </p>
-                    {/* Phase 3-22: raw 상태값을 그대로 나열하지 않고, 사용자 친화적
-                        한 줄 요약 + "다음 작업"을 먼저 보여준다. 개발자용 원문
-                        상태값/API readiness/성과는 "상세 상태 보기" 접힘 안으로
-                        옮겼다. */}
-                    <p className="mt-1 text-xs text-zinc-600">
-                      {getUserFacingStatus(post)} · 다음 작업: <span className="font-medium">{getNextRecommendedAction(post).label}</span>
-                    </p>
+
+                    {/* Phase 4-14: 게시용 본문을 목록 카드 안에서 최대한 그대로
+                        보여준다 — 자동 검토 결과보다 먼저 표시해, 사용자가 글을
+                        먼저 읽고 판단할 수 있게 한다. 1,200자 이하면 전체 표시,
+                        초과하면 ExpandableText가 카드 안에서만 접기/펼치기를
+                        처리한다(페이지 이동/서버 action 없음). */}
+                    {(() => {
+                      const displayBody = getSocialPostDisplayBody(post);
+                      if (!displayBody) {
+                        return (
+                          <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
+                            게시용 본문이 아직 없습니다 — {describeAutoReviewNotRunYet(post.qualityStatus)} 아래
+                            &ldquo;품질검사&rdquo; 또는 &ldquo;본문 수정&rdquo;으로 먼저 본문을 준비하세요.
+                          </p>
+                        );
+                      }
+                      return (
+                        <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                          <p className="text-[10px] font-medium text-zinc-500">게시용 본문</p>
+                          <ExpandableText text={displayBody} className="mt-1 text-[12px] text-zinc-800" />
+                        </div>
+                      );
+                    })()}
 
                     {/* Phase 3-25: "사람이 모든 항목을 직접 검사"하는 대신
                         "자동 검토 리포트를 보고 최종 판단"하도록, quality
                         gate checklist(이미 저장돼 있음)를 통과/확인 필요/
                         수정 필요/차단 리포트로 다시 계산해서 보여준다. DB에
                         새로 쓰지 않는다 — 항상 현재 checklist로 다시
-                        계산한다. */}
-                    {(() => {
-                      const checklist = Array.isArray(post.qualitySummary?.checklist)
-                        ? (post.qualitySummary.checklist as unknown as { key: string; status: string; message: string }[])
-                        : null;
-                      if (post.qualityStatus === "not_checked" || !checklist) {
-                        return (
-                          <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
-                            {describeAutoReviewNotRunYet(post.qualityStatus)} 아래 &ldquo;품질검사&rdquo; 버튼으로 자동 검토를 실행하세요.
-                          </p>
-                        );
-                      }
-
-                      const review = summarizeAutoReview(checklist as never);
-                      const toneClass =
-                        review.overallStatus === "blocked"
-                          ? "border-red-200 bg-red-50 text-red-800"
-                          : review.overallStatus === "needs_fix"
-                            ? "border-orange-200 bg-orange-50 text-orange-800"
-                            : review.overallStatus === "needs_check"
-                              ? "border-amber-200 bg-amber-50 text-amber-800"
-                              : "border-green-200 bg-green-50 text-green-800";
-
-                      const reviewCriteria = getPlatformReviewCriteria(post.platform);
-
-                      return (
-                        <div className={`mt-2 rounded border p-2 text-[11px] ${toneClass}`}>
-                          {/* Phase 4-5: 글 유형별 기준이 섞이지 않았음을 항상 먼저 보여준다. */}
-                          <p className="text-zinc-600">
-                            글 유형: {PLATFORM_LABELS[post.platform]} · 검토 기준: {reviewCriteria.criteriaSummary}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
-                            <p className="font-semibold">자동 검토 결과: {review.overallLabel}</p>
-                            <span className="rounded-full bg-white/60 px-1.5 py-0.5 font-medium">
-                              위험도 {describeAutoReviewRiskLevel(review.riskLevel)}
-                            </span>
-                          </div>
-                          <p className="mt-1">
-                            통과 {review.counts.passed}개 · 확인 필요 {review.counts.needsCheck}개 · 수정 필요{" "}
-                            {review.counts.needsFix}개 · 차단 {review.counts.blocked}개
-                          </p>
-                          <p className="mt-1">{describeApprovalReadiness(review)}</p>
-                          {review.issues.length > 0 && (
-                            <ul className="mt-1.5 flex flex-col gap-0.5">
-                              {review.issues.slice(0, 5).map((issue) => (
-                                <li key={issue.key}>
-                                  · [{issue.axisLabel}] {issue.message}
-                                </li>
-                              ))}
-                              {review.issues.length > 5 && <li>· 그 외 {review.issues.length - 5}건 (상세 상태 보기 참고)</li>}
-                            </ul>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-                      <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
-                        상세 보기 →
-                      </a>
-                      <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
-                        기사 개요 →
-                      </a>
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        계산한다. Phase 4-14: 본문보다 먼저 보이지 않도록
+                        본문 블록 다음으로 옮겼다. */}
+                    <div id={buildAnchorId("social-post-review", post.id)}>
                       {(() => {
-                        const nextAction = getNextRecommendedAction(post);
-                        const primaryClass = "rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500";
-                        const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+                        const checklist = Array.isArray(post.qualitySummary?.checklist)
+                          ? (post.qualitySummary.checklist as unknown as { key: string; status: string; message: string }[])
+                          : null;
+                        if (post.qualityStatus === "not_checked" || !checklist) {
+                          return (
+                            <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
+                              {describeAutoReviewNotRunYet(post.qualityStatus)} 아래 &ldquo;품질검사&rdquo; 버튼으로 자동 검토를 실행하세요.
+                            </p>
+                          );
+                        }
+
+                        const review = summarizeAutoReview(checklist as never);
+                        const toneClass =
+                          review.overallStatus === "blocked"
+                            ? "border-red-200 bg-red-50 text-red-800"
+                            : review.overallStatus === "needs_fix"
+                              ? "border-orange-200 bg-orange-50 text-orange-800"
+                              : review.overallStatus === "needs_check"
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : "border-green-200 bg-green-50 text-green-800";
+
+                        const reviewCriteria = getPlatformReviewCriteria(post.platform);
+
                         return (
-                          <>
-                            <form action={runSocialPostQualityGateAction}>
-                              <input type="hidden" name="articleId" value={article.id} />
-                              <input type="hidden" name="socialPostId" value={post.id} />
-                              <input type="hidden" name="returnTo" value={selfReturnTo} />
-                              <button type="submit" className={nextAction.kind === "quality_check" ? primaryClass : secondaryClass}>
-                                품질검사
-                              </button>
-                            </form>
-                            <form action={requestSocialPostApprovalAction}>
-                              <input type="hidden" name="articleId" value={article.id} />
-                              <input type="hidden" name="socialPostId" value={post.id} />
-                              <input type="hidden" name="returnTo" value={selfReturnTo} />
-                              <button type="submit" className={nextAction.kind === "review" ? primaryClass : secondaryClass}>
-                                승인 요청
-                              </button>
-                            </form>
-                            <form action={approveSocialPostAction}>
-                              <input type="hidden" name="articleId" value={article.id} />
-                              <input type="hidden" name="socialPostId" value={post.id} />
-                              <input type="hidden" name="returnTo" value={selfReturnTo} />
-                              <button type="submit" className={nextAction.kind === "approve" ? primaryClass : secondaryClass}>
-                                승인
-                              </button>
-                            </form>
-                            <form action={generateManualExportAction}>
-                              <input type="hidden" name="articleId" value={article.id} />
-                              <input type="hidden" name="socialPostId" value={post.id} />
-                              <input type="hidden" name="returnTo" value={selfReturnTo} />
-                              <button type="submit" className={nextAction.kind === "export" ? primaryClass : secondaryClass}>
-                                복사/export 준비
-                              </button>
-                            </form>
-                          </>
+                          <div className={`mt-2 rounded border p-2 text-[11px] ${toneClass}`}>
+                            {/* Phase 4-5: 글 유형별 기준이 섞이지 않았음을 항상 먼저 보여준다. */}
+                            <p className="text-zinc-600">
+                              글 유형: {PLATFORM_LABELS[post.platform]} · 검토 기준: {reviewCriteria.criteriaSummary}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
+                              <p className="font-semibold">자동 검토 결과: {review.overallLabel}</p>
+                              <span className="rounded-full bg-white/60 px-1.5 py-0.5 font-medium">
+                                위험도 {describeAutoReviewRiskLevel(review.riskLevel)}
+                              </span>
+                            </div>
+                            <p className="mt-1">
+                              통과 {review.counts.passed}개 · 확인 필요 {review.counts.needsCheck}개 · 수정 필요{" "}
+                              {review.counts.needsFix}개 · 차단 {review.counts.blocked}개
+                            </p>
+                            <p className="mt-1">{describeApprovalReadiness(review)}</p>
+                            {review.issues.length > 0 && (
+                              <ul className="mt-1.5 flex flex-col gap-0.5">
+                                {review.issues.slice(0, 5).map((issue) => (
+                                  <li key={issue.key}>
+                                    · [{issue.axisLabel}] {issue.message}
+                                  </li>
+                                ))}
+                                {review.issues.length > 5 && <li>· 그 외 {review.issues.length - 5}건 (상세 상태 보기 참고)</li>}
+                              </ul>
+                            )}
+                          </div>
                         );
                       })()}
                     </div>
+
+                    {/* Phase 3-22: raw 상태값을 그대로 나열하지 않고, 사용자 친화적
+                        한 줄 요약을 보여준다. 개발자용 원문 상태값/API
+                        readiness/성과는 "상세 상태 보기" 접힘 안으로 옮겼다. */}
+                    <p className="mt-2 text-xs text-zinc-600">{getUserFacingStatus(post)}</p>
+
+                    {/* Phase 4-14: "현재 상태 + 다음 버튼 1개" 원칙 — 품질검사/
+                        승인 요청/승인/복사·export 준비를 동시에 같은 수준으로
+                        나열하지 않는다. getSocialPostCardActionState가 지금
+                        상태에 맞는 상태 배지 + primary 버튼 1개 + secondary
+                        버튼을 계산한다. 승인 요청처럼 필수가 아닌 재실행용
+                        action은 아래 "상세 상태 보기 / 보조 작업" 접힘 안에
+                        그대로 남아 있다(삭제 없음). */}
+                    {(() => {
+                      const cardState = getSocialPostCardActionState(post);
+                      const primaryClass = "rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500";
+                      const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+
+                      const renderAction = (action: SocialPostCardAction, className: string) => {
+                        switch (action.actionType) {
+                          case "run_quality_gate":
+                            return (
+                              <form action={runSocialPostQualityGateAction}>
+                                <input type="hidden" name="articleId" value={article.id} />
+                                <input type="hidden" name="socialPostId" value={post.id} />
+                                <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                <button type="submit" className={className}>
+                                  {action.label}
+                                </button>
+                              </form>
+                            );
+                          case "approve":
+                            return (
+                              <form action={approveSocialPostAction}>
+                                <input type="hidden" name="articleId" value={article.id} />
+                                <input type="hidden" name="socialPostId" value={post.id} />
+                                <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                <button type="submit" className={className}>
+                                  {action.label}
+                                </button>
+                              </form>
+                            );
+                          case "prepare_export":
+                            return (
+                              <form action={generateManualExportAction}>
+                                <input type="hidden" name="articleId" value={article.id} />
+                                <input type="hidden" name="socialPostId" value={post.id} />
+                                <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                <button type="submit" className={className}>
+                                  {action.label}
+                                </button>
+                              </form>
+                            );
+                          case "review_quality_issues":
+                            return (
+                              <a href={`#${buildAnchorId("social-post-review", post.id)}`} className={className}>
+                                {action.label}
+                              </a>
+                            );
+                          case "edit_body":
+                            return (
+                              <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className={className}>
+                                {action.label}
+                              </a>
+                            );
+                          case "copy_or_view_export":
+                            return (
+                              <a href={`${buildSocialPostDetailUrl(post.id, selfReturnTo)}#publish-preview`} className={className}>
+                                {action.label}
+                              </a>
+                            );
+                          case "record_manual_result":
+                            return (
+                              <a href={`#${buildAnchorId("social-post-manual-result", post.id)}`} className={className}>
+                                {action.label}
+                              </a>
+                            );
+                          case "view_detail":
+                          default:
+                            return (
+                              <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className={className}>
+                                {action.label}
+                              </a>
+                            );
+                        }
+                      };
+
+                      return (
+                        <>
+                          <p className="mt-2 text-[11px] text-zinc-500">
+                            상태: <span className="font-medium text-zinc-700">{cardState.statusBadge}</span>
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                            {renderAction(cardState.primaryAction, primaryClass)}
+                            {cardState.secondaryActions.map((action, i) => (
+                              <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
+                            ))}
+                            <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
+                              기사 개요 →
+                            </a>
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     <details className="mt-2">
                       <summary className="cursor-pointer text-[11px] text-zinc-400">상세 상태 보기 / 보조 작업 (관리자용, 기본 접힘)</summary>
@@ -419,6 +484,27 @@ export default async function ArticleSocialPage({
                         )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        {/* Phase 4-14: 품질검사 재실행/승인 요청은 기본 흐름에서
+                            필수가 아니다(자동 검토가 이미 통과했으면 primary는
+                            바로 "승인"이고, approveSocialPost()는 pending_review를
+                            요구하지 않는다) — 재실행이 필요한 경우를 위해
+                            여기 보조 영역에 그대로 남겨둔다(기능 삭제 없음). */}
+                        <form action={runSocialPostQualityGateAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            품질검사 다시 실행
+                          </button>
+                        </form>
+                        <form action={requestSocialPostApprovalAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            승인 요청
+                          </button>
+                        </form>
                         <form action={runPlatformPublishingGuardAction}>
                           <input type="hidden" name="articleId" value={article.id} />
                           <input type="hidden" name="socialPostId" value={post.id} />
@@ -454,7 +540,7 @@ export default async function ArticleSocialPage({
                       </div>
                     </details>
 
-                    <details className="mt-2">
+                    <details className="mt-2" id={buildAnchorId("social-post-manual-result", post.id)}>
                       <summary className="cursor-pointer text-[11px] text-zinc-400">게시 결과 기록 / Metrics 입력</summary>
                       <form action={recordManualPostingResultAction} className="mt-1 flex flex-wrap items-end gap-1">
                         <input type="hidden" name="articleId" value={article.id} />

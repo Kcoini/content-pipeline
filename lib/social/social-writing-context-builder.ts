@@ -9,6 +9,7 @@ import { getPlatformWritingConfig, getSocialOutputContractName } from "./platfor
 import { countUsableSources } from "./wordpress-blog-source-mode";
 import { getToneStyleConfig } from "./tone-style-config";
 import { getPlatformBrief } from "@/lib/articles/master-manuscript-builder";
+import { asArray } from "@/lib/utils/safe-array";
 import type { MasterManuscriptPlatformBriefs } from "@/lib/articles/master-manuscript-types";
 import type {
   SocialPlatform,
@@ -163,13 +164,17 @@ export async function buildSocialWritingContext(
   // 뽑는다 — "출처가 있는데도 본문이 일반론으로 흐르는" 문제를 막기
   // 위한 최소한의 그라운딩 재료다. 마스터 원고가 없으면 빈 배열(하위
   // 호환 — 기존처럼 excerpt/keyPoints만으로 생성된다).
+  // Phase 4-9: readArticleMasterManuscript()가 이미 normalizeMasterManuscript()로
+  // 정규화하지만, "undefined.filter" 재발을 이 계층에서도 한 번 더
+  // 방어한다(asArray) — 마스터 원고 구조가 앞으로 또 바뀌어도 이 함수가
+  // 먼저 죽지 않는다.
   const evidenceHighlights = masterManuscript
-    ? masterManuscript.evidenceMap
+    ? asArray(masterManuscript.evidenceMap)
         .filter((e) => e.strength !== "weak")
         .slice(0, MAX_EVIDENCE_HIGHLIGHTS)
-        .map((e) => `${e.claim} (근거 ${e.supportingSourceIds.length}건, ${e.strength === "strong" ? "충분" : "보통"}${e.caution ? ` — ${e.caution}` : ""})`)
+        .map((e) => `${e.claim} (근거 ${asArray(e.supportingSourceIds).length}건, ${e.strength === "strong" ? "충분" : "보통"}${e.caution ? ` — ${e.caution}` : ""})`)
     : [];
-  const verificationHighlights = masterManuscript ? masterManuscript.verificationNeeded.slice(0, MAX_VERIFICATION_HIGHLIGHTS) : [];
+  const verificationHighlights = masterManuscript ? asArray(masterManuscript.verificationNeeded).slice(0, MAX_VERIFICATION_HIGHLIGHTS) : [];
 
   return {
     articleId: article.id,

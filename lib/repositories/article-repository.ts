@@ -34,6 +34,7 @@ import {
 } from "@/lib/articles/article-modes";
 import type { GeneratedArticle } from "@/lib/ai/article-writer";
 import type { MasterManuscript } from "@/lib/articles/master-manuscript-types";
+import { normalizeMasterManuscript } from "@/lib/articles/master-manuscript-normalize";
 
 export interface SaveDraftArticleInput {
   themeId: string;
@@ -1568,8 +1569,16 @@ export async function saveArticleMasterManuscript(
  * 아직 계산되지 않았으면(과거에 생성된 article 등) null을 반환한다 —
  * 이 경우 caller가 buildMasterManuscript()로 즉석에서 계산해 쓸 수
  * 있다(항상 다시 계산 가능한 파생 데이터라서 안전하다).
+ *
+ * Phase 4-9: raw JSON을 그대로 캐스팅하지 않고 `normalizeMasterManuscript()`를
+ * 거친다 — 마스터 원고 구조가 바뀌기 전에 저장된 원고(예: 최상위
+ * evidenceMap/issues/readerMeaning이 없던 시절)를 읽어도 배열/객체
+ * 필드가 항상 채워져 있게 해서, 이후 소비자의 `.filter()`/`.map()`이
+ * `undefined`에서 터지지 않게 한다("Cannot read properties of
+ * undefined (reading 'filter')" 재발 방지).
  */
 export function readArticleMasterManuscript(article: Pick<Article, "formatMetadata">): MasterManuscript | null {
   const raw = (article.formatMetadata as { master_manuscript?: unknown } | undefined)?.master_manuscript;
-  return raw ? (raw as MasterManuscript) : null;
+  if (!raw) return null;
+  return normalizeMasterManuscript(raw);
 }

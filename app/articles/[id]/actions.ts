@@ -5,6 +5,7 @@
 // 실행한다. 클라이언트는 Supabase를 직접 호출하지 않는다.
 
 import { redirect } from "next/navigation";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 import { revalidatePath } from "next/cache";
 import {
   approveArticle,
@@ -33,7 +34,10 @@ import {
   generateWordPressBlogFeaturedImagePrompt,
   generateWordPressBlogFeaturedImage,
 } from "@/lib/social/wordpress-blog-image-generation-service";
-import { prepareWordPressBlogPostForPublishing } from "@/lib/social/wordpress-blog-publish-preparation-orchestrator";
+import {
+  prepareWordPressBlogPostForPublishing,
+  approveAndPrepareWordPressBlogPostForPublishing,
+} from "@/lib/social/wordpress-blog-publish-preparation-orchestrator";
 import { buildWordPressBlogContentOverride } from "@/lib/social/wordpress-blog-content-override-builder";
 import { saveWordPressFeaturedImageMediaForBlogPost } from "@/lib/social/wordpress-blog-featured-image-service";
 import { uploadWordPressFeaturedImageFromBlogPost } from "@/lib/social/wordpress-blog-local-image-upload-service";
@@ -893,6 +897,44 @@ export async function prepareWordPressBlogPostForPublishingAction(formData: Form
     isError = !result.success;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+}
+
+/**
+ * Phase 4-10: "승인하고 WordPress Draft 만들기" 통합 버튼. 승인(approval_status
+ * → approved)과 WordPress 게시 준비(prepareWordPressBlogPostForPublishingAction과
+ * 동일한 단계)를 한 번의 클릭으로 실행한다 — 사용자가 [승인] → [WordPress 게시
+ * 준비 실행]을 따로 누르지 않아도 되게 하기 위해서다. 승인 자체가 막히면(이미
+ * 승인됨/거부됨 등) 게시 준비 단계는 시도하지 않는다. 실제 공개 게시는 어떤
+ * 단계에서도 수행하지 않는다.
+ */
+export async function approveAndPrepareWordPressBlogPostForPublishingAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await approveAndPrepareWordPressBlogPostForPublishing(
+      articleId,
+      socialPostId,
+      APPROVED_BY,
+      notes.length > 0 ? notes : undefined
+    );
+    const stepSummary = result.steps.map((s) => `${s.step}:${s.status}`).join(", ");
+    message = stepSummary.length > 0 ? `${result.message} (${stepSummary})` : result.message;
+    isError = !result.success;
+  } catch (error) {
+    message = describeUnexpectedError(
+      error instanceof Error ? error.message : String(error),
+      "승인 및 WordPress 게시 준비 중 알 수 없는 오류가 발생했습니다."
+    ).userMessage;
     isError = true;
   }
 
@@ -1832,7 +1874,15 @@ export async function generateSelectedPlatformPostsAction(formData: FormData): P
       isError = result.generatedCount === 0 && result.failedCount > 0;
     }
   } catch (error) {
-    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    // Phase 4-9: 여기까지 올라오는 에러는 개별 플랫폼 생성 루프 밖에서 난
+    // 예상 밖 오류다(예: 이미 생성된 글 목록 조회 실패). raw runtime 에러
+    // 텍스트를 그대로 보여주지 않는다 — 버튼을 눌러도 무반응처럼 보이지
+    // 않게, 항상 복구 방법이 있는 메시지를 준다.
+    const rawMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    message = describeUnexpectedError(
+      rawMessage,
+      "선택한 플랫폼 글을 생성할 수 없습니다. 마스터 원고 또는 플랫폼 brief 정보가 부족합니다. 마스터 원고를 다시 생성한 뒤 시도해 주세요."
+    ).userMessage;
     isError = true;
   }
 
@@ -1867,7 +1917,11 @@ export async function generateAllPlatformPostsAction(formData: FormData): Promis
     message = formatPlatformGenerationSummary(result);
     isError = result.generatedCount === 0 && result.failedCount > 0;
   } catch (error) {
-    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    const rawMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    message = describeUnexpectedError(
+      rawMessage,
+      "전체 플랫폼 글을 생성할 수 없습니다. 마스터 원고 또는 플랫폼 brief 정보가 부족합니다. 마스터 원고를 다시 생성한 뒤 시도해 주세요."
+    ).userMessage;
     isError = true;
   }
 

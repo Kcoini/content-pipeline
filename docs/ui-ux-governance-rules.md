@@ -693,3 +693,79 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   전달한다 — 다른 플랫폼 brief나 마스터 원고 전체를 반복 투입하지
   않는다.
 - 실제 적용 사례: [`docs/phase-4-8-master-manuscript-evidence-quality.md`](./phase-4-8-master-manuscript-evidence-quality.md).
+
+## AI 응답/마스터 원고의 배열 필드는 항상 누락될 수 있다고 가정한다 (Phase 4-9)
+
+마스터 원고 구조는 앞으로도 계속 확장될 수 있고, 이미 저장된 원고는
+새 필드를 갖고 있지 않다 — "지금 타입에 있으니 항상 값이 있다"고
+가정하지 않는다.
+
+- `sourceSummaries`, `verifiedFacts`, `evidenceMap`, `issues`,
+  `readerMeaning`, `verificationNeeded`, `reviewIssues`/`checklist`
+  같은 배열 필드는 사용하기 전에 항상 `Array.isArray`로 검증한다
+  (`lib/utils/safe-array.ts`의 `asArray()` 재사용). `value || []`만으로
+  처리하지 않는다 — 객체나 문자열처럼 falsy가 아닌 잘못된 값에는
+  안전하지 않기 때문이다.
+- 저장된 값을 읽는 지점(예: `readArticleMasterManuscript`)에서
+  정규화 함수(`normalizeMasterManuscript`)를 한 번 거치게 해서, 이후
+  모든 소비자가 "필드가 없을 수도 있다"를 매번 확인하지 않아도 되게
+  한다.
+- undefined/null 값 때문에 페이지 전체가 깨지면 안 된다 — 서비스
+  계층은 예외를 throw해서 화면을 죽이지 않고, 항상 `{ success:
+  false, message }` 같은 구조화된 결과를 반환한다.
+- raw JavaScript 에러 메시지("Cannot read properties of undefined
+  (reading 'filter')" 등)는 기본 화면에 그대로 노출하지 않는다 —
+  `describeUnexpectedError()`로 사용자 친화적 메시지로 바꾸고, 원문은
+  로그에만 남긴다.
+- 실제 적용 사례: [`docs/phase-4-9-master-manuscript-undefined-filter-fix.md`](./phase-4-9-master-manuscript-undefined-filter-fix.md).
+
+## 여러 버튼으로 나뉜 승인/실행 흐름은 안전하게 합칠 수 있으면 합친다 (Phase 4-10)
+
+승인 → 실행이 각각 별도 버튼으로 나뉘어 있으면 사용자가 매번 같은
+순서를 반복 클릭해야 한다. 뒤 단계가 앞 단계의 상태를 그대로
+확인하는 구조라면(승인 실패 시 실행을 시도하지 않는 등), 두 동작을
+하나의 버튼/함수로 합쳐 클릭 수를 줄인다.
+
+- 합친 버튼도 각 단계의 개별 안전 조건(quality gate, approval 조건
+  등)을 그대로 거쳐야 한다 — 합쳤다고 조건을 느슨하게 하지 않는다.
+- 부가적인(실패해도 안전한) 단계는 전체를 막지 않고 "부분
+  성공"으로 표시하되, 핵심 단계는 여전히 전체를 막는다.
+- 합친 버튼은 이미 완료된 상태(예: 이미 승인됨)에서는 화면에서
+  숨기고, 그 상태에 맞는 기존 버튼만 남긴다 — 같은 화면에 중복되는
+  두 버튼을 동시에 보여주지 않는다.
+- 실제 적용 사례: [`docs/phase-4-10-wordpress-auto-publishing-preparation.md`](./phase-4-10-wordpress-auto-publishing-preparation.md).
+
+## 게시 준비 화면은 "현재 상태 + 남은 작업 + 다음 버튼 1개"로 정리한다 (Phase 4-13)
+
+여러 단계를 거쳐야 하는 게시 준비 화면(WordPress 등)에서 버튼을
+전부 나열하면 사용자가 순서를 기억해야 한다. 대신:
+
+- 완료된 작업은 버튼이 아니라 상태 배지로 표시한다(`approval_status
+  === "approved"`처럼 이미 끝난 조건의 버튼은 기본 화면에 다시
+  보여주지 않는다).
+- 차단 이유(guard blocked 등)가 있으면 "반영/게시" primary 버튼
+  대신 그 이유를 해결하는 버튼을 primary로 보여준다.
+- primary action은 항상 하나만 계산한다(우선순위 규칙으로 첫 번째
+  미충족 조건을 고른다). 나머지 미충족 조건은 secondary action으로
+  낮춘다.
+- 고급/수동/개발자용 기능은 삭제하지 않고 접힘 영역("고급 작업
+  보기" 등)으로 옮긴다.
+- 상단 버튼 목록과 중간 primary 버튼의 의미가 겹치면 하나로
+  합친다(같은 화면에 사실상 같은 일을 하는 버튼 두 개를 두지 않는다).
+- 실제 적용 사례: [`docs/phase-4-13-wordpress-publish-prep-simplification.md`](./phase-4-13-wordpress-publish-prep-simplification.md).
+
+## 짧은 글은 목록 카드 안에서 전체 본문을 보여준다 (Phase 4-14)
+
+SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본문을
+몇백 자로 잘라 보여주고 "상세 보기"로 강제 이동시키지 않는다.
+
+- 본문이 짧으면(기준: 1,200자 이하) 카드 안에 전체를 그대로
+  표시한다.
+- 기준을 넘는 긴 글만 카드 안에서 접기/펼치기로 처리한다(전체
+  보기 클릭 시 페이지 이동이나 서버 action 호출 없이 같은 카드
+  안에서 펼쳐진다).
+- 본문은 자동 검토 결과/상태 배지보다 먼저 보여준다 — 사용자가
+  내용을 먼저 읽고 판단할 수 있어야 한다.
+- 상세 페이지는 삭제하지 않되, 기본 검토 흐름(읽기 → 승인 →
+  export 준비)의 필수 경유지가 되지 않게 한다.
+- 실제 적용 사례: [`docs/phase-4-14-social-post-list-inline-body.md`](./phase-4-14-social-post-list-inline-body.md).

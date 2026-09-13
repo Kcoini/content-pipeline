@@ -102,7 +102,11 @@ describe("article/blog 역할 분리 (정적 소스 검사)", () => {
 
   it("Phase 2-23: 원본 article이 승인(status=reviewed)되지 않았으면 WordPress Draft 관련 버튼을 비활성화하고 사유를 안내한다", () => {
     expect(pageSource).toContain('const isArticleApprovedForWordPress = article.status === "reviewed";');
-    expect(pageSource).toContain("disabled={!readiness.ready || !isArticleApprovedForWordPress}");
+    // Phase 4-13: "WordPress에 반영하기" 개별 버튼이 prepState 기반의 통합
+    // create_draft/update_draft 버튼으로 합쳐지면서, disabled 조건도
+    // canReflectNow(= prepState.canReflectToWordPress && isArticleApprovedForWordPress)로 바뀌었다.
+    expect(pageSource).toContain("const canReflectNow = prepState.canReflectToWordPress && isArticleApprovedForWordPress;");
+    expect(pageSource).toContain("disabled={!canReflectNow}");
     expect(pageSource).toContain("원본 기사가 아직 승인되지 않았습니다");
     expect(pageSource).toContain("기사 개요 페이지");
   });
@@ -434,8 +438,9 @@ describe("대표 이미지 없이 진행 (waive, blog 카드 내부, 정적 소�
 });
 
 describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정적 소스 검사)", () => {
-  it("단계별 상태 요약과 다음 추천 작업을 표시한다", () => {
-    expect(pageSource).toContain("단계별 상태 요약");
+  it("Phase 4-13: 단계별 상태(접힘)와 WordPress 게시 준비 요약 카드를 표시한다", () => {
+    expect(pageSource).toContain("단계별 상태 자세히 보기");
+    expect(pageSource).toContain("WordPress 게시 준비");
     expect(pageSource).toContain("workflowStatus.quality");
     expect(pageSource).toContain("workflowStatus.approval");
     expect(pageSource).toContain("workflowStatus.draft");
@@ -522,27 +527,34 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
     expect(pageSource).toContain("수동 게시 완료 표시");
   });
 
-  it("WordPress 게시 준비 일괄 실행은 'WordPress에 반영하기'로 표시되고, Step 목록보다 앞(상단)에 있다", () => {
-    expect(pageSource).toContain("WordPress에 반영하기");
-    const batchButtonIdx = pageSource.indexOf("WordPress에 반영하기");
+  it("Phase 4-13: WordPress 게시 준비 요약 카드는 Step 목록보다 앞(상단)에 있다", () => {
+    const summaryCardIdx = pageSource.indexOf("WordPress 게시 준비");
     const step1Idx = pageSource.indexOf("Step 1. 품질검사");
-    expect(batchButtonIdx).toBeLessThan(step1Idx);
+    expect(summaryCardIdx).toBeGreaterThan(-1);
+    expect(summaryCardIdx).toBeLessThan(step1Idx);
   });
 
-  it("WordPress Draft Export는 wordpress_blog 카드에서 '수동 게시용 Draft 내보내기'로, 그 외 blog 그룹 플랫폼(naver_blog/news_article)은 '수동 export 만들기'로 표시된다 (Phase 4-4: news_article 추가로 영어 라벨을 일반화)", () => {
-    expect(pageSource).toContain('"수동 게시용 Draft 내보내기" : "수동 export 만들기"');
+  it("WordPress Draft Export는 wordpress_blog 카드(고급 작업)에서 '수동 게시용 Draft 내보내기'로, 그 외 blog 그룹 플랫폼(naver_blog/news_article)의 상단 공통 버튼은 '수동 export 만들기'로 표시된다 (Phase 4-4/4-13)", () => {
+    expect(pageSource).toContain("수동 게시용 Draft 내보내기");
+    expect(pageSource).toContain("수동 export 만들기");
     expect(pageSource).not.toContain("Naver Blog Export");
   });
 
-  it("품질검사/승인/게시 체크리스트 준비 버튼(폼)은 wordpress_blog 카드 안에서 중복 배치되지 않는다 (Step 1/2/7은 상단 공통 버튼을 참조만 한다)", () => {
+  it("Phase 4-13: 품질검사/승인 요청/승인/체크리스트 준비 버튼(폼)은 wordpress_blog 카드 기본 화면에는 없고, 상단 공통 버튼(다른 플랫폼 전용)과 '고급 작업 보기' 접힘 영역에만 있다", () => {
+    // 상단 공통 버튼(post.platform !== "wordpress_blog" 안, 다른 플랫폼용) +
+    // wordpress_blog의 "고급 작업 보기" 안(그리고 품질검사/체크리스트는
+    // primary/secondary action 렌더러 정의에도 한 번 더 나온다) — wordpress_blog
+    // 기본 화면(요약 카드 primary/secondary 바로 아래)에 별도로 나열되지는 않는다.
     const qualityGateFormCount = (pageSource.match(/action=\{runSocialPostQualityGateAction\}/g) ?? []).length;
     const approvalRequestFormCount = (pageSource.match(/action=\{requestSocialPostApprovalAction\}/g) ?? []).length;
     const approveFormCount = (pageSource.match(/action=\{approveSocialPostAction\}/g) ?? []).length;
     const checklistFormCount = (pageSource.match(/action=\{prepareManualPostingRecordAction\}/g) ?? []).length;
-    expect(qualityGateFormCount).toBe(1);
-    expect(approvalRequestFormCount).toBe(1);
-    expect(approveFormCount).toBe(1);
-    expect(checklistFormCount).toBe(1);
+    expect(qualityGateFormCount).toBeGreaterThanOrEqual(2);
+    expect(approvalRequestFormCount).toBeGreaterThanOrEqual(2);
+    expect(approveFormCount).toBeGreaterThanOrEqual(2);
+    expect(checklistFormCount).toBeGreaterThanOrEqual(2);
+    expect(pageSource).toContain('post.platform !== "wordpress_blog" && (');
+    expect(pageSource).toContain("고급 작업 보기");
   });
 
   it("SEO Metadata 업데이트 버튼은 SEO metadata가 누락되면 disabled되고 이유를 표시한다(개인정보 false positive override 시에는 effectiveReady로 활성화될 수 있음)", () => {
@@ -557,7 +569,7 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
   it("단계형 workflow UI는 wordpress_blog 조건부 블록 안, naver_blog 블록 밖에 있다", () => {
     const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
     const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
-    const summaryIdx = pageSource.indexOf("단계별 상태 요약");
+    const summaryIdx = pageSource.indexOf("단계별 상태 자세히 보기");
     expect(summaryIdx).toBeGreaterThan(wordpressBlockStart);
     expect(summaryIdx).toBeLessThan(naverContentSafetyBlockStart);
   });
@@ -757,8 +769,8 @@ describe("WordPress 게시 미리보기 / 반영 데이터 / 검사 이유 / 최
     expect(pageSource).toContain("최종 공개는 WordPress");
   });
 
-  it("개별 단계는 보조 버튼이라는 안내 문구가 primary button 아래에 있다", () => {
-    expect(pageSource).toContain("개별 단계만 다시 실행하려면 아래 탭에서 보조 버튼을 사용하세요.");
+  it("Phase 4-13: 부가 단계(SEO/대표 이미지) 실패는 부분 성공으로 처리된다는 안내가 '고급 작업 보기' 안에 있다", () => {
+    expect(pageSource).toContain("확인 필요&quot; 상태로 남습니다(부분 성공)");
   });
 
   it("최근 WordPress 반영 결과 섹션이 lastPublishPreparationRun을 읽어 표시한다", () => {
@@ -828,17 +840,22 @@ describe("wordpress_blog 카드 내부 탭 구조 (blog 카드 내부, 정적 �
     expect(pageSource).toContain('activeTab === "checklist"');
   });
 
-  it("상단 상태 요약과 WordPress에 반영하기 buttons은 탭 게이트 없이(탭과 무관하게) 항상 보인다", () => {
+  it("상단 WordPress 게시 준비 요약 카드는 탭 게이트 없이(탭과 무관하게) 항상 보인다", () => {
     const navIdx = pageSource.indexOf("<nav");
-    const statusSummaryIdx = pageSource.indexOf("단계별 상태 요약");
-    const primaryButtonIdx = pageSource.indexOf("WordPress에 반영하기");
+    const statusSummaryIdx = pageSource.indexOf("WordPress 게시 준비");
+    const primaryButtonIdx = pageSource.indexOf('renderPrepActionButton(prepState.primaryAction, "primary")');
     expect(statusSummaryIdx).toBeLessThan(navIdx);
     expect(primaryButtonIdx).toBeLessThan(navIdx);
   });
 
-  it("다음 추천 작업에 해당 탭으로 이동하는 버튼이 있다(getTabForWorkflowStep)", () => {
-    expect(pageSource).toContain("getTabForWorkflowStep(nextAction.step)");
-    expect(pageSource).toContain("탭으로 이동");
+  it("Phase 4-13: 다음 추천 작업(getWordPressBlogNextRecommendedAction)은 '단계별 상태 자세히 보기' 접힘 영역 안에 참고용으로 남아 있다", () => {
+    // Phase 4-13: 탭으로 바로 이동하는 별도 박스는 prepState 기반 요약
+    // 카드의 primary/secondary 버튼으로 대체됐다 — getTabForWorkflowStep 자체는
+    // 제거하지 않았지만(다른 화면에서 재사용 가능하도록 lib에는 그대로 둔다),
+    // 이 페이지에서는 더 이상 쓰지 않는다.
+    expect(pageSource).toContain("nextAction.title");
+    expect(pageSource).toContain("nextAction.description");
+    expect(pageSource).toContain("단계별 상태 자세히 보기");
   });
 
   it("action 후 returnTo/highlight/tab이 유지되도록 selfReturnTo가 activeTab을 포함한다", () => {
@@ -1045,9 +1062,9 @@ describe("wordpress_blog 카드 가독성 개선 (정적 소스 검사)", () => 
     expect(detailsTagIdx).toBeGreaterThan(-1);
   });
 
-  it("WordPress에 반영하기 버튼의 짧은 설명과 '자세히 보기' 접기가 있다", () => {
-    expect(pageSource).toContain("wordpress_blog 글을 WordPress Draft에 반영합니다. 공개 게시는 하지 않습니다.");
-    expect(pageSource).toContain("자세히 보기");
+  it("Phase 4-13: WordPress 게시 준비 카드에 짧은 안내 문구와 '고급 작업 보기' 접기가 있다", () => {
+    expect(pageSource).toContain("WordPress에는 Draft 생성/업데이트까지만 반영합니다. 공개 게시는 하지 않습니다.");
+    expect(pageSource).toContain("고급 작업 보기");
   });
 
   it("설명 문장은 파란색(indigo) 대신 muted(zinc) 색상을 사용한다(대부분의 description paragraph)", () => {
@@ -1063,11 +1080,36 @@ describe("wordpress_blog 카드 가독성 개선 (정적 소스 검사)", () => 
     expect(pageSource).toContain("탭으로 이동");
   });
 
-  it("WordPress에 반영하기 primary button은 여전히 명확하게 표시된다(항상 보이는 고정 영역)", () => {
+  it("Phase 4-13: WordPress 게시 준비 카드의 primary button은 항상 보이는 고정 영역(탭 위)에 있다", () => {
     const navIdx = pageSource.indexOf("<nav");
-    const primaryButtonIdx = pageSource.indexOf("WordPress에 반영하기");
+    const summaryCardIdx = pageSource.indexOf("WordPress 게시 준비");
+    const primaryButtonIdx = pageSource.indexOf('renderPrepActionButton(prepState.primaryAction, "primary")');
+    expect(summaryCardIdx).toBeGreaterThan(-1);
+    expect(summaryCardIdx).toBeLessThan(navIdx);
     expect(primaryButtonIdx).toBeGreaterThan(-1);
     expect(primaryButtonIdx).toBeLessThan(navIdx);
+  });
+
+  it("Phase 4-10/4-13: '승인' primary action은 승인+WordPress 게시 준비 통합 함수(approveAndPrepareWordPressBlogPostForPublishingAction)를 재사용한다", () => {
+    // Phase 4-13: 예전에 별도로 있던 "승인하고 WordPress Draft 만들기" 버튼은
+    // prepState의 approve primaryAction으로 흡수됐다 — 같은 통합 action을
+    // 재사용하므로 기능은 그대로 유지된다(중복 버튼만 없앴다).
+    expect(pageSource).toContain("approveAndPrepareWordPressBlogPostForPublishingAction");
+    const caseIdx = pageSource.indexOf('case "approve":');
+    const formIdx = pageSource.indexOf("action={approveAndPrepareWordPressBlogPostForPublishingAction}");
+    expect(formIdx).toBeGreaterThan(caseIdx);
+  });
+
+  it("Phase 4-10/4-13: 승인 action 버튼은 quality_status/article 승인 조건에 따라 비활성화된다", () => {
+    expect(pageSource).toContain('disabled={post.qualityStatus !== "ready" || !isArticleApprovedForWordPress}');
+    expect(pageSource).toContain("먼저 품질검사를 통과해야 합니다");
+  });
+
+  it("Phase 4-11(4차): 부분 성공(partialSuccess) 복구 흐름 패널이 있고, 성공한 실행에만 보인다", () => {
+    expect(pageSource).toContain("Draft는 만들어졌지만 확인이 필요한 항목이 있습니다");
+    expect(pageSource).toContain("lastRunRaw.partialSuccess === true");
+    expect(pageSource).toContain("lastRunSuccess &&");
+    expect(pageSource).toContain('탭에서 확인');
   });
 
   it("가독성 개선은 wordpress_blog 조건부 블록 안에만 있고 naver_blog 블록 밖이다", () => {
@@ -1100,5 +1142,65 @@ describe("진행 단계 표시 + 카드 상태 요약 (정적 소스 검사, Pha
   it("원문 상태값은 '상세 상태 보기' 접힘 영역 안에 남아 있다(제거하지 않음)", () => {
     expect(pageSource).toContain("상세 상태 보기 (관리자용, 기본 접힘)");
     expect(pageSource).toMatch(/quality: \{post\.qualityStatus\}/);
+  });
+});
+
+describe("Phase 4-13: WordPress 게시 준비 화면 단순화 (blog 카드 내부, 정적 소스 검사)", () => {
+  it("getWordPressPublishPrepState를 import해 사용한다", () => {
+    expect(pageSource).toContain('from "@/lib/social/wordpress-blog-publish-prep-state"');
+    expect(pageSource).toContain("getWordPressPublishPrepState(");
+  });
+
+  it("WordPress 게시 준비 카드는 현재 상태/완료됨/남은 작업/다음 작업을 모두 보여준다", () => {
+    expect(pageSource).toContain("현재 상태:");
+    expect(pageSource).toContain("prepState.statusLabel");
+    expect(pageSource).toContain("완료됨: {prepState.completedItems.join");
+    expect(pageSource).toContain("남은 작업: {prepState.remainingItems.join");
+  });
+
+  it("primary action은 하나만 렌더링되고, secondary action은 배열로 여러 개 나열될 수 있다", () => {
+    expect(pageSource).toContain('renderPrepActionButton(prepState.primaryAction, "primary")');
+    expect(pageSource).toContain('renderPrepActionButton(action, "secondary")');
+    expect(pageSource).toContain("prepState.secondaryActions.map");
+  });
+
+  it("상단 공통 버튼 5개(품질검사/승인 요청/승인/수동 내보내기/체크리스트 준비)는 wordpress_blog에서는 숨겨지고 다른 플랫폼에서만 보인다", () => {
+    const guardIdx = pageSource.indexOf('{post.platform !== "wordpress_blog" && (');
+    // 이 action들이 파일 전체에서 처음 등장하는 지점은 항상 이 guard로
+    // 감싼 상단 공통 버튼 행이다(그 뒤에 wordpress_blog 전용 고급 작업/
+    // primary action 렌더러가 이어진다).
+    const firstQualityGateFormIdx = pageSource.indexOf("action={runSocialPostQualityGateAction}");
+    const firstApprovalRequestFormIdx = pageSource.indexOf("action={requestSocialPostApprovalAction}");
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(firstQualityGateFormIdx).toBeGreaterThan(guardIdx);
+    expect(firstApprovalRequestFormIdx).toBeGreaterThan(guardIdx);
+  });
+
+  it("고급 작업 보기 접힘 영역 안에 기존 5개 action이 모두 재배치되어 있다(기능 삭제 없음)", () => {
+    const advancedSummaryIdx = pageSource.indexOf(">고급 작업 보기</summary>");
+    const nextDetailsCloseIdx = pageSource.indexOf("</details>", advancedSummaryIdx);
+    const advancedBlock = pageSource.slice(advancedSummaryIdx, nextDetailsCloseIdx);
+    expect(advancedSummaryIdx).toBeGreaterThan(-1);
+    expect(advancedBlock).toContain("품질검사 다시 실행");
+    expect(advancedBlock).toContain("승인 요청");
+    expect(advancedBlock).toContain("승인만 실행");
+    expect(advancedBlock).toContain("수동 게시용 Draft 내보내기");
+    expect(advancedBlock).toContain("게시 체크리스트 다시 만들기");
+  });
+
+  it("canReflectNow는 prepState.canReflectToWordPress와 isArticleApprovedForWordPress를 모두 확인한다(publish_guard blocked/failed 포함)", () => {
+    expect(pageSource).toContain(
+      "const canReflectNow = prepState.canReflectToWordPress && isArticleApprovedForWordPress;"
+    );
+  });
+
+  it("raw status(quality_status/approval_status 원문 문자열)는 기본 화면이 아니라 '단계별 상태 자세히 보기'/'상세 상태 보기' 접힘 영역에만 있다", () => {
+    const summaryCardIdx = pageSource.indexOf("WordPress 게시 준비");
+    const advancedDetailsIdx = pageSource.indexOf("고급 작업 보기", summaryCardIdx);
+    const betweenSummaryAndAdvanced = pageSource.slice(summaryCardIdx, advancedDetailsIdx);
+    // prepState.statusLabel/completedItems/remainingItems 문자열 표현만 있고,
+    // "quality_status가 ready" 같은 raw 문구를 카드 요약 영역에 직접 나열하지 않는다.
+    expect(betweenSummaryAndAdvanced).not.toContain("quality_status가 ready");
+    expect(betweenSummaryAndAdvanced).not.toContain("approval_status가 approved");
   });
 });

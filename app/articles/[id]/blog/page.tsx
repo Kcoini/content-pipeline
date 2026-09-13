@@ -35,11 +35,14 @@ import {
   getWordPressBlogWorkflowStatusSummary,
   getWordPressBlogNextRecommendedAction,
 } from "@/lib/social/wordpress-blog-workflow-steps";
+import {
+  getWordPressPublishPrepState,
+  type WordPressPublishPrepAction,
+} from "@/lib/social/wordpress-blog-publish-prep-state";
 import { buildWordPressBlogPostPreview } from "@/lib/social/wordpress-blog-post-preview-builder";
 import {
   WORDPRESS_BLOG_CARD_TABS,
   normalizeWordPressBlogCardTab,
-  getTabForWorkflowStep,
   getWordPressBlogCardTabBadges,
 } from "@/lib/social/wordpress-blog-card-tabs";
 import { getLogsByArticleId } from "@/lib/repositories/log-repository";
@@ -97,6 +100,7 @@ import {
   generateWordPressBlogFeaturedImagePromptAction,
   generateWordPressBlogFeaturedImageAction,
   prepareWordPressBlogPostForPublishingAction,
+  approveAndPrepareWordPressBlogPostForPublishingAction,
   openWordPressBlogSafetyReviewAction,
   archiveSocialPostAction,
   confirmWordPressBlogPersonalInfoFalsePositiveAction,
@@ -474,48 +478,56 @@ export default async function ArticleBlogPage({
                       </a>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <form action={runSocialPostQualityGateAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          품질검사
-                        </button>
-                      </form>
-                      <form action={requestSocialPostApprovalAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
-                          승인 요청
-                        </button>
-                      </form>
-                      <form action={approveSocialPostAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
-                          승인
-                        </button>
-                      </form>
-                      <form action={generateManualExportAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
-                          {post.platform === "wordpress_blog" ? "수동 게시용 Draft 내보내기" : "수동 export 만들기"}
-                        </button>
-                      </form>
-                      <form action={prepareManualPostingRecordAction}>
-                        <input type="hidden" name="articleId" value={article.id} />
-                        <input type="hidden" name="socialPostId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                          게시 체크리스트 준비
-                        </button>
-                      </form>
-                    </div>
+                    {/* Phase 4-13: wordpress_blog는 이 버튼들을 전부 나열하지 않는다 —
+                        아래 "WordPress 게시 준비" 요약 카드가 "현재 상태 + 남은 작업 +
+                        다음 버튼 1개"로 정리해 보여주고, 이 버튼들은 그 카드의 "고급
+                        작업 보기" 접힘 영역 안으로 옮겨졌다(삭제하지 않음). 다른
+                        플랫폼(naver_blog 등)은 대응하는 요약 카드가 없으므로 기존
+                        그대로 노출한다. */}
+                    {post.platform !== "wordpress_blog" && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <form action={runSocialPostQualityGateAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            품질검사
+                          </button>
+                        </form>
+                        <form action={requestSocialPostApprovalAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
+                            승인 요청
+                          </button>
+                        </form>
+                        <form action={approveSocialPostAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
+                            승인
+                          </button>
+                        </form>
+                        <form action={generateManualExportAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
+                            수동 export 만들기
+                          </button>
+                        </form>
+                        <form action={prepareManualPostingRecordAction}>
+                          <input type="hidden" name="articleId" value={article.id} />
+                          <input type="hidden" name="socialPostId" value={post.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo} />
+                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                            게시 체크리스트 준비
+                          </button>
+                        </form>
+                      </div>
+                    )}
 
                     {post.platform === "wordpress_blog" &&
                       (() => {
@@ -624,6 +636,164 @@ export default async function ArticleBlogPage({
                         };
                         const workflowStatus = getWordPressBlogWorkflowStatusSummary(workflowInput);
                         const nextAction = getWordPressBlogNextRecommendedAction(workflowInput);
+                        // Phase 4-13: "현재 상태 + 남은 작업 + 다음 버튼 1개" 요약 카드가
+                        // 쓰는 상태 계산. workflowInput과 입력 데이터는 대부분 같지만,
+                        // 이 함수는 completedItems/remainingItems/primaryAction 등 화면에
+                        // 필요한 형태로 한 번에 정리해 반환한다(getWordPressBlogNextRecommendedAction는
+                        // 다른 화면에서 계속 쓰이므로 그대로 둔다).
+                        const bodyExists = Boolean(post.postTitle?.trim() && post.postBody?.trim());
+                        const prepState = getWordPressPublishPrepState({
+                          bodyExists,
+                          qualityStatus: post.qualityStatus,
+                          approvalStatus: post.approvalStatus,
+                          draftExists: draft.exists,
+                          draftUrl: draft.postUrl,
+                          seoTitle: blogMetadata.seoTitle,
+                          metaDescription: blogMetadata.metaDescription,
+                          targetKeyword: blogMetadata.targetKeyword,
+                          featuredImageAttached,
+                          featuredImageWaived: featuredImage.waived,
+                          featuredImageMediaIdPresent: Boolean(featuredImage.wordpressMediaId),
+                          checklistPrepared: post.manualPostChecklist.length > 0,
+                          publishGuardStatus: guardStatus,
+                        });
+                        // article 자체가 아직 승인(status==='reviewed')되지 않은 경우는
+                        // prepState가 알지 못하는 조건이라(post가 아니라 article 값) 여기서
+                        // 추가로 합친다 — 하나라도 막혀 있으면 반영 버튼을 primary로 보여주지 않는다.
+                        const canReflectNow = prepState.canReflectToWordPress && isArticleApprovedForWordPress;
+                        const renderPrepActionButton = (action: WordPressPublishPrepAction, variant: "primary" | "secondary") => {
+                          const primaryClass =
+                            "w-full rounded bg-indigo-800 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50";
+                          const secondaryClass =
+                            "rounded border border-indigo-300 bg-white px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50";
+                          const className = variant === "primary" ? primaryClass : secondaryClass;
+                          const formClassName = variant === "primary" ? "mt-2" : undefined;
+
+                          switch (action.actionType) {
+                            case "run_quality_gate":
+                              return (
+                                <form action={runSocialPostQualityGateAction} className={formClassName}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button type="submit" className={className}>
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "approve":
+                              return (
+                                <form action={approveAndPrepareWordPressBlogPostForPublishingAction} className={formClassName}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button
+                                    type="submit"
+                                    disabled={post.qualityStatus !== "ready" || !isArticleApprovedForWordPress}
+                                    title={
+                                      post.qualityStatus !== "ready"
+                                        ? "먼저 품질검사를 통과해야 합니다(quality_status=ready 필요)."
+                                        : !isArticleApprovedForWordPress
+                                          ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
+                                          : undefined
+                                    }
+                                    className={className}
+                                  >
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "prepare_checklist":
+                              return (
+                                <form action={prepareManualPostingRecordAction} className={formClassName}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button type="submit" className={className}>
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "create_draft":
+                            case "update_draft":
+                              return (
+                                <form action={prepareWordPressBlogPostForPublishingAction} className={formClassName}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button
+                                    type="submit"
+                                    disabled={!canReflectNow}
+                                    title={
+                                      !isArticleApprovedForWordPress
+                                        ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
+                                        : !prepState.canReflectToWordPress
+                                          ? "게시 준비가 아직 차단되어 있습니다. 위 남은 작업을 먼저 처리하세요."
+                                          : undefined
+                                    }
+                                    className={className}
+                                  >
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "view_draft":
+                              return action.href ? (
+                                <a href={action.href} target="_blank" rel="noopener noreferrer" className={className}>
+                                  {action.label}
+                                </a>
+                              ) : (
+                                <a
+                                  href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "wordpress" })}
+                                  className={className}
+                                >
+                                  {action.label}
+                                </a>
+                              );
+                            case "generate_post":
+                              return (
+                                <a href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "content" })} className={className}>
+                                  {action.label}
+                                </a>
+                              );
+                            case "review_quality_issues":
+                              return (
+                                <a href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "quality" })} className={className}>
+                                  {action.label}
+                                </a>
+                              );
+                            case "set_featured_image":
+                            case "waive_featured_image":
+                              return (
+                                <a href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "image" })} className={className}>
+                                  {action.label}
+                                </a>
+                              );
+                            case "reflect_seo":
+                              return (
+                                <a href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "wordpress" })} className={className}>
+                                  {action.label}
+                                </a>
+                              );
+                            case "request_approval":
+                              return (
+                                <form action={requestSocialPostApprovalAction} className={formClassName}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button type="submit" className={className}>
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            default:
+                              return (
+                                <a href={action.href ?? "#"} className={className}>
+                                  {action.label}
+                                </a>
+                              );
+                          }
+                        };
                         const postPreview = buildWordPressBlogPostPreview({
                           postTitle: post.postTitle,
                           postBody: post.postBody,
@@ -659,7 +829,6 @@ export default async function ArticleBlogPage({
                           checklistStatus: workflowStatus.checklist,
                           checklistNeedsReviewCount: checklistSummary.needsReview,
                         });
-                        const nextActionTab = getTabForWorkflowStep(nextAction.step);
                         return (
                           <WordPressPublishingPanel
                             targetType="wordpress_blog"
@@ -689,106 +858,142 @@ export default async function ArticleBlogPage({
                               lastUpdatedAt: post.updatedAt,
                             }}
                           >
-                            {/* 고정 상태 요약 — 탭과 무관하게 항상 보인다(탭 위에 위치). 카드가 길어서
-                                생기는 스크롤 부담을 줄이기 위해, 카드 안의 나머지 내용은 아래 탭
-                                내비게이션으로 분리한다. */}
-                            <div className="rounded border border-indigo-200 bg-white p-2">
-                              <p className="text-[11px] font-semibold text-indigo-900">단계별 상태 요약</p>
-                              <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-indigo-800 sm:grid-cols-4">
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>품질검사</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.quality)}`}>{workflowStatus.quality}</dd>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>승인</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.approval)}`}>{workflowStatus.approval}</dd>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>Draft</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.draft)}`}>{workflowStatus.draft}</dd>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>SEO Metadata</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.seo)}`}>{workflowStatus.seo}</dd>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>대표 이미지</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.featuredImage)}`}>{workflowStatus.featuredImage}</dd>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>게시 준비</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.publishGuard)}`}>{workflowStatus.publishGuard}</dd>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <dt>체크리스트</dt>
-                                  <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.checklist)}`}>{workflowStatus.checklist}</dd>
-                                </div>
-                              </dl>
-                            </div>
-
-                            {/* 다음 추천 작업 — 지금 상태 기준으로 다음에 눌러야 할 버튼 하나를 안내하고,
-                                해당 작업이 있는 탭으로 바로 이동하는 버튼을 함께 보여준다. */}
-                            <div className="mt-2 rounded border border-indigo-300 bg-indigo-100/70 p-2">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <p className="text-[11px] font-semibold text-indigo-900">{nextAction.title}</p>
-                                  <p className="mt-1 text-[10px] text-zinc-600">{nextAction.description}</p>
-                                </div>
-                                <a
-                                  href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: nextActionTab })}
-                                  className="shrink-0 rounded border border-indigo-400 bg-white px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50"
-                                >
-                                  {WORDPRESS_BLOG_CARD_TABS.find((t) => t.key === nextActionTab)?.label} 탭으로 이동
-                                </a>
-                              </div>
-                            </div>
-
-                            {/* WordPress에 반영하기 — primary button. Draft/SEO/대표 이미지/게시 가능
-                                확인을 순서대로 실행한다(prepareWordPressBlogPostForPublishingAction 재사용,
-                                공개 게시 아님). 탭과 무관하게 항상 보인다. */}
-                            {/* Phase 2-23: 원본 article이 아직 승인되지 않았으면 실행 전에
-                                먼저 안내한다 — "실패 단계: WordPress Draft"로 실행 후에야
-                                알게 되던 문제를 고친다. */}
-                            {!isArticleApprovedForWordPress && (
-                              <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[10px] text-amber-800">
-                                ⚠ 원본 기사가 아직 승인되지 않았습니다(article status: {article.status}). WordPress
-                                Draft에 반영하려면 먼저{" "}
-                                <a href={`/articles/${article.id}`} className="underline">
-                                  기사 개요 페이지
-                                </a>
-                                에서 &quot;승인하기&quot;를 눌러 기사를 승인하세요.
-                              </div>
-                            )}
-                            <form action={prepareWordPressBlogPostForPublishingAction} className="mt-2">
-                              <input type="hidden" name="articleId" value={article.id} />
-                              <input type="hidden" name="socialPostId" value={post.id} />
-                              <input type="hidden" name="returnTo" value={selfReturnTo} />
-                              <button
-                                type="submit"
-                                disabled={!readiness.ready || !isArticleApprovedForWordPress}
-                                title={
-                                  !isArticleApprovedForWordPress
-                                    ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
-                                    : undefined
-                                }
-                                className="w-full rounded bg-indigo-800 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                WordPress에 반영하기
-                              </button>
-                            </form>
-                            <p className="mt-1 text-[10px] text-zinc-500">
-                              wordpress_blog 글을 WordPress Draft에 반영합니다. 공개 게시는 하지 않습니다.
-                            </p>
-                            <details className="mt-1">
-                              <summary className="cursor-pointer text-[10px] text-zinc-400">자세히 보기</summary>
-                              <p className="mt-1 text-[10px] text-zinc-500">
-                                Draft 생성/업데이트, SEO metadata, 대표 이미지를 가능한 범위에서 함께
-                                반영합니다. 실패 단계가 있으면 그 단계에서 중단됩니다. 이 버튼은 WordPress
-                                Draft 생성/업데이트까지만 실행합니다. 공개 게시 버튼은 누르지 않습니다.
-                                최종 공개는 WordPress 관리자 화면에서 확인 후 진행하세요.
+                            {/* Phase 4-13: "WordPress 게시 준비" 요약 카드 — 탭과 무관하게 항상
+                                보인다(탭 위에 위치). "현재 상태 + 완료된 작업 + 남은 작업 + 다음
+                                버튼 1개" 원칙을 따른다(docs/ui-ux-governance-rules.md). 예전에 이
+                                자리에 각각 있던 "단계별 상태 요약" 배지 나열, "다음 추천 작업" 박스,
+                                "WordPress에 반영하기"/"승인하고 WordPress Draft 만들기" 버튼(의미가
+                                겹쳤다)을 하나로 합쳤다 — 기능은 모두 아래 primary/secondary 버튼과
+                                "고급 작업 보기" 접힘 영역 안에 그대로 남아 있다(삭제 없음). */}
+                            <div className="rounded border border-indigo-300 bg-indigo-50 p-3">
+                              <p className="text-[11px] font-semibold text-indigo-900">WordPress 게시 준비</p>
+                              <p className="mt-1 text-[11px] text-indigo-900">
+                                현재 상태: <span className="font-medium">{prepState.statusLabel}</span>
                               </p>
-                              <p className="mt-1 text-[10px] text-zinc-500">개별 단계만 다시 실행하려면 아래 탭에서 보조 버튼을 사용하세요.</p>
-                            </details>
+                              {prepState.completedItems.length > 0 && (
+                                <p className="mt-1.5 text-[10px] text-emerald-700">완료됨: {prepState.completedItems.join(" · ")}</p>
+                              )}
+                              {prepState.remainingItems.length > 0 && (
+                                <p className="mt-1 text-[10px] text-amber-700">남은 작업: {prepState.remainingItems.join(" · ")}</p>
+                              )}
+                              {/* Phase 2-23: 원본 article이 아직 승인되지 않았으면(post 자체의
+                                  approval_status와는 별개 조건) 먼저 안내한다 — "실패 단계:
+                                  WordPress Draft"로 실행 후에야 알게 되던 문제를 고친다. */}
+                              {!isArticleApprovedForWordPress && (
+                                <p className="mt-1 text-[10px] text-amber-700">
+                                  ⚠ 원본 기사가 아직 승인되지 않았습니다(article status: {article.status}).{" "}
+                                  <a href={`/articles/${article.id}`} className="underline">
+                                    기사 개요 페이지
+                                  </a>
+                                  에서 &quot;승인하기&quot;를 눌러 기사를 승인하세요.
+                                </p>
+                              )}
+                              <div className="mt-2">{renderPrepActionButton(prepState.primaryAction, "primary")}</div>
+                              {prepState.secondaryActions.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {prepState.secondaryActions.map((action, i) => (
+                                    <span key={`${action.actionType}-${i}`}>{renderPrepActionButton(action, "secondary")}</span>
+                                  ))}
+                                </div>
+                              )}
+                              <p className="mt-2 text-[10px] text-zinc-500">
+                                WordPress에는 Draft 생성/업데이트까지만 반영합니다. 공개 게시는 하지 않습니다.
+                              </p>
+
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-[10px] text-zinc-400">단계별 상태 자세히 보기</summary>
+                                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-indigo-800 sm:grid-cols-4">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>품질검사</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.quality)}`}>{workflowStatus.quality}</dd>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>승인</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.approval)}`}>{workflowStatus.approval}</dd>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>Draft</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.draft)}`}>{workflowStatus.draft}</dd>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>SEO Metadata</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.seo)}`}>{workflowStatus.seo}</dd>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>대표 이미지</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.featuredImage)}`}>{workflowStatus.featuredImage}</dd>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>게시 준비</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.publishGuard)}`}>{workflowStatus.publishGuard}</dd>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <dt>체크리스트</dt>
+                                    <dd className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.checklist)}`}>{workflowStatus.checklist}</dd>
+                                  </div>
+                                </dl>
+                                <p className="mt-2 text-[10px] text-zinc-500">
+                                  다음 추천 작업(참고용, 세부 순서 기준): {nextAction.title} — {nextAction.description}
+                                </p>
+                              </details>
+
+                              {/* Phase 4-13: 고급/수동 작업 — 기본 화면에는 노출하지 않지만
+                                  기능은 삭제하지 않는다. 이미 완료된 항목(예: 승인)도 재실행이
+                                  필요할 수 있어 여기서는 계속 제공한다. */}
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-[10px] text-zinc-400">고급 작업 보기</summary>
+                                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                                  <form action={runSocialPostQualityGateAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                    <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                                      품질검사 다시 실행
+                                    </button>
+                                  </form>
+                                  <form action={requestSocialPostApprovalAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                    <button type="submit" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
+                                      승인 요청
+                                    </button>
+                                  </form>
+                                  <form action={approveSocialPostAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                    <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
+                                      승인만 실행(반영 없이)
+                                    </button>
+                                  </form>
+                                  <form action={generateManualExportAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                    <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
+                                      수동 게시용 Draft 내보내기
+                                    </button>
+                                  </form>
+                                  <form action={prepareManualPostingRecordAction}>
+                                    <input type="hidden" name="articleId" value={article.id} />
+                                    <input type="hidden" name="socialPostId" value={post.id} />
+                                    <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                    <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
+                                      게시 체크리스트 다시 만들기
+                                    </button>
+                                  </form>
+                                </div>
+                                <p className="mt-2 text-[10px] text-zinc-500">
+                                  Draft 생성/업데이트, SEO metadata, 대표 이미지를 가능한 범위에서 함께
+                                  반영합니다. 실패 단계가 있으면 그 단계에서 중단됩니다. 다만 SEO 정보 반영이나
+                                  대표 이미지 연결처럼 부가적인 단계는 실패해도 Draft 생성 자체를 막지 않고
+                                  &quot;확인 필요&quot; 상태로 남습니다(부분 성공). 이 버튼들은 WordPress Draft
+                                  생성/업데이트까지만 실행합니다. 공개 게시 버튼은 누르지 않습니다.
+                                  최종 공개는 WordPress 관리자 화면에서 확인 후 진행하세요.
+                                </p>
+                              </details>
+                            </div>
 
                             {/* 탭 내비게이션 — 카드 안에서 sticky로 상단에 고정된 것처럼 배치한다.
                                 새 라이브러리 없이 기존 Tailwind만 사용한다. 좁은 화면에서는
@@ -1036,6 +1241,48 @@ export default async function ArticleBlogPage({
                                 </p>
                               </div>
                             )}
+
+                            {/* Phase 4-11(4차): 부분 성공(partialSuccess) 복구 흐름 — Draft 자체는
+                                만들어졌지만 SEO plugin 반영/대표 이미지 연결처럼 부가적인 단계가
+                                "확인 필요(warning)"로 끝났을 때, 어느 탭에서 무엇을 확인해야
+                                하는지 바로 안내한다. 실패(success=false)가 아니라 부분 성공일
+                                때만 보인다. */}
+                            {activeTab === "wordpress" &&
+                              lastRunRaw &&
+                              lastRunSuccess &&
+                              lastRunRaw.partialSuccess === true &&
+                              (() => {
+                                const warningSteps = lastRunSteps.filter((step) => step.status === "warning");
+                                if (warningSteps.length === 0) return null;
+                                const tabForStep = (step: WordPressBlogPreparationStep) =>
+                                  step === "featured_image" ? "image" : "wordpress";
+                                return (
+                                  <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2">
+                                    <p className="text-[11px] font-semibold text-amber-900">
+                                      Draft는 만들어졌지만 확인이 필요한 항목이 있습니다
+                                    </p>
+                                    <ul className="mt-1 space-y-1.5">
+                                      {warningSteps.map((step, i) => (
+                                        <li key={i} className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-amber-800">
+                                          <span>
+                                            <strong>{getWordPressBlogPreparationStepLabel(step.step)}</strong>: {step.message}
+                                          </span>
+                                          <a
+                                            href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: tabForStep(step.step) })}
+                                            className="shrink-0 rounded border border-amber-400 bg-white px-2 py-0.5 font-medium text-amber-800 hover:bg-amber-100"
+                                          >
+                                            {WORDPRESS_BLOG_CARD_TABS.find((t) => t.key === tabForStep(step.step))?.label} 탭에서 확인
+                                          </a>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    <p className="mt-1.5 text-[10px] text-amber-700">
+                                      확인 후 아래 &quot;WordPress에 반영하기&quot; 버튼을 다시 눌러 재시도할 수 있습니다.
+                                      대표 이미지는 이미지 탭에서 &quot;이미지 없이 진행&quot;을 선택해도 Draft를 그대로 유지할 수 있습니다.
+                                    </p>
+                                  </div>
+                                );
+                              })()}
 
                             {/* 내부 상태값 보기 — raw DB 상태값(quality_status 등)을 접어서 보여준다.
                                 WordPress 반영 탭. 일반 사용자는 상단의 한국어 상태 요약만 보면 되고,

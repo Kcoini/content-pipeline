@@ -8,6 +8,9 @@ const attachFeaturedMediaToDraft = vi.fn();
 const runPlatformPublishingGuard = vi.fn();
 const updateWordPressSeoMetadataFromBlogPost = vi.fn();
 const getArticleById = vi.fn();
+const writeSeoPluginMetadataToWordPress = vi.fn();
+const approveSocialPost = vi.fn();
+const regenerateWordPressBlogMetadata = vi.fn();
 
 vi.mock("@/lib/repositories/social-posts-repository", () => ({
   getSocialPostById: (...args: unknown[]) => getSocialPostById(...args),
@@ -31,16 +34,40 @@ vi.mock("./wordpress-blog-seo-metadata-service", () => ({
 vi.mock("@/lib/repositories/article-repository", () => ({
   getArticleById: (...args: unknown[]) => getArticleById(...args),
 }));
+vi.mock("@/lib/seo/seo-plugin-actual-write-service", () => ({
+  writeSeoPluginMetadataToWordPress: (...args: unknown[]) => writeSeoPluginMetadataToWordPress(...args),
+}));
+vi.mock("./social-post-approval-service", () => ({
+  approveSocialPost: (...args: unknown[]) => approveSocialPost(...args),
+}));
+vi.mock("./wordpress-blog-metadata-regeneration-service", () => ({
+  regenerateWordPressBlogMetadata: (...args: unknown[]) => regenerateWordPressBlogMetadata(...args),
+}));
 
-const { prepareWordPressBlogPostForPublishing } = await import("./wordpress-blog-publish-preparation-orchestrator");
+const { prepareWordPressBlogPostForPublishing, approveAndPrepareWordPressBlogPostForPublishing } = await import(
+  "./wordpress-blog-publish-preparation-orchestrator"
+);
 
+/**
+ * 기본값으로 seoTitle/metaDescription/targetKeyword를 이미 채워 둔다 —
+ * 대부분의 테스트가 SEO 자동 생성(seo_auto_generate) 단계와 무관하게
+ * 기존 흐름만 검증하기 때문이다. 이 단계 자체를 검증하는 테스트는
+ * platformMetadata를 명시적으로 비운 값으로 override한다.
+ */
 function makePost(overrides: Record<string, unknown> = {}) {
+  const { platformMetadata, ...rest } = overrides;
   return {
     id: "post-1",
     platform: "wordpress_blog",
     qualityStatus: "ready",
     approvalStatus: "approved",
-    ...overrides,
+    platformMetadata: {
+      seoTitle: "기본 SEO 제목",
+      metaDescription: "기본 meta description",
+      targetKeyword: "기본키워드",
+      ...(platformMetadata as Record<string, unknown> | undefined),
+    },
+    ...rest,
   };
 }
 
@@ -53,6 +80,9 @@ beforeEach(() => {
   runPlatformPublishingGuard.mockReset();
   updateWordPressSeoMetadataFromBlogPost.mockReset();
   getArticleById.mockReset();
+  writeSeoPluginMetadataToWordPress.mockReset();
+  approveSocialPost.mockReset();
+  regenerateWordPressBlogMetadata.mockReset();
 
   updateSocialPostContent.mockResolvedValue({});
   getSuccessfulWordPressDraft.mockResolvedValue(null);
@@ -60,6 +90,12 @@ beforeEach(() => {
   updateWordPressSeoMetadataFromBlogPost.mockResolvedValue({ success: true, message: "SEO 업데이트 완료" });
   getArticleById.mockResolvedValue({ featuredImageWordpressMediaId: null });
   runPlatformPublishingGuard.mockResolvedValue({ success: true, message: "guard 통과" });
+  writeSeoPluginMetadataToWordPress.mockResolvedValue({
+    success: false,
+    message: "SEO_PLUGIN_PROVIDER=none이어서 건너뜁니다.",
+  });
+  approveSocialPost.mockResolvedValue({ success: true, message: "승인되었습니다." });
+  regenerateWordPressBlogMetadata.mockResolvedValue({ success: true, message: "SEO 정보를 자동으로 채웠습니다." });
 });
 
 describe("prepareWordPressBlogPostForPublishing", () => {
@@ -70,7 +106,16 @@ describe("prepareWordPressBlogPostForPublishing", () => {
 
     expect(result.success).toBe(true);
     expect(result.message).toContain("실제 공개 게시는 수행하지 않았습니다");
-    expect(result.steps.map((s) => s.step)).toEqual(["quality", "approval", "draft", "seo_metadata", "featured_image", "publish_guard"]);
+    expect(result.steps.map((s) => s.step)).toEqual([
+      "quality",
+      "approval",
+      "draft",
+      "seo_auto_generate",
+      "seo_metadata",
+      "seo_plugin",
+      "featured_image",
+      "publish_guard",
+    ]);
   });
 
   it("quality_status가 ready가 아니면 quality 단계에서 멈추고 이후 단계를 실행하지 않는다", async () => {
@@ -179,6 +224,105 @@ describe("prepareWordPressBlogPostForPublishing", () => {
     expect(featuredStep?.status).toBe("success");
   });
 
+  it("SEO 필드가 이미 있으면 seo_auto_generate 단계를 건너뛰고 자동 생성기를 호출하지 않는다", async () => {
+    getSocialPostById.mockResolvedValue(makePost());
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    expect(regenerateWordPressBlogMetadata).not.toHaveBeenCalled();
+    const step = result.steps.find((s) => s.step === "seo_auto_generate");
+    expect(step?.status).toBe("skipped");
+  });
+
+  it("SEO 필드가 없으면 자동으로 생성기를 호출하고 성공하면 success로 표시된다", async () => {
+    getSocialPostById.mockResolvedValue(
+      makePost({ platformMetadata: { seoTitle: "", metaDescription: "", targetKeyword: "" } })
+    );
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    expect(regenerateWordPressBlogMetadata).toHaveBeenCalledWith("article-1", "post-1");
+    const step = result.steps.find((s) => s.step === "seo_auto_generate");
+    expect(step?.status).toBe("success");
+    expect(result.success).toBe(true);
+    // 자동 생성 후 post를 다시 읽어야 하므로 getSocialPostById가 최소 2회(최초 조회 + 재조회) 호출된다.
+    expect(getSocialPostById.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("SEO 자동 생성이 실패해도(예: post_body가 비어 있음) 전체 파이프라인을 막지 않는다", async () => {
+    getSocialPostById.mockResolvedValue(
+      makePost({ platformMetadata: { seoTitle: "", metaDescription: "", targetKeyword: "" } })
+    );
+    regenerateWordPressBlogMetadata.mockResolvedValue({
+      success: false,
+      message: "post_title/post_body가 비어 있어 metadata를 생성할 수 없습니다.",
+    });
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    const step = result.steps.find((s) => s.step === "seo_auto_generate");
+    expect(step?.status).toBe("warning");
+    expect(runPlatformPublishingGuard).toHaveBeenCalled();
+  });
+
+  it("SEO plugin 반영이 성공하면 seo_plugin 단계가 success로 표시된다", async () => {
+    getSocialPostById.mockResolvedValue(
+      makePost({ platformMetadata: { featuredImage: { waived: true } } })
+    );
+    writeSeoPluginMetadataToWordPress.mockResolvedValue({ success: true, message: "SEO plugin 반영 완료" });
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    const seoPluginStep = result.steps.find((s) => s.step === "seo_plugin");
+    expect(seoPluginStep?.status).toBe("success");
+    expect(result.success).toBe(true);
+    expect(result.partialSuccess).toBe(false);
+  });
+
+  it("SEO plugin 반영이 미설정(건너뜀)이면 seo_plugin 단계가 skipped로 표시되고 전체는 계속 진행된다", async () => {
+    getSocialPostById.mockResolvedValue(
+      makePost({ platformMetadata: { featuredImage: { waived: true } } })
+    );
+    writeSeoPluginMetadataToWordPress.mockResolvedValue({
+      success: false,
+      message: "SEO_PLUGIN_PROVIDER=none이어서 건너뜁니다.",
+    });
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    const seoPluginStep = result.steps.find((s) => s.step === "seo_plugin");
+    expect(seoPluginStep?.status).toBe("skipped");
+    expect(result.success).toBe(true);
+    expect(result.partialSuccess).toBe(false);
+  });
+
+  it("SEO plugin 반영이 실패(건너뜀 아님)해도 전체 파이프라인을 막지 않고 partialSuccess=true로 끝난다", async () => {
+    getSocialPostById.mockResolvedValue(makePost());
+    writeSeoPluginMetadataToWordPress.mockResolvedValue({ success: false, message: "SEO plugin API 호출 실패" });
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    const seoPluginStep = result.steps.find((s) => s.step === "seo_plugin");
+    expect(seoPluginStep?.status).toBe("warning");
+    expect(result.success).toBe(true);
+    expect(result.partialSuccess).toBe(true);
+    expect(runPlatformPublishingGuard).toHaveBeenCalled();
+  });
+
+  it("featured image 연결이 실패해도(API 호출 실패) 전체 파이프라인을 막지 않고 partialSuccess=true로 끝난다", async () => {
+    getSocialPostById.mockResolvedValue(makePost());
+    getArticleById.mockResolvedValue({ featuredImageWordpressMediaId: 42 });
+    attachFeaturedMediaToDraft.mockResolvedValue({ success: false, message: "이미지 연결 API 호출 실패" });
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    const featuredStep = result.steps.find((s) => s.step === "featured_image");
+    expect(featuredStep?.status).toBe("warning");
+    expect(result.success).toBe(true);
+    expect(result.partialSuccess).toBe(true);
+    expect(runPlatformPublishingGuard).toHaveBeenCalled();
+  });
+
   it("publish guard가 실패하면 guard 단계에서 실패로 끝난다", async () => {
     getSocialPostById.mockResolvedValue(makePost());
     runPlatformPublishingGuard.mockResolvedValue({ success: false, message: "guard 실패" });
@@ -245,13 +389,39 @@ describe("prepareWordPressBlogPostForPublishing", () => {
   });
 });
 
+describe("approveAndPrepareWordPressBlogPostForPublishing", () => {
+  it("승인이 성공하면 곧바로 게시 준비를 실행한다 (승인 + 실행을 한 번에)", async () => {
+    getSocialPostById.mockResolvedValue(makePost());
+
+    const result = await approveAndPrepareWordPressBlogPostForPublishing("article-1", "post-1", "tester@example.com");
+
+    expect(approveSocialPost).toHaveBeenCalledWith("post-1", "tester@example.com", undefined);
+    expect(publishArticleToWordPressDraft).toHaveBeenCalled();
+    expect(result.success).toBe(true);
+  });
+
+  it("승인 자체가 실패하면 게시 준비 단계는 시도하지 않는다", async () => {
+    approveSocialPost.mockResolvedValue({ success: false, message: "이미 처리된 글입니다." });
+
+    const result = await approveAndPrepareWordPressBlogPostForPublishing("article-1", "post-1", "tester@example.com");
+
+    expect(result.success).toBe(false);
+    expect(result.failedStep).toBe("approval");
+    expect(result.message).toBe("이미 처리된 글입니다.");
+    expect(getSocialPostById).not.toHaveBeenCalled();
+    expect(publishArticleToWordPressDraft).not.toHaveBeenCalled();
+  });
+});
+
 describe("getWordPressBlogPreparationStepLabel / getWordPressBlogPreparationStepStatusLabel", () => {
   it("단계 코드를 한국어 라벨로 변환한다", async () => {
     const { getWordPressBlogPreparationStepLabel } = await import("./wordpress-blog-publish-preparation-orchestrator");
     expect(getWordPressBlogPreparationStepLabel("quality")).toBe("품질검사");
     expect(getWordPressBlogPreparationStepLabel("approval")).toBe("승인");
     expect(getWordPressBlogPreparationStepLabel("draft")).toBe("WordPress Draft");
+    expect(getWordPressBlogPreparationStepLabel("seo_auto_generate")).toBe("SEO 정보 자동 생성");
     expect(getWordPressBlogPreparationStepLabel("seo_metadata")).toBe("SEO Metadata");
+    expect(getWordPressBlogPreparationStepLabel("seo_plugin")).toBe("SEO 정보 반영");
     expect(getWordPressBlogPreparationStepLabel("featured_image")).toBe("대표 이미지");
     expect(getWordPressBlogPreparationStepLabel("publish_guard")).toBe("게시 가능 상태");
   });
