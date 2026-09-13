@@ -22,6 +22,9 @@ import { parsePagination } from "@/lib/navigation/pagination";
 import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
 import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-types";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
+import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
+import { describeStatusValue } from "@/lib/social/status-labels";
 import { checkNaverBlogContentSafety } from "@/lib/social/naver-blog-content-safety-checks";
 import {
   buildWordPressBlogPublishPreparationSummary,
@@ -40,6 +43,7 @@ import {
   type WordPressPublishPrepAction,
 } from "@/lib/social/wordpress-blog-publish-prep-state";
 import { buildWordPressBlogPostPreview } from "@/lib/social/wordpress-blog-post-preview-builder";
+import { convertMarkdownToWordPressHtml } from "@/lib/wordpress/markdown-to-wordpress-html";
 import {
   WORDPRESS_BLOG_CARD_TABS,
   normalizeWordPressBlogCardTab,
@@ -255,6 +259,48 @@ export default async function ArticleBlogPage({
     )
   );
 
+  // Phase 4-16: "목록 + 선택 상세" 구조 — wordpress_blog 글이 여러 개일 때
+  // WordPress 게시 준비 패널을 모든 카드에 반복하지 않고, 사용자가 선택한
+  // 글 1개에 대해서만 자세히 보여준다. 선택은 새 query parameter를 따로
+  // 만들지 않고 기존 socialPostId(하이라이트/딥링크에도 쓰이는 값)를 그대로
+  // 재사용한다 — 각 action이 실행 후 socialPostId=<postId>로 돌아오는
+  // 기존 흐름과도 자연스럽게 맞는다. 선택된 값이 없거나 이 page의
+  // wordpress_blog 글이 아니면 이 page의 첫 번째 wordpress_blog 글을
+  // 기본으로 선택한다.
+  const wordpressBlogPostsOnPage = posts.filter((post) => post.platform === "wordpress_blog");
+  const selectedWordpressBlogPostId =
+    targetSocialPostId && wordpressBlogPostsOnPage.some((post) => post.id === targetSocialPostId)
+      ? targetSocialPostId
+      : (wordpressBlogPostsOnPage[0]?.id ?? null);
+  // compact 카드의 "완료됨 요약 / 남은 작업 1줄"에 쓸 상태 계산을 모든
+  // wordpress_blog 글에 대해 미리 해 둔다(선택된 글의 상세 영역이 쓰는
+  // getWordPressPublishPrepState와 동일한 함수 — 카드 요약과 상세 화면의
+  // "남은 작업" 문구가 서로 다르게 계산되지 않도록 하나만 재사용한다).
+  const wordpressBlogPrepStates = new Map(
+    wordpressBlogPostsOnPage.flatMap((post) => {
+      const summary = wordpressBlogSummaries.get(post.id);
+      if (!summary) return [];
+      const bodyExists = Boolean(post.postTitle?.trim() && post.postBody?.trim());
+      const featuredImageAttached = summary.featuredImage.attachStatus === "attached";
+      const prepState = getWordPressPublishPrepState({
+        bodyExists,
+        qualityStatus: post.qualityStatus,
+        approvalStatus: post.approvalStatus,
+        draftExists: summary.draft.exists,
+        draftUrl: summary.draft.postUrl,
+        seoTitle: summary.blogMetadata.seoTitle,
+        metaDescription: summary.blogMetadata.metaDescription,
+        targetKeyword: summary.blogMetadata.targetKeyword,
+        featuredImageAttached,
+        featuredImageWaived: summary.featuredImage.waived,
+        featuredImageMediaIdPresent: Boolean(summary.featuredImage.wordpressMediaId),
+        checklistPrepared: post.manualPostChecklist.length > 0,
+        publishGuardStatus: summary.guardStatus,
+      });
+      return [[post.id, prepState] as const];
+    })
+  );
+
   // wordpress_blog 카드 안에는 프로세스 로그/실행 이력을 두지 않고, 페이지 하단
   // "프로세스 로그 / 실행 이력" 섹션으로 모은다(카드 안에는 짧은 요약 + 링크만 남긴다).
   const wordpressBlogPostIds = new Set(posts.filter((post) => post.platform === "wordpress_blog").map((post) => post.id));
@@ -328,48 +374,91 @@ export default async function ArticleBlogPage({
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">블로그 글 생성</h2>
-          <form action={generatePlaceholderSocialPostAction} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+          {/* Phase 4-16: 기본 화면에는 문체 선택 + 생성 버튼 1개만 둔다. platform
+              raw select/placeholder 초안 생성/rewrite 포함 체크박스는 일반적인
+              작성 흐름에 필요하지 않은 고급·테스트용 기능이라 "고급 옵션"
+              접힘 영역으로 옮겼다(삭제하지 않음). platform은 이 화면 목적상
+              항상 wordpress_blog로 고정한다 — naver_blog로 생성하려면 고급
+              옵션을 사용한다. */}
+          <form action={generateSocialDraftAction} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
             <input type="hidden" name="articleId" value={article.id} />
+            <input type="hidden" name="platform" value="wordpress_blog" />
             <label className="flex flex-col text-zinc-600">
-              platform
-              <select name="platform" className="mt-1 rounded border border-zinc-300 px-2 py-1" required>
-                {BLOG_PLATFORMS.map((platform) => (
-                  <option key={platform} value={platform}>
-                    {platform}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col text-zinc-600">
-              tone_style
-              <select name="toneStyle" className="mt-1 rounded border border-zinc-300 px-2 py-1" required>
+              문체
+              <select name="toneStyle" className="mt-1 rounded border border-zinc-300 px-2 py-1" required defaultValue="">
+                <option value="" disabled>
+                  문체를 선택하세요
+                </option>
                 {TONE_STYLES.map((toneStyle) => (
                   <option key={toneStyle} value={toneStyle}>
-                    {toneStyle}
+                    {TONE_STYLE_CONFIGS[toneStyle]?.label ?? toneStyle}
                   </option>
                 ))}
               </select>
             </label>
-            <button type="submit" formAction={generateSocialDraftAction} className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-500">
-              블로그 글 초안 생성
-            </button>
-            <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 font-medium text-white hover:bg-zinc-700">
-              placeholder 초안 생성
+            <button type="submit" className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-500">
+              WordPress 블로그 글 생성
             </button>
           </form>
-          <form method="get" className="mt-2">
-            <label className="flex items-center gap-1 text-xs text-zinc-600">
-              <input type="checkbox" name="includeRewriteVersions" value="true" defaultChecked={includeRewriteVersions} />
-              rewrite 포함
-              <button type="submit" className="ml-2 rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] hover:bg-zinc-100">
-                적용
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[11px] text-zinc-400">고급 옵션</summary>
+            <form action={generatePlaceholderSocialPostAction} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+              <input type="hidden" name="articleId" value={article.id} />
+              <label className="flex flex-col text-zinc-600">
+                platform
+                <select name="platform" className="mt-1 rounded border border-zinc-300 px-2 py-1" required defaultValue="wordpress_blog">
+                  {BLOG_PLATFORMS.map((platform) => (
+                    <option key={platform} value={platform}>
+                      {platform}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col text-zinc-600">
+                tone_style
+                <select name="toneStyle" className="mt-1 rounded border border-zinc-300 px-2 py-1" required>
+                  {TONE_STYLES.map((toneStyle) => (
+                    <option key={toneStyle} value={toneStyle}>
+                      {toneStyle}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="submit"
+                formAction={generateSocialDraftAction}
+                className="rounded border border-indigo-300 bg-white px-3 py-1.5 font-medium text-indigo-700 hover:bg-indigo-50"
+              >
+                선택한 platform으로 블로그 글 생성
               </button>
-            </label>
-          </form>
+              <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 font-medium text-white hover:bg-zinc-700">
+                placeholder 초안 생성
+              </button>
+            </form>
+            <form method="get" className="mt-2">
+              <label className="flex items-center gap-1 text-xs text-zinc-600">
+                <input type="checkbox" name="includeRewriteVersions" value="true" defaultChecked={includeRewriteVersions} />
+                rewrite 포함
+                <button type="submit" className="ml-2 rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] hover:bg-zinc-100">
+                  적용
+                </button>
+              </label>
+            </form>
+          </details>
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">블로그 글 ({posts.length})</h2>
+          {/* Phase 4-16: "글 확인 → 게시 대상으로 선택 → 게시 준비" 흐름을
+              한 문장으로 먼저 안내한다. wordpress_blog 글이 여럿이어도 아래
+              목록은 compact하게, 선택한 글 1개만 자세히 보여준다. */}
+          {wordpressBlogPostsOnPage.length > 0 && (
+            <p className="mt-1 text-xs text-zinc-500">
+              WordPress 블로그 글 {wordpressBlogPostsOnPage.length}개가 생성되었습니다. 게시할 글을 하나
+              선택하세요(현재 선택: {wordpressBlogPostsOnPage.find((p) => p.id === selectedWordpressBlogPostId)?.postTitle || "제목 없음"}).
+            </p>
+          )}
           {posts.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-500">아직 생성된 블로그 글이 없습니다. WordPress/Naver Blog는 platform=wordpress_blog/naver_blog로 생성하세요.</p>
           ) : (
@@ -382,10 +471,84 @@ export default async function ArticleBlogPage({
                     id={buildAnchorId(ANCHOR_PREFIX, post.id)}
                     className={`rounded border border-zinc-200 p-3 text-xs ${getHighlightClassName(post.id, targetSocialPostId)}`}
                   >
+                    {/* Phase 4-16: "목록 + 선택 상세" 구조 — wordpress_blog 글이면서
+                        지금 선택된 글이 아니면 compact 카드만 보여준다(WordPress 게시
+                        준비 패널/탭/원문 등 상세 내용은 아예 렌더링하지 않는다). 선택된
+                        글이거나 다른 platform(naver_blog 등)이면 기존 상세 내용을 그대로
+                        보여준다 — 기능은 삭제하지 않았다. */}
+                    {post.platform === "wordpress_blog" && post.id !== selectedWordpressBlogPostId ? (
+                      (() => {
+                        const summary = wordpressBlogSummaries.get(post.id);
+                        const prepState = wordpressBlogPrepStates.get(post.id);
+                        const bodyLength = (post.postBody ?? "").trim().length;
+                        const toneLabel = TONE_STYLE_CONFIGS[post.toneStyle]?.label ?? post.toneStyle;
+                        return (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <ContentGroupBadge group={post.isRewriteVersion ? "rewrite" : "blog"} />
+                              <span className="rounded bg-indigo-100 px-1.5 py-0.5 font-medium text-indigo-700">
+                                {PLATFORM_LABELS.wordpress_blog}
+                              </span>
+                              <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600">{toneLabel}</span>
+                              <form action={archiveSocialPostAction} className="ml-auto">
+                                <input type="hidden" name="articleId" value={article.id} />
+                                <input type="hidden" name="socialPostId" value={post.id} />
+                                <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                <ConfirmSubmitButton
+                                  confirmMessage={[
+                                    "이 WordPress 블로그 글을 삭제하시겠습니까?",
+                                    "",
+                                    "앱 내부의 생성 글과 상태만 삭제 또는 숨김 처리됩니다.",
+                                    post.postUrl || post.externalPostId
+                                      ? "이미 WordPress에 생성된 Draft/Post가 있습니다 — 자동 삭제되지 않습니다."
+                                      : "이미 생성된 WordPress 글은 자동 삭제되지 않습니다.",
+                                    "이 작업은 앱 내부 데이터만 삭제합니다. WordPress에 생성된 글은 WordPress 관리자 화면에서 별도로 관리하세요.",
+                                  ].join("\n")}
+                                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  삭제
+                                </ConfirmSubmitButton>
+                              </form>
+                            </div>
+                            <p className="mt-1 font-medium text-zinc-700">{post.postTitle || "(제목 없음)"}</p>
+                            <p className="mt-1 text-zinc-600">
+                              본문 {bodyLength.toLocaleString()}자
+                              {prepState && prepState.completedItems.length > 0 ? ` · ${prepState.completedItems.join(" · ")}` : ""}
+                            </p>
+                            {prepState && prepState.remainingItems.length > 0 && (
+                              <p className="mt-1 text-amber-700">남은 작업: {prepState.remainingItems.join(", ")}</p>
+                            )}
+                            {!summary && <p className="mt-1 text-zinc-400">게시 준비 상태를 불러오지 못했습니다.</p>}
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <a
+                                href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id })}
+                                className="rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500"
+                              >
+                                이 글 선택
+                              </a>
+                              <a
+                                href={buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "preview" })}
+                                className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
+                              >
+                                미리보기
+                              </a>
+                            </div>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <>
                     <div className="flex flex-wrap items-center gap-2">
                       <ContentGroupBadge group={post.isRewriteVersion ? "rewrite" : "blog"} />
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.platform}</span>
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{post.toneStyle}</span>
+                      {/* Phase 4-16(3차): compact 카드와 동일하게 raw platform/tone_style
+                          문자열 대신 사용자 친화적 라벨을 쓴다(원본 값은 아래 "상세 상태
+                          보기" 접힘 영역에서 계속 확인 가능). */}
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600" title={post.platform}>
+                        {PLATFORM_LABELS[post.platform] ?? post.platform}
+                      </span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600" title={post.toneStyle}>
+                        {TONE_STYLE_CONFIGS[post.toneStyle]?.label ?? post.toneStyle}
+                      </span>
                       {post.manualPostStatus === "posted" && <InfoBadge label="게시 완료" />}
                       {post.manualPostStatus === "posted" && post.latestMetricsRecordedAt === null && <InfoBadge label="성과 입력 필요" />}
                       {(post.performanceStatus === "low" || post.performanceStatus === "needs_review") && <InfoBadge label="반응 저조" />}
@@ -450,8 +613,10 @@ export default async function ArticleBlogPage({
                         상세에서 확인 →
                       </a>
                     </p>
+                    {/* Phase 4-16(3차): raw performance_status(예: not_measured) 대신
+                        describeStatusValue()의 한국어 라벨을 보여준다. */}
                     <p className="mt-1 text-[11px] text-zinc-400">
-                      performance: {post.performanceStatus} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
+                      성과: {describeStatusValue(post.performanceStatus)} ({post.latestPerformanceScore ?? "-"}) {post.postUrl && (
                         <>
                           ·{" "}
                           <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
@@ -1040,11 +1205,19 @@ export default async function ArticleBlogPage({
                               </div>
                             )}
 
-                            {/* 글 내용 — content 탭. wordpress_blog 자신의 제목/본문 요약(전체 본문은
-                                접어둔다). SEO/게시용 자체 생성 metadata는 이 탭 아래쪽에 있다. */}
+                            {/* Phase 4-16: "편집용 원문" — content 탭. markdown/HTML 원문을 그대로
+                                보여준다(##, **, <div class="summary-box"> 등 raw 문법이 보인다).
+                                기본 탭이 아니라 원문을 확인/복사하고 싶을 때만 보는 보조 탭이다 —
+                                기본으로 보이는 화면은 "게시용 미리보기"(preview 탭, 렌더링된 HTML)다.
+                                SEO/게시용 자체 생성 metadata는 이 탭 아래쪽에 있다. */}
                             {activeTab === "content" && (
                               <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
-                                <p className="text-[11px] font-semibold text-indigo-900">글 내용</p>
+                                <p className="text-[11px] font-semibold text-indigo-900">편집용 원문</p>
+                                <p className="mt-1 text-[10px] text-zinc-500">
+                                  저장된 markdown/HTML 원문 그대로입니다(##, **, 표 등 문법이 보일 수
+                                  있습니다). 실제 WordPress에 올라가는 모습은 &ldquo;게시용
+                                  미리보기&rdquo; 탭에서 확인하세요.
+                                </p>
                                 <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800">
                                   <div>
                                     <dt className="font-medium">제목</dt>
@@ -1069,22 +1242,20 @@ export default async function ArticleBlogPage({
                               </div>
                             )}
 
-                            {/* WordPress 게시 미리보기 — WordPress에 실제로 반영되기 전에 이 wordpress_blog
-                                글이 어떤 모양으로 올라갈지 미리 보여준다. article 원문이 아니라 이 글
-                                자신의 내용(postPreview)만 사용한다. preview 탭. */}
+                            {/* Phase 4-16: "게시용 미리보기" — WordPress에 실제로 반영되기 전에 이
+                                wordpress_blog 글이 어떤 모양으로 올라갈지 미리 보여준다. article
+                                원문이 아니라 이 글 자신의 내용(postPreview)만 사용한다. 기본 탭(preview).
+                                본문은 markdown 원문이 아니라 실제 Draft 생성 때 쓰는 것과 동일한
+                                convertMarkdownToWordPressHtml()로 변환한 HTML을 렌더링해서 보여준다 —
+                                ##, **, <div class="summary-box"> 같은 raw 문법이 기본 화면에 그대로
+                                노출되지 않는다. 원문이 필요하면 "편집용 원문" 탭을 사용한다. */}
                             {activeTab === "preview" && (
                               <>
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
-                              <p className="text-[11px] font-semibold text-indigo-900">WordPress 게시 미리보기</p>
+                              <p className="text-[11px] font-semibold text-indigo-900">게시용 미리보기</p>
                               <p className="mt-1 text-[10px] text-zinc-600">
                                 WordPress에 실제로 반영되기 전에 이 wordpress_blog 글이 어떤 모양으로
                                 올라갈지 미리 확인합니다. article 원문이 아니라 이 글 자체의 내용입니다.
-                              </p>
-                              <p className="mt-1 text-[10px] text-indigo-500">
-                                아래 본문은 저장된 markdown 원문 그대로입니다(##, 표 등 markdown 문법이
-                                보일 수 있습니다). WordPress Draft 생성/업데이트 시에는 이 markdown이
-                                자동으로 HTML(h2/h3/표/목록 등)로 변환되어 전송되므로, 실제 WordPress
-                                공개 화면에는 markdown 문법이 그대로 노출되지 않습니다.
                               </p>
                               <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
                                 <div className="sm:col-span-2">
@@ -1118,18 +1289,18 @@ export default async function ArticleBlogPage({
                                 )}
                               </div>
                               <div className="mt-2">
-                                <p className="text-[10px] font-medium text-indigo-800">본문 미리보기</p>
-                                <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">
-                                  {postPreview.bodyPreviewText || "본문이 아직 없습니다."}
-                                  {postPreview.bodyTruncated && "…"}
-                                </p>
-                                {postPreview.bodyTruncated && (
-                                  <details className="mt-1">
-                                    <summary className="cursor-pointer text-[10px] text-indigo-600">
-                                      전체 미리보기 보기 (전체 {postPreview.bodyFullLength}자)
-                                    </summary>
-                                    <p className="mt-1 whitespace-pre-wrap text-[10px] text-zinc-700">{post.postBody}</p>
-                                  </details>
+                                <p className="text-[10px] font-medium text-indigo-800">본문 미리보기 (렌더링된 게시용 화면)</p>
+                                {post.postBody?.trim() ? (
+                                  <div
+                                    className="prose-preview mt-1 max-h-96 overflow-y-auto rounded border border-zinc-200 bg-zinc-50 p-2 text-[11px] text-zinc-800"
+                                    style={{ lineHeight: 1.7 }}
+                                    // Draft 생성 시 실제로 WordPress에 전송하는 것과 동일한
+                                    // convertMarkdownToWordPressHtml() 결과다 — 이미 sanitize된
+                                    // HTML만 렌더링한다(원문 script/style은 애초에 이 함수가 제거한다).
+                                    dangerouslySetInnerHTML={{ __html: convertMarkdownToWordPressHtml(post.postBody) }}
+                                  />
+                                ) : (
+                                  <p className="mt-1 text-[10px] text-zinc-500">본문이 아직 없습니다.</p>
                                 )}
                               </div>
                               <div className="mt-2">
@@ -2335,6 +2506,8 @@ export default async function ArticleBlogPage({
                         </button>
                       </form>
                     </details>
+                      </>
+                    )}
                   </li>
                 );
               })}

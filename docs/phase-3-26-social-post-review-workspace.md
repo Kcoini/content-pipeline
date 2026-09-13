@@ -203,10 +203,20 @@ AI 수정 제안, "문제 아님으로 표시", 안전한 자동 정리는 이�
 원칙은 그대로 유지된다. 상세는
 [`phase-4-14-social-post-list-inline-body.md`](./phase-4-14-social-post-list-inline-body.md) 참고.
 
+## 후속: 목록 카드 안에서 inline 수정·저장 후 검토/승인·복사까지 (Phase 4-15)
+
+Phase 4-14에 이어, 목록 카드의 [본문 수정]이 이제(x 제외) 상세
+페이지로 이동하지 않고 카드 안 textarea 편집으로 바뀌었다. 저장은
+이 문서의 `editSocialPostContent()`(quality/approval 초기화 동작
+포함)를 그대로 재사용하고, [저장 후 승인]은 저장 → 자동 검토 →
+통과 시 승인 순서를 보장한다. 상세는
+[`phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md) 참고.
+
 ## 관련 문서
 
 - [`phase-3-25-auto-review-editor-workflow.md`](./phase-3-25-auto-review-editor-workflow.md)
 - [`phase-3-1-multi-platform-writing-foundation.md`](./phase-3-1-multi-platform-writing-foundation.md)
 - [`phase-4-14-social-post-list-inline-body.md`](./phase-4-14-social-post-list-inline-body.md)
+- [`phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md)
 - [`ui-ux-governance-rules.md`](./ui-ux-governance-rules.md)
 - [`ui-review-agent-checklist.md`](./ui-review-agent-checklist.md)

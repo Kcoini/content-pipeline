@@ -15,6 +15,11 @@ import {
   EmptyContentError,
 } from "@/lib/repositories/article-repository";
 import { logEvent } from "@/lib/harness/logger";
+import type { LogEventType } from "@/lib/repositories/log-repository";
+import {
+  saveSocialPostBodyAndProcess,
+  type SocialPostBodySaveMode,
+} from "@/lib/social/social-post-inline-edit-service";
 import {
   publishArticleToWordPressDraft,
   runWordPressConnectionTest,
@@ -2088,6 +2093,85 @@ export async function editSocialPostAction(formData: FormData): Promise<void> {
   revalidatePath(`/social-posts/${socialPostId}`);
 
   redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
+}
+
+/**
+ * Phase 4-15: SNS/커뮤니티 글 목록 카드 안에서 게시용 본문을 바로
+ * 수정하고 저장한다 — [저장만 하기]/[저장 후 자동 검토]/[저장 후 승인]
+ * 세 버튼이 이 action 하나를 saveMode만 다르게 호출한다.
+ * saveSocialPostBodyAndProcess()가 실제 저장 → (필요시) 자동 검토 →
+ * (필요시) 승인 순서를 보장한다 — 이 action은 그 결과를 메시지로
+ * 옮기기만 한다. editSocialPostAction과 달리 postTitle 등 다른 필드는
+ * 건드리지 않는다(본문 전용).
+ */
+export async function saveSocialPostInlineEditAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const saveModeRaw = String(formData.get("saveMode") ?? "save_only");
+  const saveMode: SocialPostBodySaveMode =
+    saveModeRaw === "save_and_review" || saveModeRaw === "save_review_and_approve" ? saveModeRaw : "save_only";
+
+  let message: string;
+  let isError: boolean;
+  let socialPost: SocialPost | undefined;
+
+  try {
+    const result = await saveSocialPostBodyAndProcess(socialPostId, body, saveMode, APPROVED_BY);
+    message =
+      result.qualityIssues && result.qualityIssues.length > 0
+        ? `${result.message}\n${result.qualityIssues.slice(0, 3).join(" / ")}`
+        : result.message;
+    isError = !result.success;
+    socialPost = result.socialPost;
+  } catch (error) {
+    message = describeUnexpectedError(
+      error instanceof Error ? error.message : String(error),
+      "본문 저장 중 알 수 없는 오류가 발생했습니다."
+    ).userMessage;
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  revalidatePath(`/social-posts/${socialPostId}`);
+
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
+}
+
+/**
+ * Phase 4-15: SNS/커뮤니티 글 카드의 inline 편집/복사처럼 페이지 이동이
+ * 없어야 하는 순수 클라이언트 상호작용을 위한 로그 전용 action이다.
+ * redirect()를 호출하지 않는다 — 클라이언트 컴포넌트에서 폼 제출이
+ * 아니라 일반 함수처럼 호출한다(await logSocialPostInlineEditClientEventAction(...)).
+ * 실패해도 사용자 흐름을 막지 않도록 예외를 던지지 않는다.
+ */
+export async function logSocialPostInlineEditClientEventAction(input: {
+  articleId: string;
+  socialPostId: string;
+  event: "opened" | "cancelled" | "copied" | "copy_failed";
+}): Promise<void> {
+  const type: LogEventType =
+    input.event === "opened"
+      ? "social_post_inline_edit_opened"
+      : input.event === "cancelled"
+        ? "social_post_inline_edit_cancelled"
+        : input.event === "copied"
+          ? "social_post_body_copied"
+          : "social_post_body_copy_failed";
+
+  try {
+    await logEvent({
+      type,
+      status: input.event === "copy_failed" ? "failed" : "info",
+      message: `social post(${input.socialPostId})의 ${input.event} 이벤트.`,
+      articleId: input.articleId,
+      targetType: "article",
+      targetId: input.articleId,
+      details: { socialPostId: input.socialPostId },
+    });
+  } catch {
+    // 로깅 실패가 사용자 흐름(편집/복사)을 막으면 안 된다.
+  }
 }
 
 /** social post의 승인을 요청한다 (approval_status='pending_review'). */

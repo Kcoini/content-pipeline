@@ -243,6 +243,23 @@ social-post-user-facing-status.ts`) 기반의 한 줄 요약으로 바뀌었다.
 [`phase-3-22-user-facing-status-simplification.md`](./phase-3-22-user-facing-status-simplification.md)
 참고.
 
+## wordpress_blog 글이 여러 개면 "목록 + 선택 상세"로 나눈다 (Phase 4-16)
+
+wordpress_blog 글 카드가 여러 개 생성될 수 있는 화면(예:
+`/articles/[id]/blog`)에서는 WordPress 게시 준비 패널과 탭 전체를
+모든 카드에 반복하지 않는다.
+
+- 목록의 각 카드는 compact하게 표시한다: 글 유형/문체 배지, 제목,
+  본문 길이, 완료된 작업 요약, 남은 작업 1줄, [이 글 선택]/
+  [미리보기]/[삭제] 정도만 둔다.
+- 사용자가 선택한 글 1개에 대해서만 본문 미리보기와 WordPress
+  게시 준비 패널을 자세히 보여준다.
+- 선택 상태는 별도 전용 파라미터를 새로 만들기보다, 이미 있는
+  하이라이트/딥링크 파라미터를 재사용할 수 있으면 재사용한다.
+- 기본 탭은 렌더링된 게시용 미리보기(HTML)로 하고, markdown/HTML
+  원문은 별도의 "편집용 원문" 탭으로 분리한다.
+- 실제 적용 사례: [`phase-4-16-wordpress-blog-list-detail-split.md`](./phase-4-16-wordpress-blog-list-detail-split.md).
+
 ## "현재 상태 + 남은 작업 + 다음 버튼 1개" 원칙 (Phase 4-13)
 
 wordpress_blog 카드 기본 화면은 여러 버튼을 나열하지 않는다. 대신

@@ -22,8 +22,10 @@ function makeBadgeInput(overrides: Partial<WordPressBlogCardTabBadgeInput> = {})
 }
 
 describe("WORDPRESS_BLOG_CARD_TABS", () => {
-  it("6개 탭(글 내용/미리보기/품질승인/WordPress 반영/대표 이미지/체크리스트)을 정의한다", () => {
-    expect(WORDPRESS_BLOG_CARD_TABS.map((t) => t.key)).toEqual(["content", "preview", "quality", "wordpress", "image", "checklist"]);
+  it("Phase 4-16: 6개 탭(게시용 미리보기/편집용 원문/품질승인/WordPress 반영/대표 이미지/체크리스트)을, 게시용 미리보기가 먼저 오는 순서로 정의한다", () => {
+    expect(WORDPRESS_BLOG_CARD_TABS.map((t) => t.key)).toEqual(["preview", "content", "quality", "wordpress", "image", "checklist"]);
+    expect(WORDPRESS_BLOG_CARD_TABS.find((t) => t.key === "preview")?.label).toBe("게시용 미리보기");
+    expect(WORDPRESS_BLOG_CARD_TABS.find((t) => t.key === "content")?.label).toBe("편집용 원문");
   });
 });
 
@@ -33,10 +35,10 @@ describe("normalizeWordPressBlogCardTab", () => {
     expect(normalizeWordPressBlogCardTab("checklist")).toBe("checklist");
   });
 
-  it("모르는 값이나 undefined면 기본 탭(content)으로 되돌린다", () => {
-    expect(normalizeWordPressBlogCardTab("unknown")).toBe("content");
-    expect(normalizeWordPressBlogCardTab(undefined)).toBe("content");
-    expect(normalizeWordPressBlogCardTab(null)).toBe("content");
+  it("Phase 4-16: 모르는 값이나 undefined면 기본 탭(preview, 게시용 미리보기)으로 되돌린다", () => {
+    expect(normalizeWordPressBlogCardTab("unknown")).toBe("preview");
+    expect(normalizeWordPressBlogCardTab(undefined)).toBe("preview");
+    expect(normalizeWordPressBlogCardTab(null)).toBe("preview");
   });
 });
 

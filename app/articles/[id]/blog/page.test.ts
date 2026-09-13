@@ -699,13 +699,18 @@ describe("확인 필요 항목 수동 검토 UI (Step 7, blog 카드 내부, 정
 });
 
 describe("WordPress 게시 미리보기 / 반영 데이터 / 검사 이유 / 최근 반영 결과 (blog 카드 내부, 정적 소스 검사)", () => {
-  it("WordPress 게시 미리보기 섹션이 표시되고 postPreview(wordpress_blog 자신의 값)를 사용한다", () => {
-    expect(pageSource).toContain("WordPress 게시 미리보기");
+  it("Phase 4-16: 게시용 미리보기 섹션이 표시되고 postPreview(wordpress_blog 자신의 값)를 사용한다", () => {
+    expect(pageSource).toContain("게시용 미리보기");
     expect(pageSource).toContain("buildWordPressBlogPostPreview({");
     expect(pageSource).toContain("postTitle: post.postTitle");
     expect(pageSource).toContain("postBody: post.postBody");
     expect(pageSource).toContain("{postPreview.title}");
-    expect(pageSource).toContain("{postPreview.bodyPreviewText");
+  });
+
+  it("Phase 4-16: 본문 미리보기는 raw markdown이 아니라 convertMarkdownToWordPressHtml로 렌더링된 HTML을 보여준다", () => {
+    expect(pageSource).toContain('from "@/lib/wordpress/markdown-to-wordpress-html"');
+    expect(pageSource).toContain("convertMarkdownToWordPressHtml(post.postBody)");
+    expect(pageSource).toContain("dangerouslySetInnerHTML={{ __html: convertMarkdownToWordPressHtml(post.postBody) }}");
   });
 
   it("미리보기는 article content를 사용하지 않는다", () => {
@@ -715,8 +720,8 @@ describe("WordPress 게시 미리보기 / 반영 데이터 / 검사 이유 / 최
     expect(previewCallBlock).not.toContain("article.title");
   });
 
-  it("전체 미리보기 보기를 위한 접기/펼치기가 있다", () => {
-    expect(pageSource).toContain("전체 미리보기 보기");
+  it("Phase 4-16: 편집용 원문(content 탭)에는 전체 본문 보기 접기/펼치기가 있다", () => {
+    expect(pageSource).toContain("전체 본문 보기");
     expect(pageSource).toContain("postPreview.bodyTruncated");
   });
 
@@ -780,10 +785,10 @@ describe("WordPress 게시 미리보기 / 반영 데이터 / 검사 이유 / 최
     expect(pageSource).toContain("getWordPressBlogPreparationStepStatusLabel");
   });
 
-  it("WordPress 게시 미리보기/반영 데이터/최근 반영 결과는 wordpress_blog 조건부 블록 안, naver_blog 블록 밖에 있다", () => {
+  it("게시용 미리보기/반영 데이터/최근 반영 결과는 wordpress_blog 조건부 블록 안, naver_blog 블록 밖에 있다", () => {
     const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
     const naverContentSafetyBlockStart = pageSource.indexOf("네이버 블로그 콘텐츠 안전 점검");
-    const previewIdx = pageSource.indexOf("WordPress 게시 미리보기");
+    const previewIdx = pageSource.indexOf("게시용 미리보기");
     const dataIdx = pageSource.indexOf("WordPress 반영 데이터");
     const lastRunIdx = pageSource.indexOf("최근 WordPress 반영 결과");
     expect(previewIdx).toBeGreaterThan(wordpressBlockStart);
@@ -814,9 +819,9 @@ describe("wordpress_blog 카드 내부 탭 구조 (blog 카드 내부, 정적 �
     expect(pageSource).toContain("tabBadges.checklist");
   });
 
-  it("글 내용 탭이 표시된다", () => {
+  it("Phase 4-16: 편집용 원문(content) 탭이 표시된다", () => {
     expect(pageSource).toContain('activeTab === "content"');
-    expect(pageSource).toContain(">글 내용<");
+    expect(pageSource).toContain(">편집용 원문<");
     expect(pageSource).toContain("본문 요약");
   });
 
@@ -1202,5 +1207,100 @@ describe("Phase 4-13: WordPress 게시 준비 화면 단순화 (blog 카드 내�
     // "quality_status가 ready" 같은 raw 문구를 카드 요약 영역에 직접 나열하지 않는다.
     expect(betweenSummaryAndAdvanced).not.toContain("quality_status가 ready");
     expect(betweenSummaryAndAdvanced).not.toContain("approval_status가 approved");
+  });
+});
+
+describe("Phase 4-16: 블로그 글쓰기 페이지 '목록 + 선택 상세' 구조 (정적 소스 검사)", () => {
+  it("선택되지 않은 wordpress_blog 글은 compact 카드로, 선택된 글(또는 다른 platform)은 기존 상세 내용을 그대로 보여준다", () => {
+    expect(pageSource).toContain("const selectedWordpressBlogPostId =");
+    expect(pageSource).toContain('post.platform === "wordpress_blog" && post.id !== selectedWordpressBlogPostId ? (');
+  });
+
+  it("selectedWordpressBlogPostId는 socialPostId(targetSocialPostId)를 재사용하고, 없으면 이 page의 첫 번째 wordpress_blog 글을 기본 선택한다", () => {
+    expect(pageSource).toContain("targetSocialPostId && wordpressBlogPostsOnPage.some((post) => post.id === targetSocialPostId)");
+    expect(pageSource).toContain("wordpressBlogPostsOnPage[0]?.id ?? null");
+  });
+
+  it("compact 카드는 getWordPressPublishPrepState(Phase 4-13)를 재사용해 완료된 작업/남은 작업 요약만 보여주고, WordPress 게시 준비 패널 전체를 반복하지 않는다", () => {
+    expect(pageSource).toContain("const wordpressBlogPrepStates = new Map(");
+    expect(pageSource).toContain("wordpressBlogPrepStates.get(post.id)");
+    // compact 분기 안에는 renderPrepActionButton/prepState.primaryAction 같은
+    // 상세 패널 전용 로직이 없어야 한다(그 로직은 상세 분기에만 있다).
+    const compactBranchStart = pageSource.indexOf('post.platform === "wordpress_blog" && post.id !== selectedWordpressBlogPostId ? (');
+    const compactBranchEnd = pageSource.indexOf(") : (", compactBranchStart);
+    const compactBranch = pageSource.slice(compactBranchStart, compactBranchEnd);
+    expect(compactBranch).not.toContain("renderPrepActionButton");
+    expect(compactBranch).not.toContain("WordPress 게시 준비");
+  });
+
+  it("compact 카드에는 [이 글 선택]/[미리보기]/[삭제] 버튼만 있고, raw platform/tone_style 대신 친화적 라벨을 쓴다", () => {
+    const compactBranchStart = pageSource.indexOf('post.platform === "wordpress_blog" && post.id !== selectedWordpressBlogPostId ? (');
+    const compactBranchEnd = pageSource.indexOf(") : (", compactBranchStart);
+    const compactBranch = pageSource.slice(compactBranchStart, compactBranchEnd);
+    expect(compactBranch).toContain("이 글 선택");
+    expect(compactBranch).toContain("미리보기");
+    expect(compactBranch).toContain("삭제");
+    expect(compactBranch).toContain("PLATFORM_LABELS.wordpress_blog");
+    expect(compactBranch).toContain("TONE_STYLE_CONFIGS[post.toneStyle]");
+  });
+
+  it("[이 글 선택]은 socialPostId를 바꾸는 링크이고(같은 페이지, 새 action 없음), [미리보기]는 preview 탭으로 이동한다", () => {
+    const compactBranchStart = pageSource.indexOf('post.platform === "wordpress_blog" && post.id !== selectedWordpressBlogPostId ? (');
+    const compactBranchEnd = pageSource.indexOf(") : (", compactBranchStart);
+    const compactBranch = pageSource.slice(compactBranchStart, compactBranchEnd);
+    expect(compactBranch).toContain("buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id })");
+    expect(compactBranch).toContain('buildArticleBlogUrl(id, { socialPostId: post.id, highlight: post.id, tab: "preview" })');
+  });
+});
+
+describe("Phase 4-16: 게시용 미리보기 기본 탭 (정적 소스 검사)", () => {
+  it("기본 탭은 preview(게시용 미리보기)다", () => {
+    expect(pageSource).toContain('from "@/lib/social/wordpress-blog-card-tabs"');
+  });
+
+  it("게시용 미리보기는 렌더링된 HTML을 보여주고, 편집용 원문 탭에서만 raw markdown을 보여준다", () => {
+    const previewTabIdx = pageSource.indexOf('activeTab === "preview"');
+    const contentTabIdx = pageSource.indexOf('activeTab === "content"');
+    expect(previewTabIdx).toBeGreaterThan(-1);
+    expect(contentTabIdx).toBeGreaterThan(-1);
+    expect(pageSource).toContain("dangerouslySetInnerHTML");
+  });
+});
+
+describe("Phase 4-16: 블로그 글 생성 영역 단순화 (정적 소스 검사)", () => {
+  it("기본 화면에는 문체 선택 + [WordPress 블로그 글 생성] 버튼만 있다(platform은 wordpress_blog로 고정)", () => {
+    const advancedIdx = pageSource.indexOf(">고급 옵션</summary>");
+    const generateSectionIdx = pageSource.indexOf('<h2 className="text-sm font-semibold text-zinc-700">블로그 글 생성</h2>');
+    const defaultFormBlock = pageSource.slice(generateSectionIdx, advancedIdx);
+    expect(defaultFormBlock).toContain('<input type="hidden" name="platform" value="wordpress_blog" />');
+    expect(defaultFormBlock).toContain("WordPress 블로그 글 생성");
+    expect(defaultFormBlock).not.toContain(">placeholder 초안 생성<");
+  });
+
+  it("placeholder 초안 생성/platform raw select/rewrite 포함은 '고급 옵션' 접힘 영역 안에 있다(기능 삭제 없음)", () => {
+    const advancedSummaryIdx = pageSource.indexOf(">고급 옵션</summary>");
+    const advancedDetailsEnd = pageSource.indexOf("</details>", advancedSummaryIdx);
+    const advancedBlock = pageSource.slice(advancedSummaryIdx, advancedDetailsEnd);
+    expect(advancedSummaryIdx).toBeGreaterThan(-1);
+    expect(advancedBlock).toContain("placeholder 초안 생성");
+    expect(advancedBlock).toContain("generatePlaceholderSocialPostAction");
+    expect(advancedBlock).toContain("rewrite 포함");
+  });
+});
+
+describe("Phase 4-16(3차): 선택한 글 상세 영역의 raw status 한국어 라벨 변환 (정적 소스 검사)", () => {
+  it("선택된 글/다른 platform 상세 영역의 platform/tone_style 배지도 compact 카드처럼 친화적 라벨을 쓴다(raw 값은 title 속성에만 남긴다)", () => {
+    const wordpressBlockStart = pageSource.lastIndexOf('post.platform === "wordpress_blog" &&');
+    const detailBranchStart = pageSource.lastIndexOf(") : (", wordpressBlockStart);
+    const detailBranch = pageSource.slice(detailBranchStart, wordpressBlockStart);
+    expect(detailBranch).toContain("PLATFORM_LABELS[post.platform] ?? post.platform");
+    expect(detailBranch).toContain("TONE_STYLE_CONFIGS[post.toneStyle]?.label ?? post.toneStyle");
+    expect(detailBranch).not.toContain("font-mono text-zinc-600\">{post.platform}</span>");
+    expect(detailBranch).not.toContain("font-mono text-zinc-600\">{post.toneStyle}</span>");
+  });
+
+  it("성과 상태는 raw performance_status 대신 describeStatusValue() 라벨을 보여준다", () => {
+    expect(pageSource).toContain("성과: {describeStatusValue(post.performanceStatus)}");
+    expect(pageSource).not.toContain("performance: {post.performanceStatus}");
   });
 });

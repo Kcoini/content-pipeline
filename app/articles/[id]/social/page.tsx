@@ -20,7 +20,8 @@ import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-t
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import { getUserFacingStatus } from "@/lib/social/social-post-user-facing-status";
 import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
-import { ExpandableText } from "@/components/social/expandable-text";
+import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
+import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
@@ -46,6 +47,7 @@ import {
   recordManualPostingResultAction,
   recordSocialPostMetricsAction,
   archiveSocialPostAction,
+  saveSocialPostInlineEditAction,
 } from "../actions";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 
@@ -258,11 +260,15 @@ export default async function ArticleSocialPage({
                     </div>
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || post.caption || "(제목/캡션 없음)"}</p>
 
-                    {/* Phase 4-14: 게시용 본문을 목록 카드 안에서 최대한 그대로
+                    {/* Phase 4-14/4-15: 게시용 본문을 목록 카드 안에서 최대한 그대로
                         보여준다 — 자동 검토 결과보다 먼저 표시해, 사용자가 글을
                         먼저 읽고 판단할 수 있게 한다. 1,200자 이하면 전체 표시,
-                        초과하면 ExpandableText가 카드 안에서만 접기/펼치기를
-                        처리한다(페이지 이동/서버 action 없음). */}
+                        초과하면 카드 안에서만 접기/펼치기를 처리한다. [본문 수정]을
+                        누르면 페이지 이동 없이 같은 카드 안에서 textarea 편집
+                        모드로 바뀐다(SocialPostBodyPanel, "use client"). x처럼
+                        threadItems 배열 기반 플랫폼은 단일 textarea로 안전하게
+                        수정할 수 없어 편집 버튼을 보여주지 않는다(상세 페이지에서
+                        수정). */}
                     {(() => {
                       const displayBody = getSocialPostDisplayBody(post);
                       if (!displayBody) {
@@ -274,10 +280,14 @@ export default async function ArticleSocialPage({
                         );
                       }
                       return (
-                        <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
-                          <p className="text-[10px] font-medium text-zinc-500">게시용 본문</p>
-                          <ExpandableText text={displayBody} className="mt-1 text-[12px] text-zinc-800" />
-                        </div>
+                        <SocialPostBodyPanel
+                          articleId={article.id}
+                          socialPostId={post.id}
+                          returnTo={selfReturnTo}
+                          displayBody={displayBody}
+                          editable={getSocialPostEditableField(post.platform) !== null}
+                          saveAction={saveSocialPostInlineEditAction}
+                        />
                       );
                     })()}
 
@@ -361,6 +371,15 @@ export default async function ArticleSocialPage({
                       const cardState = getSocialPostCardActionState(post);
                       const primaryClass = "rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500";
                       const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+                      // Phase 4-15: 이 플랫폼이 카드 안 inline 편집을 지원하면(위
+                      // SocialPostBodyPanel이 이미 "본문 수정" 버튼을 자체적으로
+                      // 보여준다) 여기 secondary 목록에서는 중복되는 edit_body
+                      // action을 제외한다. x처럼 지원하지 않으면 기존대로
+                      // 상세 페이지 링크를 보여준다.
+                      const inlineEditable = getSocialPostEditableField(post.platform) !== null;
+                      const visibleSecondaryActions = cardState.secondaryActions.filter(
+                        (action) => !(action.actionType === "edit_body" && inlineEditable)
+                      );
 
                       const renderAction = (action: SocialPostCardAction, className: string) => {
                         switch (action.actionType) {
@@ -438,7 +457,7 @@ export default async function ArticleSocialPage({
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
                             {renderAction(cardState.primaryAction, primaryClass)}
-                            {cardState.secondaryActions.map((action, i) => (
+                            {visibleSecondaryActions.map((action, i) => (
                               <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
                             ))}
                             <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">

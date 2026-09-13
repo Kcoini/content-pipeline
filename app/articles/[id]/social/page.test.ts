@@ -170,10 +170,11 @@ describe("자동 검토 리포트 (정적 소스 검사, Phase 3-25)", () => {
 });
 
 describe("Phase 4-14: SNS/커뮤니티 글 목록 카드 본문 확장/버튼 정리 (정적 소스 검사)", () => {
-  it("ExpandableText로 게시용 본문을 카드 안에서 보여준다(getSocialPostDisplayBody 재사용)", () => {
-    expect(pageSource).toContain('from "@/components/social/expandable-text"');
-    expect(pageSource).toContain("<ExpandableText");
+  it("Phase 4-15: SocialPostBodyPanel(ExpandableText 재사용)로 게시용 본문을 카드 안에서 보여주고 inline 편집도 지원한다", () => {
+    expect(pageSource).toContain('from "@/components/social/social-post-body-panel"');
+    expect(pageSource).toContain("<SocialPostBodyPanel");
     expect(pageSource).toContain("getSocialPostDisplayBody(post)");
+    expect(pageSource).toContain("getSocialPostEditableField(post.platform)");
   });
 
   it("게시용 본문은 자동 검토 결과보다 먼저(소스 상으로도 앞에) 표시된다", () => {
@@ -192,7 +193,12 @@ describe("Phase 4-14: SNS/커뮤니티 글 목록 카드 본문 확장/버튼 �
     expect(pageSource).toContain('from "@/lib/social/social-post-card-action-state"');
     expect(pageSource).toContain("getSocialPostCardActionState(post)");
     expect(pageSource).toContain("cardState.primaryAction");
-    expect(pageSource).toContain("cardState.secondaryActions.map");
+    expect(pageSource).toContain("visibleSecondaryActions.map");
+  });
+
+  it("Phase 4-15: 카드 안 inline 편집을 지원하는 플랫폼은 secondary 목록에서 edit_body(상세 페이지 링크)를 중복 표시하지 않는다", () => {
+    expect(pageSource).toContain("const inlineEditable = getSocialPostEditableField(post.platform) !== null;");
+    expect(pageSource).toContain('!(action.actionType === "edit_body" && inlineEditable)');
   });
 
   it("품질검사/승인 요청/승인/복사export 4개 버튼을 동시에 같은 수준으로 나열하지 않는다(기본 흐름에는 primary 1개만)", () => {

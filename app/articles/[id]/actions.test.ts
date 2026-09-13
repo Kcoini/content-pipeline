@@ -506,6 +506,58 @@ describe("generateSelectedPlatformPostsAction (정적 소스 검사, Phase 3-21)
   });
 });
 
+describe("saveSocialPostInlineEditAction (정적 소스 검사, Phase 4-15)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("export async function saveSocialPostInlineEditAction"),
+    actionsSource.indexOf("export async function logSocialPostInlineEditClientEventAction")
+  );
+
+  it("saveSocialPostBodyAndProcess 서비스를 그대로 재사용하고 saveMode를 formData에서 읽는다", () => {
+    expect(fnBody).toContain("saveSocialPostBodyAndProcess(socialPostId, body, saveMode, APPROVED_BY)");
+    expect(fnBody).toContain('formData.get("saveMode")');
+  });
+
+  it("알 수 없는 saveMode 값은 save_only로 안전하게 처리한다", () => {
+    expect(fnBody).toContain('"save_only"');
+  });
+
+  it("raw 런타임 에러를 describeUnexpectedError로 감싼다", () => {
+    expect(fnBody).toContain("describeUnexpectedError(");
+  });
+
+  it("redirectToSafeTarget(returnTo 기반)으로 같은 목록/상세 페이지로 돌아간다(다른 라우트로 강제 이동하지 않음)", () => {
+    expect(fnBody).toContain("redirectToSafeTarget(");
+    expect(fnBody).toContain("socialPostFallbackUrl(articleId, socialPost)");
+  });
+
+  it("실제 WordPress/공개 게시 함수를 호출하지 않는다", () => {
+    expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|publishWordPressPost/);
+  });
+});
+
+describe("logSocialPostInlineEditClientEventAction (정적 소스 검사, Phase 4-15)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("export async function logSocialPostInlineEditClientEventAction"),
+    actionsSource.indexOf("/** social post의 승인을 요청한다")
+  );
+
+  it("redirect()를 호출하지 않는다(클라이언트 컴포넌트에서 폼이 아니라 일반 함수처럼 호출됨)", () => {
+    expect(fnBody).not.toContain("redirect(");
+    expect(fnBody).not.toContain("redirectToSafeTarget(");
+  });
+
+  it("로깅 실패가 예외로 전파되지 않는다(사용자 흐름을 막지 않음)", () => {
+    expect(fnBody).toContain("catch {");
+  });
+
+  it("open/cancelled/copied/copy_failed 4가지 이벤트를 pipeline_logs 이벤트 타입으로 매핑한다", () => {
+    expect(fnBody).toContain("social_post_inline_edit_opened");
+    expect(fnBody).toContain("social_post_inline_edit_cancelled");
+    expect(fnBody).toContain("social_post_body_copied");
+    expect(fnBody).toContain("social_post_body_copy_failed");
+  });
+});
+
 describe("generateAllPlatformPostsAction (정적 소스 검사, Phase 3-21: 고급 옵션 — 전체 플랫폼)", () => {
   const fnBody = actionsSource.slice(
     actionsSource.indexOf("export async function generateAllPlatformPostsAction"),

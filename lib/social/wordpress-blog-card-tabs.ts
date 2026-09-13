@@ -10,16 +10,21 @@ export interface WordPressBlogCardTabDefinition {
   label: string;
 }
 
+// Phase 4-16: 기본 탭을 "게시용 미리보기"(렌더링된 HTML)로 바꿨다 —
+// 이전에는 "글 내용" 탭이 기본이었는데, 그 탭도 markdown 원문(##, **,
+// <div class="summary-box"> 등)을 그대로 보여줘서 사용자가 raw 문법을
+// 먼저 보게 되는 문제가 있었다. "content" 탭은 이제 "편집용 원문"으로
+// 이름을 바꿔 markdown 원문을 확인/복사하고 싶을 때만 보는 보조 탭이다.
 export const WORDPRESS_BLOG_CARD_TABS: WordPressBlogCardTabDefinition[] = [
-  { key: "content", label: "글 내용" },
-  { key: "preview", label: "WordPress 미리보기" },
+  { key: "preview", label: "게시용 미리보기" },
+  { key: "content", label: "편집용 원문" },
   { key: "quality", label: "품질·승인" },
   { key: "wordpress", label: "WordPress 반영" },
   { key: "image", label: "대표 이미지" },
   { key: "checklist", label: "체크리스트" },
 ];
 
-const DEFAULT_TAB: WordPressBlogCardTab = "content";
+const DEFAULT_TAB: WordPressBlogCardTab = "preview";
 
 /** query param(`tab`) 값을 안전한 탭 key로 정규화한다. 모르는 값이면 기본 탭("content")으로 되돌린다. */
 export function normalizeWordPressBlogCardTab(value: string | undefined | null): WordPressBlogCardTab {

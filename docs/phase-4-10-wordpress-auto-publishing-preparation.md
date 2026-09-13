@@ -212,6 +212,13 @@ article 하나당 가장 최근 성공 기록 **하나만** 조회하도록 이�
 화면에서 하나의 "WordPress 게시 준비" 요약 카드로 합쳤다. 자세한
 내용은 [`phase-4-13-wordpress-publish-prep-simplification.md`](./phase-4-13-wordpress-publish-prep-simplification.md) 참고.
 
+## 후속: 글이 여러 개일 때는 선택한 글 1개에만 표시 (Phase 4-16)
+
+wordpress_blog 글이 여러 개 생성되는 화면에서는 이 문서의 게시
+준비 패널이 모든 글 카드에 반복되지 않는다 — 사용자가 선택한 글
+1개에 대해서만 표시된다. 자세한 내용은
+[`phase-4-16-wordpress-blog-list-detail-split.md`](./phase-4-16-wordpress-blog-list-detail-split.md) 참고.
+
 ## 관련 문서
 
 - [`wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md)

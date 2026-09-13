@@ -519,6 +519,27 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
 - 복구(un-archive) UI는 아직 없다 — DB에는 기록이 남아 있으므로
   (hard delete가 아니므로) 나중에 추가할 수 있다.
 
+## 블로그 글쓰기 페이지 "목록 + 선택 상세" 구조 (Phase 4-16)
+
+`/articles/[id]/blog`에서 wordpress_blog 글이 여러 개면, 선택되지
+않은 글은 compact 카드(제목/문체/본문 길이/완료된 작업/남은
+작업/[이 글 선택]/[미리보기]/[삭제])로만 보이고, WordPress 게시
+준비 패널과 6개 탭은 선택된 글 1개에만 표시된다. 기본 탭도 markdown
+원문이 아니라 렌더링된 "게시용 미리보기"로 바뀌었다(원문은 "편집용
+원문" 탭). 상세는
+[`phase-4-16-wordpress-blog-list-detail-split.md`](./phase-4-16-wordpress-blog-list-detail-split.md) 참고.
+
+## SNS/커뮤니티 글 카드 안 inline 수정·저장 후 검토/승인·본문 복사 (Phase 4-15)
+
+`/articles/[id]/social` 카드의 [본문 수정]은 이제(x 제외) 페이지
+이동 없이 카드 안에서 textarea 편집 모드를 연다. [저장만
+하기]/[저장 후 자동 검토]/[저장 후 승인] 중 골라 제출할 수 있고,
+[저장 후 승인]은 저장 → 자동 검토 → 통과 시 승인 순서로만 진행된다
+(검토 실패 시 승인하지 않음). 본문 상단의 [본문 복사] 버튼은
+표시 중인 축약문이 아니라 항상 게시용 본문 전체를 클립보드에
+복사한다. 상세는
+[`phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md) 참고.
+
 ## SNS/커뮤니티 글 목록 카드에서 본문 확인 + 승인/export까지 (Phase 4-14)
 
 `/articles/[id]/social` 목록 카드는 이제 게시용 본문을 카드 안에서
