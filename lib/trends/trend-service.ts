@@ -584,9 +584,30 @@ export async function addClusterEvidenceToExistingTheme(
   clusterId: string,
   existingThemeId: string
 ): Promise<AddClusterToExistingThemeResult> {
-  const cluster = await getThemeClusterById(clusterId);
-  if (!cluster) {
-    throw new Error(`테마 클러스터를 찾을 수 없습니다: ${clusterId}`);
+  await logEvent({
+    type: "theme_candidate_existing_theme_update_started",
+    status: "info",
+    message: `기존 테마 업데이트 시작: candidate=${clusterId}, existingTheme=${existingThemeId}`,
+    themeId: existingThemeId,
+    details: { clusterId, existingThemeId },
+  });
+
+  let cluster;
+  try {
+    cluster = await getThemeClusterById(clusterId);
+    if (!cluster) {
+      throw new Error(`테마 클러스터를 찾을 수 없습니다: ${clusterId}`);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await logEvent({
+      type: "theme_candidate_existing_theme_update_failed",
+      status: "failed",
+      message: `기존 테마 업데이트 실패: ${reason}`,
+      themeId: existingThemeId,
+      details: { clusterId, existingThemeId, reason },
+    });
+    throw err;
   }
 
   const existingSources = await getSourcesByThemeId(existingThemeId);
@@ -638,6 +659,16 @@ export async function addClusterEvidenceToExistingTheme(
       lastCrossDayUpdateAt: new Date().toISOString(),
       lastCrossDayAddedSourceCount: addedCount,
       lastCrossDaySourceClusterId: clusterId,
+    });
+  }
+
+  if (addedCount === 0) {
+    await logEvent({
+      type: "theme_candidate_existing_theme_update_no_new_urls",
+      status: "info",
+      message: `기존 테마 "${themeTitle}"에 추가할 새 출처가 없습니다 (중복 제외 ${skippedDuplicateCount}건)`,
+      themeId: existingThemeId,
+      details: { clusterId, existingThemeId, skippedDuplicateCount },
     });
   }
 

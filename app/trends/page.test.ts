@@ -280,4 +280,54 @@ describe("trends 페이지 - 자동테마 후보 cross-day 중복/업데이트 �
     expect(pageSource).toContain("마스터 원고 갱신 확인");
     expect(pageSource).toContain("대시보드로 이동");
   });
+
+  it("추가할 새 출처가 없는 경우(added===0)에는 다른 문구와 다시 표시하지 않기 버튼을 보여준다", () => {
+    expect(pageSource).toContain("updateResultAddedCount === 0");
+    expect(pageSource).toContain("추가할 새 출처가 없습니다");
+    expect(pageSource).toContain("updateClusterId");
+  });
+});
+
+describe("trends 페이지 - existing_theme_update 후보가 '✓ 테마로 저장됨'으로만 끝나지 않는다 (정적 소스 검사, Phase 1-25 버그 수정)", () => {
+  it("existing_theme_update/duplicate_theme/needs_review 패널은 isSelected 여부와 무관하게 렌더링된다(핵심 버그 수정)", () => {
+    expect(pageSource).not.toMatch(
+      /!isSelected && !isDismissed && classification\.classification === "existing_theme_update"/
+    );
+    expect(pageSource).not.toMatch(
+      /!isSelected && !isDismissed && classification\.classification === "duplicate_theme"/
+    );
+    expect(pageSource).not.toMatch(
+      /!isSelected && !isDismissed && classification\.classification === "needs_review"/
+    );
+    expect(pageSource).toMatch(/!isDismissed && classification\.classification === "existing_theme_update"/);
+    expect(pageSource).toMatch(/!isDismissed && classification\.classification === "duplicate_theme"/);
+    expect(pageSource).toMatch(/!isDismissed && classification\.classification === "needs_review"/);
+  });
+
+  it("이 대표 후보에서 이미 테마가 만들어졌으면(isSelected) '✓ 새 테마로 저장됨' 배지를 별도로 보여준다(패널을 가리지 않는다)", () => {
+    expect(pageSource).toContain("✓ 새 테마로 저장됨");
+  });
+
+  it("'✓ 테마로 저장됨' 단독 문구는 더 이상 존재하지 않는다(항상 다음 행동이 함께 표시된다)", () => {
+    expect(pageSource).not.toContain("<p className=\"mt-3 text-center text-xs font-medium text-green-700\">✓ 테마로 저장됨</p>");
+  });
+
+  it("isSelected이면서 매칭된 기존 테마가 없는(new_theme) 예외적인 경우에도 대시보드로 이동 링크를 제공한다(무반응 금지)", () => {
+    expect(pageSource).toMatch(/isSelected && classification\.classification === "new_theme"/);
+    const match = pageSource.match(/\{isSelected && classification\.classification === "new_theme" && \([\s\S]*?\)\}/);
+    expect(match).not.toBeNull();
+    expect(match![0]).toContain("대시보드로 이동");
+  });
+
+  it("병합된 후보(MergedCandidateRow)에서도 기존 테마에 새 출처를 추가할 수 있다", () => {
+    const match = pageSource.match(/function MergedCandidateRow[\s\S]*?\n}\n/);
+    expect(match).not.toBeNull();
+    expect(match![0]).toContain("addClusterToExistingTheme(candidate.id, matchedExistingThemeId)");
+    expect(match![0]).toContain("기존 테마에 새 출처 추가");
+  });
+
+  it("새 하위 주제로 분리는 확인 메시지를 거친 뒤 실행된다(자동 분리 금지)", () => {
+    expect(pageSource).toContain("ConfirmSubmitButton");
+    expect(pageSource).toContain("새 하위 주제로 저장하시겠습니까?");
+  });
 });

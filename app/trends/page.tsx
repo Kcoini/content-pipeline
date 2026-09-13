@@ -25,6 +25,7 @@ import {
   addClusterToExistingTheme,
 } from "./actions";
 import type { TrendCandidate, ThemeCluster } from "@/lib/types/domain";
+import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -170,12 +171,27 @@ function MergedCandidateRow({
           </form>
         )}
         {matchedExistingThemeId && (
-          <Link
-            href={`/dashboard?themeId=${matchedExistingThemeId}`}
-            className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-          >
-            기존 테마 보기
-          </Link>
+          <>
+            <form
+              action={async () => {
+                "use server";
+                await addClusterToExistingTheme(candidate.id, matchedExistingThemeId);
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-blue-400 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+              >
+                기존 테마에 새 출처 추가
+              </button>
+            </form>
+            <Link
+              href={`/dashboard?themeId=${matchedExistingThemeId}`}
+              className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              기존 테마 보기
+            </Link>
+          </>
         )}
       </div>
     </li>
@@ -233,12 +249,18 @@ function ClusterCard({
         </p>
       )}
 
-      {/* badge: 상태 분류 / 대표 후보 / 기사 작성 가능 / 유사 후보 병합됨 */}
+      {/* badge: 상태 분류 / 대표 후보 / 기사 작성 가능 / 유사 후보 병합됨 / 새 테마로 저장됨.
+          Phase 1-25: isSelected(이 후보에서 이미 테마가 만들어짐)는 "새 테마로
+          만들기" 버튼을 막는 이유일 뿐, 기존 테마 업데이트/중복/확인 필요
+          패널까지 막지 않는다 — 배지로만 안내한다. */}
       <div className="mt-2 flex flex-wrap gap-1">
         <ClassificationBadge classification={classification.classification} />
         <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">대표 후보</span>
         {!isSelected && !isDismissed && (
           <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">기사 작성 가능</span>
+        )}
+        {isSelected && (
+          <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700">✓ 새 테마로 저장됨</span>
         )}
         {hasMerged && (
           <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700">
@@ -376,7 +398,12 @@ function ClusterCard({
         </form>
       )}
 
-      {!isSelected && !isDismissed && classification.classification === "existing_theme_update" && matchedThemeId && (
+      {/* Phase 1-25: existing_theme_update/duplicate_theme/needs_review 패널은
+          isSelected 여부와 무관하게 항상 보여준다 — 이 대표 후보에서 이미
+          테마가 만들어졌더라도(어제 "AI 산업 동향"을 테마로 저장한 경우 등),
+          오늘 새로 발견된 자료가 있으면 그 "기존 테마"에 추가할 수 있어야
+          한다. "✓ 새 테마로 저장됨"이 이 패널을 가리지 않는다(버그 수정). */}
+      {!isDismissed && classification.classification === "existing_theme_update" && matchedThemeId && (
         <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
           <p className="font-medium">기존 테마 업데이트</p>
           <p className="mt-1 break-keep">{classification.reason}</p>
@@ -417,18 +444,22 @@ function ClusterCard({
                 }
               }}
             >
-              <button
-                type="submit"
+              <ConfirmSubmitButton
+                confirmMessage={
+                  "이 후보는 기존 테마와 유사하지만 별도 하위 주제로 저장할 수 있습니다.\n" +
+                  "기존 테마와 중복될 수 있으므로 제목을 구체화하는 것을 권장합니다.\n" +
+                  "새 하위 주제로 저장하시겠습니까?"
+                }
                 className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
               >
                 새 하위 주제로 분리
-              </button>
+              </ConfirmSubmitButton>
             </form>
           </div>
         </div>
       )}
 
-      {!isSelected && !isDismissed && classification.classification === "duplicate_theme" && matchedThemeId && (
+      {!isDismissed && classification.classification === "duplicate_theme" && matchedThemeId && (
         <div className="mt-3 rounded border border-zinc-300 bg-zinc-50 p-3 text-xs text-zinc-700">
           <p className="font-medium">중복 테마</p>
           <p className="mt-1 break-keep">{classification.reason}</p>
@@ -460,7 +491,7 @@ function ClusterCard({
         </div>
       )}
 
-      {!isSelected && !isDismissed && classification.classification === "needs_review" && matchedThemeId && (
+      {!isDismissed && classification.classification === "needs_review" && matchedThemeId && (
         <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
           <p className="font-medium">확인 필요</p>
           <p className="mt-1 break-keep">{classification.reason}</p>
@@ -539,8 +570,22 @@ function ClusterCard({
         </div>
       )}
 
-      {isSelected && (
-        <p className="mt-3 text-center text-xs font-medium text-green-700">✓ 테마로 저장됨</p>
+      {/* Phase 1-25: isSelected인데 매칭되는 기존 테마가 없는 경우(예: 만들어진
+          테마가 이후 보관 처리됨)에만 이 fallback을 보여준다 — 위 세 패널
+          중 어느 것도 조건을 만족하지 못했을 때 화면이 "✓ 테마로 저장됨"
+          한 줄로 끝나 다음 행동을 알 수 없게 되는 것을 막는다. */}
+      {isSelected && classification.classification === "new_theme" && (
+        <div className="mt-3 rounded border border-green-200 bg-green-50 p-3 text-center text-xs font-medium text-green-700">
+          <p>✓ 새 테마로 저장됨</p>
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
+            <Link
+              href="/dashboard"
+              className="rounded border border-green-300 bg-white px-2.5 py-1 font-medium text-green-700 hover:bg-green-100"
+            >
+              대시보드로 이동
+            </Link>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -590,6 +635,7 @@ export default async function TrendsPage({
     naverError?: string;
     daumError?: string;
     filter?: string;
+    updateClusterId?: string;
     updateThemeId?: string;
     updateThemeTitle?: string;
     updateAdded?: string;
@@ -607,6 +653,7 @@ export default async function TrendsPage({
     naverError,
     daumError,
     filter: rawFilter,
+    updateClusterId,
     updateThemeId,
     updateThemeTitle,
     updateAdded,
@@ -724,10 +771,11 @@ export default async function TrendsPage({
           </div>
         )}
 
-        {/* Phase 1-24: "기존 테마에 추가" 실행 결과 — 추가한 뒤에도 사용자가
-            멈추지 않도록 결과 요약 + 다음 작업(기존 테마 보기/마스터 원고
-            갱신 확인/대시보드로 이동)을 항상 함께 보여준다. */}
-        {updateThemeId && updateResultAddedCount !== null && (
+        {/* Phase 1-24/1-25: "기존 테마에 추가" 실행 결과 — 추가한 뒤에도
+            사용자가 멈추지 않도록 결과 요약 + 다음 작업을 항상 함께
+            보여준다. 새 URL이 0개인 경우(이미 기존 테마에 모두 포함된
+            자료)와 실제로 추가된 경우를 서로 다른 문구로 안내한다. */}
+        {updateThemeId && updateResultAddedCount !== null && updateResultAddedCount > 0 && (
           <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
             <p className="font-medium">기존 테마 업데이트 완료</p>
             <p className="mt-1 break-keep">
@@ -758,6 +806,39 @@ export default async function TrendsPage({
               >
                 대시보드로 이동
               </Link>
+            </div>
+          </div>
+        )}
+
+        {updateThemeId && updateResultAddedCount === 0 && (
+          <div className="mb-4 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+            <p className="font-medium">추가할 새 출처가 없습니다</p>
+            <p className="mt-1 break-keep">
+              &ldquo;{updateThemeTitle ?? updateThemeId}&rdquo; 테마에 이미 포함된 자료입니다
+              {updateResultSkippedCount ? ` (중복 URL ${updateResultSkippedCount}개)` : ""}.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Link
+                href={`/dashboard?themeId=${updateThemeId}`}
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                기존 테마 보기
+              </Link>
+              {updateClusterId && (
+                <form
+                  action={async () => {
+                    "use server";
+                    await dismissClusterCandidate(updateClusterId);
+                  }}
+                >
+                  <button
+                    type="submit"
+                    className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100"
+                  >
+                    다시 표시하지 않기
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         )}

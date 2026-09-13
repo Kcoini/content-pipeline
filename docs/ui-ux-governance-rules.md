@@ -657,3 +657,20 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - WordPress 연결/승인/대표 이미지/SEO 상태를 하나로 묶은 "WordPress
   게시 준비" 요약 카드에는 primary action 하나만 강조한다.
 - 실제 적용 사례: [`docs/phase-4-7-wordpress-media-connection-test-hiding.md`](./phase-4-7-wordpress-media-connection-test-hiding.md).
+
+## 상태 배지가 "다음 행동 패널"을 가리지 않게 한다 (Phase 1-25)
+
+`isSelected`/`isDismissed`처럼 카드 자체의 상태를 나타내는 플래그와,
+`classification`처럼 "지금 무엇을 할 수 있는지"를 나타내는 분류는
+서로 다른 축이다 — 하나가 다른 하나를 무조건 가려서는 안 된다.
+
+- "이미 저장됨/선택됨" 같은 완료 배지는 **정보로만** 표시하고, 그
+  때문에 다른 분류(기존 테마 업데이트/중복/확인 필요)에 맞는 행동
+  패널이 통째로 사라지게 하지 않는다 — 예: 어떤 후보에서 이미 테마가
+  만들어졌어도, 오늘 그 테마에 추가할 새 자료가 있으면 "기존 테마에
+  추가" 패널은 계속 보여야 한다.
+- "완료됨" 하나만 표시하고 끝나는 화면(예: "✓ 테마로 저장됨" 단독
+  문구)은 만들지 않는다 — 완료 배지 + 분류별 다음 행동 패널을 함께
+  보여주거나, 정말 더 할 일이 없을 때만 완료 화면에도 최소 하나의
+  링크(예: 대시보드로 이동)를 둔다.
+- 실제 적용 사례: [`docs/theme-candidate-deduplication.md`](./theme-candidate-deduplication.md)의 "Phase 1-25" 섹션(existing_theme_update 후보가 "✓ 테마로 저장됨"으로만 끝나던 버그 수정).

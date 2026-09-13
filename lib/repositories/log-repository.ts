@@ -458,7 +458,17 @@ export type LogEventType =
   | "theme_candidate_merged_redirected_to_canonical"
   | "theme_candidate_split_as_new_theme"
   | "theme_candidate_selection_blocked_with_reason"
-  | "theme_candidate_no_silent_selection_failure";
+  | "theme_candidate_no_silent_selection_failure"
+  // Phase 1-25: existing_theme_update가 "✓ 테마로 저장됨"으로만 끝나는
+  // 버그 수정 — 기존 테마 업데이트 action의 시작/실패/새 URL 없음과
+  // 병합 후보/중복 후보를 열람한 이벤트를 세분화한다.
+  | "theme_candidate_existing_theme_update_started"
+  | "theme_candidate_existing_theme_update_no_new_urls"
+  | "theme_candidate_existing_theme_update_failed"
+  | "theme_candidate_duplicate_existing_theme_opened"
+  | "theme_candidate_merged_canonical_opened"
+  | "theme_candidate_split_as_subtheme_started"
+  | "theme_candidate_split_as_subtheme_completed";
 
 export type LogStatus = "success" | "failed" | "info";
 

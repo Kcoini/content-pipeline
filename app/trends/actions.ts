@@ -137,6 +137,7 @@ export async function addClusterToExistingTheme(
     revalidatePath("/dashboard");
 
     const params = new URLSearchParams({
+      updateClusterId: clusterId,
       updateThemeId: result.themeId,
       updateThemeTitle: result.themeTitle,
       updateAdded: String(result.addedCount),
