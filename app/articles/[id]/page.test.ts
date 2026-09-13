@@ -346,3 +346,90 @@ describe("SEO 정보 반영 상태 요약 카드 + 개발자용 상세 정보 �
     expect(section).toContain("title={seoWriteSummary.primaryActionDisabledReason");
   });
 });
+
+describe("WordPress 게시 준비 요약 카드 + 개발자용 테스트 정보 접힘 처리 (정적 소스 검사, Phase 4-7)", () => {
+  it("summarizeWordPressPublishingReadiness로 계산한 요약 카드가 있다", () => {
+    expect(pageSource).toContain("summarizeWordPressPublishingReadiness");
+    expect(pageSource).toContain("wordpressReadiness");
+    expect(pageSource).toContain("WordPress 게시 준비</h2>");
+  });
+
+  it("요약 카드에 WordPress 연결/Draft 생성/SEO 정보/대표 이미지/공개 게시 상태와 다음 작업이 표시된다", () => {
+    const start = pageSource.indexOf("WordPress 게시 준비</h2>");
+    const end = pageSource.indexOf("Featured Image Workflow Step 1");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const section = pageSource.slice(start, end);
+    expect(section).toContain("wordpressReadiness.connectionLabel");
+    expect(section).toContain("wordpressReadiness.draftReadyLabel");
+    expect(section).toContain("wordpressReadiness.seoLabel");
+    expect(section).toContain("wordpressReadiness.imageLabel");
+    expect(section).toContain("wordpressReadiness.publishLabel");
+    expect(section).toContain("다음 작업");
+  });
+
+  function getMediaUploadSectionSource(): string {
+    const start = pageSource.indexOf("대표 이미지 업로드 상태</h2>");
+    const end = pageSource.indexOf("WordPress 연결 상태</h2>");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return pageSource.slice(start, end);
+  }
+
+  it("기본 화면에는 'Step 2. WordPress Media Upload' 제목과 raw env flag가 노출되지 않는다", () => {
+    const section = getMediaUploadSectionSource();
+    const beforeDetails = section.slice(0, section.indexOf("<details"));
+    expect(beforeDetails).not.toContain("Step 2. WordPress Media Upload");
+    expect(beforeDetails).not.toContain("WORDPRESS_MEDIA_UPLOAD_ENABLED");
+    expect(beforeDetails).not.toContain("WordPress 이미지 업로드 테스트");
+    expect(beforeDetails).not.toContain("업로드 상태 확인");
+  });
+
+  it("이미지 업로드 상세 보기 접힘 안에는 기존 raw 값/버튼이 그대로 남아 있다(기능 유지)", () => {
+    const section = getMediaUploadSectionSource();
+    expect(section).toContain("이미지 업로드 상세 보기");
+    const detailsStart = section.indexOf("<details");
+    const detailsContent = section.slice(detailsStart);
+    expect(detailsContent).toContain("WORDPRESS_MEDIA_UPLOAD_ENABLED");
+    expect(detailsContent).toContain("prepareWordPressMediaUploadAction");
+    expect(detailsContent).toContain("uploadFeaturedImageToWordPressAction");
+    expect(detailsContent).toContain("checkWordPressMediaUploadStatusAction");
+    expect(detailsContent).toContain("WordPress 이미지 업로드 테스트");
+    expect(detailsContent).toContain("업로드 상태 확인");
+  });
+
+  function getConnectionTestSectionSource(): string {
+    const start = pageSource.indexOf("WordPress 연결 상태</h2>");
+    const end = pageSource.indexOf("Phase 2-2 / 2-9: WordPress 초안 생성");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return pageSource.slice(start, end);
+  }
+
+  it("기본 화면에는 'WordPress Connection Test' 제목과 base URL/raw enabled flag가 노출되지 않는다", () => {
+    const section = getConnectionTestSectionSource();
+    const beforeDetails = section.slice(0, section.indexOf("<details"));
+    expect(beforeDetails).not.toContain("WordPress Connection Test");
+    expect(beforeDetails).not.toContain("process.env.WORDPRESS_BASE_URL");
+    expect(beforeDetails).not.toContain("publish enabled");
+    expect(beforeDetails).not.toContain("media upload enabled");
+    expect(beforeDetails).toContain("연결 상태 확인");
+  });
+
+  it("WordPress 연결 상세 보기 접힘 안에는 base URL/raw flag가 있고 Application Password/Authorization header는 어디에도 없다", () => {
+    const section = getConnectionTestSectionSource();
+    expect(section).toContain("WordPress 연결 상세 보기");
+    const detailsStart = section.indexOf("<details");
+    const detailsContent = section.slice(detailsStart);
+    expect(detailsContent).toContain("process.env.WORDPRESS_BASE_URL");
+    expect(detailsContent).toContain("publish enabled");
+    expect(detailsContent).toContain("media upload enabled");
+    expect(section).not.toContain("Application Password:");
+    expect(section).not.toContain("Authorization:");
+    expect(pageSource).not.toContain("Authorization header:");
+  });
+
+  it("연결 테스트/업로드 테스트 기능은 삭제되지 않고 그대로 동작한다(testWordPressConnectionAction)", () => {
+    expect(pageSource).toContain("testWordPressConnectionAction");
+  });
+});

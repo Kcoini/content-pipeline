@@ -50,6 +50,13 @@
 - [ ] "SEO Plugin Actual Write"/"Custom Endpoint" 같은 개발자용 기능
       이름 대신 "SEO 정보 반영 상태" 같은 사용자 친화적 라벨을
       기본 화면에 쓰는가?
+- [ ] "WordPress Media Upload"/"WordPress Connection Test"도 같은
+      기준으로 숨겼는가 — 기본 화면에는 "대표 이미지 업로드 상태"/
+      "WordPress 연결 상태" 요약만 있고, base URL/`WORDPRESS_*` env
+      값/개발자용 버튼("업로드 테스트"/"연결 테스트")은 접힘 안에만
+      있는가(Phase 4-7)?
+- [ ] Application Password, Authorization header, API key가 기본
+      화면은 물론 접힘 영역 안에서도 표시되지 않는가?
 
 ## 사용 방법
 
@@ -73,3 +80,4 @@
 - [`docs/ui-audit-wordpress-blog-card.md`](./ui-audit-wordpress-blog-card.md) — 이 체크리스트로 wordpress_blog 카드를 점검한 결과 예시
 - [`docs/phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md) — 이 체크리스트를 `/social-posts/[id]`(단일 글 최종 검토·수정·승인 화면)에 적용한 사례
 - [`docs/phase-4-6-developer-info-hiding.md`](./phase-4-6-developer-info-hiding.md) — `/articles/[id]`의 SEO Plugin Actual Write/Custom Endpoint를 이 체크리스트 기준으로 점검·정리한 사례, 다른 글쓰기 페이지(`/articles/[id]/social`, `/rewrite`, `/social-posts/[id]`)는 이미 이 원칙을 따르고 있었다는 점검 결과 포함
+- [`docs/phase-4-7-wordpress-media-connection-test-hiding.md`](./phase-4-7-wordpress-media-connection-test-hiding.md) — 같은 페이지의 WordPress Media Upload/Connection Test를 정리하고 "WordPress 게시 준비" 요약 카드를 추가한 사례

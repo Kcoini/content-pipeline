@@ -88,6 +88,7 @@ import { isImageGenerationEnabled } from "@/lib/images/image-generation-config";
 import { getSeoPluginProvider, isSeoPluginWriteEnabled } from "@/lib/seo/seo-plugin-config";
 import { isSeoCustomEndpointEnabled, getSeoCustomEndpointPath } from "@/lib/seo/wordpress-seo-custom-endpoint-client";
 import { summarizeSeoPluginWriteStatus, type SeoWriteSummaryStatus } from "@/lib/seo/seo-plugin-status-summary";
+import { summarizeWordPressPublishingReadiness } from "@/lib/wordpress/wordpress-publishing-readiness-summary";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
 
 export const dynamic = "force-dynamic";
@@ -436,6 +437,17 @@ export default async function ArticleDetailPage({
     customEndpointStatus: article.seoPluginCustomEndpointStatus,
     customEndpointVerified: article.seoPluginCustomEndpointVerified,
     customEndpointError: article.seoPluginCustomEndpointError,
+  });
+  // Phase 4-7: 원본 article → WordPress Draft 전송 흐름(연결/승인/대표
+  // 이미지/SEO)을 "지금 뭘 하면 되는지" 한 줄로 요약한다. raw env/status
+  // 값은 각 섹션의 접힘 영역에서만 보여준다.
+  const wordpressReadiness = summarizeWordPressPublishingReadiness({
+    isReviewed,
+    hasWordPressDraft: hasWordPressSuccess,
+    featuredImageUploadStatus: article.featuredImageUploadStatus,
+    hasArticleFeaturedImage,
+    featuredImageWaived: articleFeaturedImageWaiver.waived,
+    seoStatus: seoWriteSummary.status,
   });
 
   return (
@@ -1197,8 +1209,81 @@ export default async function ArticleDetailPage({
           )}
         </section>
 
+        {/*
+          Phase 4-7: WordPress 게시 준비 요약 카드. 아래 이어지는 대표
+          이미지/WordPress 연결/원본 article 전송 섹션들의 raw 상세
+          정보(env flag, base URL, WordPress media id 등)를 다시
+          보여주지 않고, "연결/승인/이미지/SEO가 준비됐는지"와 다음
+          작업만 요약한다. 개발자용 상세는 각 섹션의 접힘 영역에서
+          그대로 확인할 수 있다(기능 삭제 없음).
+        */}
+        <section className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">WordPress 게시 준비</h2>
+          <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-700 sm:grid-cols-3">
+            <div>
+              <dt className="font-medium text-zinc-600">WordPress 연결</dt>
+              <dd>{wordpressReadiness.connectionLabel}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">Draft 생성</dt>
+              <dd>{wordpressReadiness.draftReadyLabel}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">SEO 정보</dt>
+              <dd>{wordpressReadiness.seoLabel}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">대표 이미지</dt>
+              <dd>{wordpressReadiness.imageLabel}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-600">공개 게시</dt>
+              <dd>{wordpressReadiness.publishLabel}</dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs text-zinc-600">다음 작업: {wordpressReadiness.nextActionLabel}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {wordpressReadiness.primaryAction === "prepare_image" && (
+              <a
+                href="#featured-image-source"
+                className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+              >
+                {wordpressReadiness.primaryActionLabel}
+              </a>
+            )}
+            {wordpressReadiness.primaryAction === "create_draft" && (
+              <a
+                href="#wordpress-draft-send"
+                className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+              >
+                {wordpressReadiness.primaryActionLabel}
+              </a>
+            )}
+            {wordpressReadiness.primaryAction === "view_draft" &&
+              (latestWordPressLog?.postUrl ? (
+                <Link
+                  href={latestWordPressLog.postUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+                >
+                  {wordpressReadiness.primaryActionLabel}
+                </Link>
+              ) : (
+                <span className="rounded border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-400">
+                  {wordpressReadiness.primaryActionLabel} (URL 없음)
+                </span>
+              ))}
+            {wordpressReadiness.primaryAction === "needs_review" && (
+              <span className="rounded border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500">
+                {wordpressReadiness.primaryActionLabel}(위쪽 요약 카드에서 승인)
+              </span>
+            )}
+          </div>
+        </section>
+
         {/* Featured Image Workflow Step 1: Source Setup */}
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+        <section id="featured-image-source" className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-zinc-700">Step 1. 대표 이미지 Source 설정</h2>
             <span
@@ -1328,10 +1413,16 @@ export default async function ArticleDetailPage({
           )}
         </section>
 
-        {/* Featured Image Workflow Step 2: WordPress Media Upload */}
+        {/*
+          Featured Image Workflow Step 2: WordPress Media Upload.
+          Phase 4-7: 기본 화면에는 "대표 이미지 업로드 상태" 요약만
+          보여주고, env flag/raw dl/payload/개발자용 버튼(준비/dry-run/
+          업로드 테스트/상태 확인)은 접힘 영역으로 옮긴다 — 기능은 그대로
+          접힘 안에서 실행할 수 있다.
+        */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-zinc-700">Step 2. WordPress Media Upload</h2>
+            <h2 className="text-sm font-semibold text-zinc-700">대표 이미지 업로드 상태</h2>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${MEDIA_UPLOAD_STATUS_STYLE[article.featuredImageUploadStatus]}`}
             >
@@ -1339,150 +1430,159 @@ export default async function ArticleDetailPage({
             </span>
           </div>
           <p className="mt-1 text-xs text-zinc-500">
-            Phase 2-5에서 준비한 대표 이미지 정보를 바탕으로 WordPress media
-            업로드 payload를 준비하고, WORDPRESS_MEDIA_UPLOAD_ENABLED=true일 때
-            실제 WordPress Media Library에 이미지 1개를 업로드하는 테스트를
-            수행합니다. mock URL이나 상대경로 이미지는 실제 업로드되지 않습니다.
+            위에서 저장한 대표 이미지 정보를 WordPress Media Library에
+            업로드합니다.
           </p>
-          <p className="mt-1 text-xs font-medium">
-            WORDPRESS_MEDIA_UPLOAD_ENABLED:{" "}
-            {isWordPressMediaUploadEnabled() ? (
-              <span className="text-green-700">true (실제 업로드 시도)</span>
-            ) : (
-              <span className="text-amber-700">false (실제 업로드 건너뜀)</span>
-            )}
+          <p className="mt-1 text-xs text-zinc-600">
+            {article.featuredImageUploadStatus === "not_ready" &&
+              "대표 이미지를 먼저 저장하면 업로드를 진행할 수 있습니다."}
+            {(article.featuredImageUploadStatus === "prepared" || article.featuredImageUploadStatus === "dry_run") &&
+              "업로드를 진행할 준비가 되었습니다."}
+            {article.featuredImageUploadStatus === "uploaded" && "대표 이미지가 WordPress에 업로드되었습니다."}
+            {article.featuredImageUploadStatus === "failed" &&
+              "대표 이미지 업로드 중 문제가 발생했습니다. 이미지 형식, 용량, WordPress 연결 상태를 확인해 주세요."}
+            {article.featuredImageUploadStatus === "skipped" && "이미지 업로드 기능이 꺼져 있어 건너뛰었습니다."}
           </p>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            <form action={prepareWordPressMediaUploadAction}>
-              <input type="hidden" name="articleId" value={article.id} />
-              <button
-                type="submit"
-                className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
-              >
-                {article.featuredImageUploadStatus === "not_ready" ? "WordPress 이미지 업로드 준비" : "다시 준비"}
-              </button>
-            </form>
-            {article.featuredImageUploadStatus !== "not_ready" && (
-              <form action={confirmWordPressMediaUploadDryRunAction}>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-zinc-500">이미지 업로드 상세 보기</summary>
+
+            <p className="mt-2 text-xs font-medium">
+              WORDPRESS_MEDIA_UPLOAD_ENABLED:{" "}
+              {isWordPressMediaUploadEnabled() ? (
+                <span className="text-green-700">true (실제 업로드 시도)</span>
+              ) : (
+                <span className="text-amber-700">false (실제 업로드 건너뜀)</span>
+              )}
+            </p>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              <form action={prepareWordPressMediaUploadAction}>
                 <input type="hidden" name="articleId" value={article.id} />
                 <button
                   type="submit"
-                  className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
                 >
-                  업로드 dry-run 확인
+                  {article.featuredImageUploadStatus === "not_ready" ? "WordPress 이미지 업로드 준비" : "다시 준비"}
                 </button>
               </form>
-            )}
-            <form action={uploadFeaturedImageToWordPressAction}>
-              <input type="hidden" name="articleId" value={article.id} />
-              <button
-                type="submit"
-                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
-              >
-                WordPress 이미지 업로드 테스트
-              </button>
-            </form>
-            <form action={checkWordPressMediaUploadStatusAction}>
-              <input type="hidden" name="articleId" value={article.id} />
-              <button
-                type="submit"
-                className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-              >
-                업로드 상태 확인
-              </button>
-            </form>
-          </div>
+              {article.featuredImageUploadStatus !== "not_ready" && (
+                <form action={confirmWordPressMediaUploadDryRunAction}>
+                  <input type="hidden" name="articleId" value={article.id} />
+                  <button
+                    type="submit"
+                    className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    업로드 dry-run 확인
+                  </button>
+                </form>
+              )}
+              <form action={uploadFeaturedImageToWordPressAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  WordPress 이미지 업로드 테스트
+                </button>
+              </form>
+              <form action={checkWordPressMediaUploadStatusAction}>
+                <input type="hidden" name="articleId" value={article.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                >
+                  업로드 상태 확인
+                </button>
+              </form>
+            </div>
 
-          {article.featuredImageUploadStatus !== "not_ready" && (
-            <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-              <div>
-                <dt className="font-medium text-zinc-600">source type</dt>
-                <dd className="text-zinc-500">{article.featuredImageSourceType}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">source url</dt>
-                <dd className="text-zinc-500 break-all">{article.featuredImageSourceUrl || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">local path</dt>
-                <dd className="text-zinc-500 break-all">{article.featuredImageLocalPath || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">filename</dt>
-                <dd className="text-zinc-500 font-mono">{article.featuredImageFilename || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">mime type</dt>
-                <dd className="text-zinc-500 font-mono">{article.featuredImageMimeType || "해당 없음"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-600">WordPress media id</dt>
-                <dd className="text-zinc-500">{article.featuredImageWordpressMediaId ?? "해당 없음 (아직 없음)"}</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="font-medium text-zinc-600">WordPress media url</dt>
-                <dd className="text-zinc-500 break-all">{article.featuredImageWordpressUrl || "해당 없음"}</dd>
-              </div>
-              {article.featuredImageUploadAttemptedAt && (
+            {article.featuredImageUploadStatus !== "not_ready" && (
+              <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-zinc-600">마지막 시도 시간</dt>
-                  <dd className="text-zinc-500">
-                    {new Date(article.featuredImageUploadAttemptedAt).toLocaleString("ko-KR")}
-                  </dd>
+                  <dt className="font-medium text-zinc-600">source type</dt>
+                  <dd className="text-zinc-500">{article.featuredImageSourceType}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">source url</dt>
+                  <dd className="text-zinc-500 break-all">{article.featuredImageSourceUrl || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">local path</dt>
+                  <dd className="text-zinc-500 break-all">{article.featuredImageLocalPath || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">filename</dt>
+                  <dd className="text-zinc-500 font-mono">{article.featuredImageFilename || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">mime type</dt>
+                  <dd className="text-zinc-500 font-mono">{article.featuredImageMimeType || "해당 없음"}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-zinc-600">WordPress media id</dt>
+                  <dd className="text-zinc-500">{article.featuredImageWordpressMediaId ?? "해당 없음 (아직 없음)"}</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-zinc-600">WordPress media url</dt>
+                  <dd className="text-zinc-500 break-all">{article.featuredImageWordpressUrl || "해당 없음"}</dd>
+                </div>
+                {article.featuredImageUploadAttemptedAt && (
+                  <div>
+                    <dt className="font-medium text-zinc-600">마지막 시도 시간</dt>
+                    <dd className="text-zinc-500">
+                      {new Date(article.featuredImageUploadAttemptedAt).toLocaleString("ko-KR")}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            )}
+
+            {article.featuredImageUploadStatus !== "not_ready" &&
+              Object.keys(article.featuredImageUploadPayload).length > 0 && (
+                <div className="mt-3 text-xs">
+                  <div className="font-medium text-zinc-600">upload payload 미리보기</div>
+                  <ul className="mt-1 flex flex-col gap-0.5 font-mono text-zinc-500">
+                    {Object.entries(article.featuredImageUploadPayload)
+                      .filter(([key]) => key !== "articleId")
+                      .map(([key, value]) => (
+                        <li key={key}>
+                          {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                        </li>
+                      ))}
+                  </ul>
                 </div>
               )}
-            </dl>
-          )}
 
-          {article.featuredImageUploadStatus !== "not_ready" &&
-            Object.keys(article.featuredImageUploadPayload).length > 0 && (
-              <div className="mt-3 text-xs">
-                <div className="font-medium text-zinc-600">upload payload 미리보기</div>
-                <ul className="mt-1 flex flex-col gap-0.5 font-mono text-zinc-500">
-                  {Object.entries(article.featuredImageUploadPayload)
-                    .filter(([key]) => key !== "articleId")
-                    .map(([key, value]) => (
-                      <li key={key}>
-                        {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                      </li>
-                    ))}
-                </ul>
-              </div>
+            {article.featuredImageUploadError && (
+              <p className="mt-3 text-xs text-red-600">오류: {article.featuredImageUploadError}</p>
             )}
-
-          {article.featuredImageUploadError && (
-            <p className="mt-3 text-xs text-red-600">오류: {article.featuredImageUploadError}</p>
-          )}
+          </details>
         </section>
 
-        {/* Phase 2-8: WordPress Connection Test */}
+        {/*
+          Phase 2-8: WordPress Connection Test.
+          Phase 4-7: 기본 화면에는 "WordPress 연결 상태" 요약(Draft 생성/
+          이미지 업로드 가능 여부, 연결 상태 확인 버튼)만 보여주고,
+          base URL/raw enabled flag는 접힘 영역으로 옮긴다. Application
+          Password/Authorization header는 이전과 마찬가지로 어디에도
+          표시하지 않는다.
+        */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-700">WordPress Connection Test</h2>
+          <h2 className="text-sm font-semibold text-zinc-700">WordPress 연결 상태</h2>
           <p className="mt-1 text-xs text-zinc-500">
             실제 WordPress 사이트에 안전하게 연결할 수 있는지 확인합니다
             (draft 생성 권한 확인용이며, 공개 게시는 절대 수행하지 않습니다).
-            Application Password나 Authorization header는 표시되지 않습니다.
           </p>
 
           <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
             <div>
-              <dt className="font-medium text-zinc-600">base URL</dt>
-              <dd className="text-zinc-500 font-mono break-all">
-                {process.env.WORDPRESS_BASE_URL || "설정되지 않음"}
-              </dd>
+              <dt className="font-medium text-zinc-600">Draft 생성</dt>
+              <dd className="text-zinc-600">{isWordPressPublishEnabled() ? "가능" : "가능 (dry-run 모드)"}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-600">publish enabled</dt>
-              <dd className="text-zinc-500">
-                {isWordPressPublishEnabled() ? "true (실제 draft 생성)" : "false (dry-run)"}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium text-zinc-600">media upload enabled</dt>
-              <dd className="text-zinc-500">
-                {isWordPressMediaUploadEnabled() ? "true" : "false (비활성화)"}
-              </dd>
+              <dt className="font-medium text-zinc-600">이미지 업로드</dt>
+              <dd className="text-zinc-600">{isWordPressMediaUploadEnabled() ? "가능" : "비활성화됨"}</dd>
             </div>
           </dl>
 
@@ -1492,17 +1592,43 @@ export default async function ArticleDetailPage({
               type="submit"
               className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
             >
-              WordPress 연결 테스트
+              연결 상태 확인
             </button>
           </form>
-
           <p className="mt-2 text-xs text-zinc-400">
             연결 테스트 결과는 위쪽 알림 영역에 표시됩니다 (성공/실패 및 원인 후보 포함).
           </p>
+
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-zinc-500">WordPress 연결 상세 보기</summary>
+            <p className="mt-2 text-[11px] text-zinc-400">
+              Application Password나 Authorization header는 여기에도 표시되지 않습니다.
+            </p>
+            <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-600">base URL</dt>
+                <dd className="text-zinc-500 font-mono break-all">
+                  {process.env.WORDPRESS_BASE_URL || "설정되지 않음"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">publish enabled</dt>
+                <dd className="text-zinc-500">
+                  {isWordPressPublishEnabled() ? "true (실제 draft 생성)" : "false (dry-run)"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">media upload enabled</dt>
+                <dd className="text-zinc-500">
+                  {isWordPressMediaUploadEnabled() ? "true" : "false (비활성화)"}
+                </dd>
+              </div>
+            </dl>
+          </details>
         </section>
 
         {/* Phase 2-2 / 2-9: WordPress 초안 생성 (안정화) */}
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+        <section id="wordpress-draft-send" className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">원본 article을 WordPress Draft로 전송</h2>
           <p className="mt-1 text-xs text-zinc-500">
             승인(reviewed)된 기사만 WordPress에 draft(초안) post로 생성할 수 있습니다.
@@ -1512,26 +1638,22 @@ export default async function ArticleDetailPage({
             이용하세요.
           </p>
 
-          <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-            <div>
-              <dt className="font-medium text-zinc-600">WORDPRESS_PUBLISH_ENABLED</dt>
-              <dd className="text-zinc-500">{isWordPressPublishEnabled() ? "true" : "false"}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-zinc-600">현재 모드</dt>
-              <dd className="text-zinc-500">
-                {isWordPressPublishEnabled() ? "actual draft (실제 WordPress API 호출)" : "dry-run (실제 호출 없음)"}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium text-zinc-600">media upload</dt>
-              <dd className="text-zinc-500">deferred (다음 단계 예정)</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-zinc-600">SEO plugin write</dt>
-              <dd className="text-zinc-500">deferred (다음 단계 예정)</dd>
-            </div>
-          </dl>
+          {/* Phase 4-7: env flag/raw 모드 값은 기본 화면에서 숨기고 접힘 안에만 둔다. */}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-zinc-500">고급 설정 보기</summary>
+            <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-600">WORDPRESS_PUBLISH_ENABLED</dt>
+                <dd className="text-zinc-500">{isWordPressPublishEnabled() ? "true" : "false"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">현재 모드</dt>
+                <dd className="text-zinc-500">
+                  {isWordPressPublishEnabled() ? "actual draft (실제 WordPress API 호출)" : "dry-run (실제 호출 없음)"}
+                </dd>
+              </div>
+            </dl>
+          </details>
 
           {isReviewed && article.wpMetadataStatus !== "reviewed" && !hasWordPressSuccess && (
             <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">

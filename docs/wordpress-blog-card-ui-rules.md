@@ -194,6 +194,20 @@ badge를 붙이지 않는다).
   안으로 옮긴다. 기능 자체(actual write/custom endpoint)는 삭제하지
   않는다 — `lib/seo/seo-plugin-status-summary.ts`의
   `summarizeSeoPluginWriteStatus()`가 순수 함수로 상태만 재계산한다.
+- **WordPress Media Upload / Connection Test도 같은 원칙을 따른다
+  (Phase 4-7)**: `WORDPRESS_MEDIA_UPLOAD_ENABLED`/
+  `WORDPRESS_PUBLISH_ENABLED`/base URL/`publish enabled`/`media
+  upload enabled` raw 값은 기본 화면에 두지 않는다. 기본 화면에는
+  "대표 이미지 업로드 상태"/"WordPress 연결 상태" 요약(현재 상태 한
+  문장, Draft 생성/이미지 업로드 가능 여부, [연결 상태 확인] 버튼)만
+  두고, raw env 값과 "WordPress 이미지 업로드 테스트"/"업로드 dry-run
+  확인"/"업로드 상태 확인" 같은 개발자용 버튼, source type/media
+  id/upload payload 같은 raw dl은 "이미지 업로드 상세 보기"/
+  "WordPress 연결 상세 보기"로 옮긴다. Application Password/
+  Authorization header는 접힘 안에서도 표시하지 않는다.
+  `lib/wordpress/wordpress-publishing-readiness-summary.ts`의
+  `summarizeWordPressPublishingReadiness()`가 연결/승인/이미지/SEO
+  상태를 하나의 "WordPress 게시 준비" 요약으로 재계산한다.
 
 ## 본문 구조(post_body) 품질 기준 (Phase 2-24)
 

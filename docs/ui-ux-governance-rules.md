@@ -635,3 +635,25 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
 - 기능 자체(actual write/custom endpoint 등)는 절대 삭제하지 않는다 —
   화면 배치만 "요약 먼저, 상세는 접어서"로 바꾼다.
 - 실제 적용 사례: [`docs/phase-4-6-developer-info-hiding.md`](./phase-4-6-developer-info-hiding.md).
+
+## WordPress Media Upload / Connection Test도 같은 원칙으로 숨긴다 (Phase 4-7)
+
+"Step 2. WordPress Media Upload", "WordPress Connection Test" 같은
+개발·운영자용 테스트 영역도 Phase 4-6과 동일한 원칙을 따른다.
+
+- 기본 화면에는 "대표 이미지 업로드 상태"/"WordPress 연결 상태"라는
+  사용자 친화적 제목과 짧은 안내 문장만 보여준다.
+- `WORDPRESS_MEDIA_UPLOAD_ENABLED`, `WORDPRESS_PUBLISH_ENABLED`, base
+  URL, `publish enabled`/`media upload enabled` raw 값, WordPress
+  media id/upload payload 같은 raw 정보는 "이미지 업로드 상세
+  보기"/"WordPress 연결 상세 보기" `<details>`(기본 닫힘) 안으로
+  옮긴다.
+- "WordPress 이미지 업로드 테스트", "WordPress 연결 테스트" 같은
+  개발자용 버튼명은 기본 화면의 primary action으로 쓰지 않는다 —
+  기본 화면에는 "연결 상태 확인" 같은 사용자 표현을 쓰고, 원래
+  버튼은 접힘 안에서 그대로 동작한다.
+- Application Password, Authorization header, API key는 기본 화면은
+  물론 접힘 영역 안에서도 절대 표시하지 않는다.
+- WordPress 연결/승인/대표 이미지/SEO 상태를 하나로 묶은 "WordPress
+  게시 준비" 요약 카드에는 primary action 하나만 강조한다.
+- 실제 적용 사례: [`docs/phase-4-7-wordpress-media-connection-test-hiding.md`](./phase-4-7-wordpress-media-connection-test-hiding.md).
