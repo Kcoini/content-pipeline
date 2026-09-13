@@ -35,6 +35,8 @@ const COMMON_SAFETY_RULES: readonly string[] = [
 const EXCERPT_MAX_LENGTH = 600;
 const MAX_SOURCE_SUMMARIES = 5;
 const MAX_KEY_POINTS = 8;
+const MAX_EVIDENCE_HIGHLIGHTS = 4;
+const MAX_VERIFICATION_HIGHLIGHTS = 3;
 
 export interface SocialWritingContextOptions {
   platform: SocialPlatform;
@@ -94,6 +96,16 @@ export interface SocialWritingContext {
    * 그대로 동작한다(하위 호환, breaking 없음).
    */
   platformBrief: MasterManuscriptPlatformBriefs[keyof MasterManuscriptPlatformBriefs] | null;
+  /**
+   * Phase 4-8: 마스터 원고의 evidenceMap 중 근거가 있는(strong/moderate)
+   * 주장만 짧게 뽑아 전달한다 — "이 주장에는 실제로 이 정도 근거가
+   * 있다"를 프롬프트가 알게 해서, 근거 없는 일반론으로 흐르지 않게
+   * 돕는다. 마스터 원고 전체나 evidenceMap 전체를 넣지 않는다(비용
+   * 최적화 원칙 유지, 최대 4건).
+   */
+  evidenceHighlights: string[];
+  /** Phase 4-8: 확인 필요 사항 중 일부(최대 3건) — 단정하지 말아야 할 내용을 프롬프트가 알게 한다. */
+  verificationHighlights: string[];
 }
 
 /** article.content(마크다운/HTML 섞인 원문)에서 태그/기호를 제거한 순수 텍스트로 짧게 요약한다. */
@@ -147,6 +159,18 @@ export async function buildSocialWritingContext(
   const masterManuscript = readArticleMasterManuscript(article);
   const platformBrief = masterManuscript ? getPlatformBrief(masterManuscript, options.platform) : null;
 
+  // Phase 4-8: evidenceMap에서 근거가 실제로 있는 주장만(weak 제외) 짧게
+  // 뽑는다 — "출처가 있는데도 본문이 일반론으로 흐르는" 문제를 막기
+  // 위한 최소한의 그라운딩 재료다. 마스터 원고가 없으면 빈 배열(하위
+  // 호환 — 기존처럼 excerpt/keyPoints만으로 생성된다).
+  const evidenceHighlights = masterManuscript
+    ? masterManuscript.evidenceMap
+        .filter((e) => e.strength !== "weak")
+        .slice(0, MAX_EVIDENCE_HIGHLIGHTS)
+        .map((e) => `${e.claim} (근거 ${e.supportingSourceIds.length}건, ${e.strength === "strong" ? "충분" : "보통"}${e.caution ? ` — ${e.caution}` : ""})`)
+    : [];
+  const verificationHighlights = masterManuscript ? masterManuscript.verificationNeeded.slice(0, MAX_VERIFICATION_HIGHLIGHTS) : [];
+
   return {
     articleId: article.id,
     title: article.title,
@@ -173,5 +197,7 @@ export async function buildSocialWritingContext(
     safetyRules,
     outputContractName: getSocialOutputContractName(options.platform),
     platformBrief,
+    evidenceHighlights,
+    verificationHighlights,
   };
 }

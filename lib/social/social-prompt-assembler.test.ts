@@ -31,6 +31,8 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     safetyRules: ["협박형 문장 금지"],
     outputContractName: "naver-blog.schema.json",
     platformBrief: null,
+    evidenceHighlights: [],
+    verificationHighlights: [],
     ...overrides,
   };
 }
@@ -63,6 +65,26 @@ describe("assembleSocialWritingPrompt", () => {
     expect(serialized).not.toContain("장기요양보험 신청 절차를 정리했습니다."); // excerpt 원문 텍스트
     expect(result.contextSummary).not.toHaveProperty("excerpt");
     expect(result.contextSummary).not.toHaveProperty("sourceSummaries");
+  });
+
+  it("Phase 4-8: evidenceHighlights/verificationHighlights가 있으면 userPrompt에 근거/확인 필요 블록을 포함한다", () => {
+    const result = assembleSocialWritingPrompt(
+      makeContext({
+        evidenceHighlights: ["SEO는 신뢰도가 중요하다 (근거 2건, 충분)"],
+        verificationHighlights: ["검색 알고리즘 세부 기준은 공개되지 않음"],
+      })
+    );
+
+    expect(result.userPrompt).toContain("근거가 확인된 핵심 주장");
+    expect(result.userPrompt).toContain("SEO는 신뢰도가 중요하다");
+    expect(result.userPrompt).toContain("확인이 더 필요한 내용");
+    expect(result.userPrompt).toContain("검색 알고리즘 세부 기준은 공개되지 않음");
+  });
+
+  it("evidenceHighlights/verificationHighlights가 없으면(마스터 원고 없음) 해당 블록이 생략된다", () => {
+    const result = assembleSocialWritingPrompt(makeContext());
+    expect(result.userPrompt).not.toContain("근거가 확인된 핵심 주장");
+    expect(result.userPrompt).not.toContain("확인이 더 필요한 내용");
   });
 
   it("userPrompt에는 API key/인증 정보가 없다", () => {

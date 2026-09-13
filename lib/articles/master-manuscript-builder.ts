@@ -22,6 +22,9 @@ import type {
   MasterManuscriptSourceSummary,
   MasterManuscriptVerifiedFact,
   MasterManuscriptFactInterpretation,
+  MasterManuscriptFactType,
+  MasterManuscriptEvidenceEntry,
+  MasterManuscriptIssueEntry,
   MasterManuscriptPlatformBriefs,
   LongFormSupport,
   OptimizationSupport,
@@ -121,7 +124,34 @@ function buildVerifiedFacts(sources: readonly Source[]): MasterManuscriptVerifie
       fact,
       sourceIds: Array.from(sourceIdSet),
       confidence: sourceIdSet.size >= 2 ? "high" : "medium",
+      factType: classifyFactType(fact),
     }));
+}
+
+/** 단독 연도(2020~2029)/월일 표현이 있는지. */
+const DATE_PATTERN = /\d{4}년|\d{1,2}월\s*\d{1,2}일|20\d{2}[.\-/]\d{1,2}([.\-/]\d{1,2})?/;
+/** 퍼센트/금액/건수 등 명시적 수치. */
+const NUMBER_PATTERN = /\d+(\.\d+)?\s*(%|퍼센트|원|건|명|배|위|점)/;
+/** 정부/공공기관/기업/단체로 흔히 쓰이는 접미사. */
+const ORGANIZATION_PATTERN = /(부|청|처|위원회|협회|공단|공사|재단|연구원|대학교|은행|그룹|㈜|주식회사)(은|는|이|가|의|을|를)?/;
+/** 정책/제도 관련 표현. */
+const POLICY_PATTERN = /(정책|제도|법안|규제|지원금|시행령|고시|가이드라인)/;
+/** 사건/발표/행사성 표현. */
+const EVENT_PATTERN = /(발표했|출시했|개최했|시작했|도입했|발생했|열렸다)/;
+
+/**
+ * 사실 문장을 정규식만으로 date/number/organization/policy/event/claim/
+ * other 중 하나로 분류한다 — AI 판단이 아니라 기계적 패턴 매칭이다.
+ * 여러 패턴에 걸치면 더 구체적인 것(date > number > organization >
+ * policy > event) 순으로 우선한다.
+ */
+function classifyFactType(fact: string): MasterManuscriptFactType {
+  if (DATE_PATTERN.test(fact)) return "date";
+  if (NUMBER_PATTERN.test(fact)) return "number";
+  if (ORGANIZATION_PATTERN.test(fact)) return "organization";
+  if (POLICY_PATTERN.test(fact)) return "policy";
+  if (EVENT_PATTERN.test(fact)) return "event";
+  return fact.trim().length > 0 ? "claim" : "other";
 }
 
 /**
@@ -140,6 +170,56 @@ function buildFactInterpretationSplit(
     sourceIds: f.sourceIds,
     caution: f.confidence === "medium" ? "출처 1건에서만 확인된 사실이라 해석도 신중하게 다뤄야 합니다." : "",
   }));
+}
+
+/**
+ * Phase 4-8: 최상위 evidenceMap — 각 확인된 사실을 "주장"으로 보고
+ * 뒷받침 출처/강도/주의사항을 함께 담는다. confidence(출처 개수 기반)를
+ * 그대로 strength로 옮기고, factInterpretationSplit의 caution을
+ * 재사용한다(새로 지어내지 않는다).
+ */
+function buildEvidenceMap(
+  verifiedFacts: readonly MasterManuscriptVerifiedFact[],
+  factInterpretationSplit: readonly MasterManuscriptFactInterpretation[]
+): MasterManuscriptEvidenceEntry[] {
+  const cautionByFact = new Map(factInterpretationSplit.map((f) => [f.fact, f.caution]));
+
+  return verifiedFacts.map((f) => ({
+    claim: f.fact,
+    supportingSourceIds: f.sourceIds,
+    strength: f.confidence === "high" ? "strong" : f.confidence === "medium" ? "moderate" : "weak",
+    caution: cautionByFact.get(f.fact) || "",
+  }));
+}
+
+/**
+ * Phase 4-8: 교차 확인이 안 된(medium confidence) 사실을 "쟁점"으로
+ * 재구성한다 — 없는 긍정/부정 시각을 지어내지 않고, "이 사실이
+ * 확인되면 근거로 쓸 수 있다"/"교차 확인이 필요하다"는 사실관계
+ * 자체를 안내하는 정도로만 채운다. medium confidence 사실이 없으면
+ * 상위 확인된 사실 중 일부를 대신 사용한다(항상 빈 배열이 되지 않게).
+ */
+function buildIssues(verifiedFacts: readonly MasterManuscriptVerifiedFact[]): MasterManuscriptIssueEntry[] {
+  const mediumConfidenceFacts = verifiedFacts.filter((f) => f.confidence === "medium").slice(0, 3);
+  const source = mediumConfidenceFacts.length > 0 ? mediumConfidenceFacts : verifiedFacts.slice(0, 2);
+
+  return source.map((f) => ({
+    issue: f.fact,
+    positiveView: `이 사실이 확인되면 "${f.fact}"를 뒷받침하는 근거로 쓸 수 있습니다.`,
+    concern:
+      f.confidence === "medium"
+        ? "출처 1건에서만 확인되어 교차 확인이 필요합니다."
+        : "추가 확인 없이 지나치게 단정적으로 쓰지 않는 것이 좋습니다.",
+    readerCheckPoint: "다른 출처에서도 같은 내용이 확인되는지 확인하세요.",
+    sourceIds: f.sourceIds,
+  }));
+}
+
+/** Phase 4-8: 핵심 내용이 독자에게 어떤 의미인지 안내하는 문장(지어내지 않고 템플릿으로만 구성). */
+function buildReaderMeaning(supportingMessages: readonly string[]): string[] {
+  return supportingMessages.map(
+    (message) => `"${message}"가 독자의 실제 상황(선택/행동/판단)에 어떤 영향을 주는지 확인해서 반영하세요.`
+  );
 }
 
 function buildLongFormSupport(
@@ -394,6 +474,9 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
     mainMessage,
     supportingMessages,
     background,
+    evidenceMap: buildEvidenceMap(verifiedFacts, factInterpretationSplit),
+    issues: buildIssues(verifiedFacts),
+    readerMeaning: buildReaderMeaning(supportingMessages),
     verificationNeeded,
     prohibitedOrCarefulExpressions: {
       prohibited: [...BASE_PROHIBITED_PATTERNS],

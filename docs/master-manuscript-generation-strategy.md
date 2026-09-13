@@ -205,4 +205,5 @@ platformBriefs/optimizationSupport 생성, 비용 원칙)을 모두 담았다.
 - [`phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)
 - [`phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)
 - [`phase-4-5-content-type-review-separation.md`](./phase-4-5-content-type-review-separation.md) — 글 유형별(news_article/opinion_column/wordpress_blog 등) 생성·검토 기준 분리, opinion_column 플랫폼 추가
+- [`phase-4-8-master-manuscript-evidence-quality.md`](./phase-4-8-master-manuscript-evidence-quality.md) — 최상위 evidenceMap(강도/주의사항)/issues/readerMeaning/factType 추가, 마스터 원고 자체 자동 검토(`reviewMasterManuscript`), 플랫폼 글 생성 prompt에 근거 하이라이트 전달
 - [`../prompts/master-manuscript.md`](../prompts/master-manuscript.md) — 마스터 원고 생성 계약

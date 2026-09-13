@@ -12,6 +12,14 @@
 /** 확인된 사실의 신뢰도 — 출처 개수/명시적 수치 여부로 기계적으로 판단한다(AI 주관 판단 아님). */
 export type FactConfidence = "high" | "medium" | "low";
 
+/**
+ * Phase 4-8: 사실의 성격 분류 — 날짜/수치/기관명/정책/사건/주장 중 무엇인지
+ * 표시한다. 플랫폼별 글 생성 시 "수치인데 출처가 약하다"/"기관명인데
+ * 확인이 안 됐다" 같은 판단을 사람이 더 빨리 할 수 있게 돕는다. 문장
+ * 형태(정규식)로만 기계적으로 분류한다 — AI 판단이 아니다.
+ */
+export type MasterManuscriptFactType = "date" | "number" | "organization" | "policy" | "event" | "claim" | "other";
+
 export interface MasterManuscriptSourceSummary {
   sourceId: string;
   title: string;
@@ -34,6 +42,8 @@ export interface MasterManuscriptVerifiedFact {
   fact: string;
   sourceIds: string[];
   confidence: FactConfidence;
+  /** Phase 4-8: 기존에 저장된 마스터 원고에는 없을 수 있다(선택 필드) — 없으면 "other"로 취급한다. */
+  factType?: MasterManuscriptFactType;
 }
 
 /** 사실과 해석을 구분해서 담는다 — 해석/전망을 사실처럼 쓰지 않기 위한 구조. */
@@ -180,6 +190,36 @@ export interface MasterManuscriptEvidenceMapEntry {
   sourceIds: string[];
 }
 
+/** Phase 4-8: 주장(claim)이 얼마나 단단히 뒷받침되는지. 출처 개수/confidence로 기계적으로 판단한다. */
+export type EvidenceStrength = "strong" | "moderate" | "weak";
+
+/**
+ * Phase 4-8: 마스터 원고 최상위 evidenceMap 항목. `longFormSupport.evidenceMap`
+ * (claim/sourceIds만 있는 단순 매핑, 기존 그대로 유지)보다 풍부한 정보
+ * (strength/caution)를 담아, 플랫폼별 글 생성과 자동 검토가 "이 주장을
+ * 얼마나 단정적으로 써도 되는지"를 판단할 수 있게 한다.
+ */
+export interface MasterManuscriptEvidenceEntry {
+  claim: string;
+  supportingSourceIds: string[];
+  strength: EvidenceStrength;
+  /** 이 주장을 쓸 때 주의할 점(단정 금지 안내 등). 없으면 빈 문자열. */
+  caution: string;
+}
+
+/**
+ * Phase 4-8: 쟁점 하나 — 긍정적 시각과 우려/한계를 함께 담아, 플랫폼
+ * 글에서 한쪽으로만 치우치지 않게 돕는다. 출처 기반 재료가 없으면
+ * positiveView/concern을 지어내지 않고 일반적인 안내 문장으로 둔다.
+ */
+export interface MasterManuscriptIssueEntry {
+  issue: string;
+  positiveView: string;
+  concern: string;
+  readerCheckPoint: string;
+  sourceIds: string[];
+}
+
 export interface LongFormSupport {
   /** 이 주제/출처 수로 적절한 글 길이(사람이 읽는 설명, raw 숫자만이 아니다). */
   recommendedLength: string;
@@ -289,6 +329,16 @@ export interface MasterManuscript {
   mainMessage: string;
   supportingMessages: string[];
   background: string;
+  /**
+   * Phase 4-8: 주장 ↔ 출처 매핑(강도/주의사항 포함) — 플랫폼별 글이
+   * "일반론"으로 흐르지 않게 하는 핵심 재료다. `longFormSupport.evidenceMap`
+   * (기존, claim/sourceIds만)과 별개로 최상위에도 둔다.
+   */
+  evidenceMap: MasterManuscriptEvidenceEntry[];
+  /** Phase 4-8: 쟁점별 긍정/우려/독자 확인 포인트. 출처 재료가 부족하면 빈 배열일 수 있다. */
+  issues: MasterManuscriptIssueEntry[];
+  /** Phase 4-8: 이 내용이 독자에게 실질적으로 어떤 의미가 있는지(플랫폼 글의 "독자 의미" 문단 재료). */
+  readerMeaning: string[];
   verificationNeeded: string[];
   prohibitedOrCarefulExpressions: MasterManuscriptProhibitedExpressions;
   titleCandidates: MasterManuscriptTitleCandidates;

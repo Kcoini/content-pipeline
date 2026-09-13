@@ -278,6 +278,16 @@ describe("마스터 원고 정보 섹션 (정적 소스 검사, Phase 4-4)", () 
   it("그대로 게시되는 내용이 아니라는 안내 문구가 있다", () => {
     expect(pageSource).toContain("그대로 게시되는 내용이 아닙니다");
   });
+
+  it("Phase 4-8: 마스터 원고 자동 검토 상태 배지와 근거 연결(evidenceMap)/쟁점 개수를 보여준다", () => {
+    expect(pageSource).toContain("reviewMasterManuscript");
+    expect(pageSource).toContain("masterManuscriptReview.statusLabel");
+    const start = pageSource.indexOf("마스터 원고 정보</h2>");
+    const end = pageSource.indexOf("기사 본문</h2>");
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("근거 연결(evidenceMap)");
+    expect(block).toContain("masterManuscript.issues.length");
+  });
 });
 
 describe("SEO 정보 반영 상태 요약 카드 + 개발자용 상세 정보 접힘 처리 (정적 소스 검사, Phase 4-6)", () => {

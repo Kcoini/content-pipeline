@@ -106,6 +106,19 @@ function buildUserPrompt(context: SocialWritingContext): string {
     context.platformBrief
       ? `platform_brief(이 플랫폼 전용 변환 재료 — 참고해서 활용하세요):\n${formatPlatformBrief(context.platformBrief)}`
       : null,
+    // Phase 4-8: 마스터 원고 evidenceMap에서 근거 있는 주장만 짧게
+    // 전달한다 — "일반론"이 아니라 실제 근거에 연결된 문장을 쓰도록
+    // 유도한다. evidenceMap 전체나 마스터 원고 전체는 넣지 않는다.
+    context.evidenceHighlights.length > 0
+      ? `근거가 확인된 핵심 주장(이 내용을 우선 활용하고, 근거 없는 새 주장을 만들지 마세요):\n${context.evidenceHighlights
+          .map((e) => `- ${e}`)
+          .join("\n")}`
+      : null,
+    context.verificationHighlights.length > 0
+      ? `확인이 더 필요한 내용(단정하지 말고 "확인 필요"로 표현하세요):\n${context.verificationHighlights
+          .map((v) => `- ${v}`)
+          .join("\n")}`
+      : null,
     // wordpress_blog에서만 usable source 개수에 따른 작성 모드를 명시한다
     // (다른 플랫폼은 이 안내를 받지 않는다 — naver_blog 등 기존 동작 그대로).
     context.platform === "wordpress_blog"

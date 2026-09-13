@@ -674,3 +674,22 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   보여주거나, 정말 더 할 일이 없을 때만 완료 화면에도 최소 하나의
   링크(예: 대시보드로 이동)를 둔다.
 - 실제 적용 사례: [`docs/theme-candidate-deduplication.md`](./theme-candidate-deduplication.md)의 "Phase 1-25" 섹션(existing_theme_update 후보가 "✓ 테마로 저장됨"으로만 끝나던 버그 수정).
+
+## 마스터 원고는 최종 게시글이 아니다 (Phase 4-8)
+
+마스터 원고(`MasterManuscript`) 화면 표시는 항상 "이건 참고 자료일
+뿐, 그대로 게시하지 않는다"는 사실을 안내 문구로 함께 보여준다.
+
+- "마스터 원고 정보" 섹션에는 출처 요약/확인된 사실/근거 연결
+  (evidenceMap)/확인 필요 사항/쟁점 개수와 함께, 마스터 원고 자체의
+  자동 검토 상태(아직 없음/출처 부족/재생성 권장/확인 필요/준비
+  완료 · 플랫폼 변환 가능)를 한국어 배지로 보여준다
+  (`reviewMasterManuscript`, raw status 값을 직접 노출하지 않는다).
+- 이 검토가 "준비 완료"여도 플랫폼별 글(social_posts)의 자동 검토와
+  최종 승인은 각각 별도로 진행한다 — 하나의 검토가 다른 검토나 사람의
+  승인을 대체하지 않는다.
+- 플랫폼별 글 생성에는 마스터 원고 전체가 아니라 해당 플랫폼의
+  `platformBrief` + 근거 하이라이트(evidenceHighlights, 최대 4건)만
+  전달한다 — 다른 플랫폼 brief나 마스터 원고 전체를 반복 투입하지
+  않는다.
+- 실제 적용 사례: [`docs/phase-4-8-master-manuscript-evidence-quality.md`](./phase-4-8-master-manuscript-evidence-quality.md).

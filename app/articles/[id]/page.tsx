@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getArticleById, readArticleMasterManuscript } from "@/lib/repositories/article-repository";
+import { reviewMasterManuscript } from "@/lib/articles/master-manuscript-review";
 import { getThemeById } from "@/lib/repositories/theme-repository";
 import { getSourcesByArticleId } from "@/lib/repositories/source-repository";
 import { getLatestEvalByArticleId } from "@/lib/repositories/eval-repository";
@@ -401,6 +402,10 @@ export default async function ArticleDetailPage({
   // 없으면(Phase 4-2 이전에 생성된 article 등) 섹션 자체를 렌더링하지
   // 않는다 — 없는 상태를 지어내지 않는다.
   const masterManuscript = readArticleMasterManuscript(article);
+  // Phase 4-8: 마스터 원고 자체의 구조적 완성도를 검토한다(플랫폼별 글
+  // 자동 검토와는 별개 — 이 검토가 통과해도 플랫폼 글은 각자 다시
+  // 자동 검토되고, 최종 승인은 항상 사람이 한다).
+  const masterManuscriptReview = reviewMasterManuscript(masterManuscript);
 
   const existingPlatforms = new Set(existingSocialPosts.map((post) => post.platform));
   const recommendedPlatforms = new Set(getRecommendedPlatforms());
@@ -574,7 +579,22 @@ export default async function ArticleDetailPage({
             펼치기로만 보여준다. 이 원고 자체는 게시용 콘텐츠가 아니다. */}
         {masterManuscript && (
           <section className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-zinc-700">마스터 원고 정보</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-zinc-700">마스터 원고 정보</h2>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  masterManuscriptReview.status === "ready"
+                    ? "bg-green-100 text-green-700"
+                    : masterManuscriptReview.status === "regenerate_recommended"
+                      ? "bg-red-100 text-red-700"
+                      : masterManuscriptReview.status === "insufficient_sources"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-zinc-100 text-zinc-600"
+                }`}
+              >
+                {masterManuscriptReview.statusLabel}
+              </span>
+            </div>
             <p className="mt-1 text-xs text-zinc-500">
               이 기사는 플랫폼별 글을 만들기 위한 마스터 원고로도 쓰입니다. 아래는 플랫폼 글 생성에 참고 자료로만
               쓰이는 재료 요약이며, 그대로 게시되는 내용이 아닙니다.
@@ -589,20 +609,52 @@ export default async function ArticleDetailPage({
                 <dd className="text-zinc-700">{masterManuscript.verifiedFacts.length}건</dd>
               </div>
               <div>
+                <dt className="font-medium text-zinc-600">근거 연결(evidenceMap)</dt>
+                <dd className="text-zinc-700">{masterManuscript.evidenceMap.length}건</dd>
+              </div>
+              <div>
                 <dt className="font-medium text-zinc-600">확인 필요 사항</dt>
                 <dd className="text-zinc-700">{masterManuscript.verificationNeeded.length}건</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-600">쟁점</dt>
+                <dd className="text-zinc-700">{masterManuscript.issues.length}건</dd>
               </div>
               <div>
                 <dt className="font-medium text-zinc-600">플랫폼별 변환 재료</dt>
                 <dd className="text-zinc-700">{SOCIAL_PLATFORMS.length}개 플랫폼 준비 완료</dd>
               </div>
             </dl>
+
+            {masterManuscriptReview.status !== "ready" && masterManuscriptReview.failedItemLabels.length > 0 && (
+              <p className="mt-2 break-keep text-[11px] text-amber-700">
+                확인이 필요합니다: {masterManuscriptReview.failedItemLabels.join(", ")}
+              </p>
+            )}
+
             {masterManuscript.verificationNeeded.length > 0 && (
               <details className="mt-2">
                 <summary className="cursor-pointer text-[11px] text-zinc-500">확인 필요 사항 보기</summary>
                 <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-zinc-600">
                   {masterManuscript.verificationNeeded.map((item, index) => (
                     <li key={index}>· {item}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {masterManuscript.evidenceMap.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-zinc-500">
+                  근거 연결(evidenceMap) 보기 ({masterManuscript.evidenceMap.length}건)
+                </summary>
+                <ul className="mt-1 flex flex-col gap-1 text-[11px] text-zinc-600">
+                  {masterManuscript.evidenceMap.map((entry, index) => (
+                    <li key={index} className="break-keep">
+                      · {entry.claim} — 근거 {entry.supportingSourceIds.length}건 (
+                      {entry.strength === "strong" ? "충분" : entry.strength === "moderate" ? "보통" : "약함"})
+                      {entry.caution && <span className="text-amber-700"> · {entry.caution}</span>}
+                    </li>
                   ))}
                 </ul>
               </details>

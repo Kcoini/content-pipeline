@@ -547,6 +547,9 @@ readiness, 설정 누락 여부를 확인할 수 있으며, 토큰/키 값은
   "WordPress 게시 준비" 요약 카드(Phase 4-7): [`phase-4-7-wordpress-media-connection-test-hiding.md`](./phase-4-7-wordpress-media-connection-test-hiding.md)
 - existing_theme_update 후보가 "✓ 테마로 저장됨"으로만 끝나던 버그
   수정(Phase 1-25): [`theme-candidate-deduplication.md`](./theme-candidate-deduplication.md)의 "Phase 1-25" 섹션, [`automatic-theme-update-workflow.md`](./automatic-theme-update-workflow.md)
+- 마스터 원고 생성 품질 개선 — 최상위 evidenceMap/issues/readerMeaning/
+  factType, 마스터 원고 자체 자동 검토, 플랫폼 글 생성 prompt 근거
+  하이라이트(Phase 4-8): [`phase-4-8-master-manuscript-evidence-quality.md`](./phase-4-8-master-manuscript-evidence-quality.md)
 - `/social-posts/[id]`를 단일 글 최종 검토·수정·승인 화면으로 재구성(Phase 3-26): [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md)
 - "관련 기사 URL 수집" 버튼 클릭 후 결과 요약 + 다음 행동 UI 추가(Phase 3-27, 무반응 방지): [`phase-3-27-related-url-collection-feedback.md`](./phase-3-27-related-url-collection-feedback.md)
 - "마스터 원고 중심" 구조 전환 1차 — 용어 정리 + 고급 옵션화(Phase 4-1): [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

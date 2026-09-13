@@ -323,3 +323,56 @@ describe("안전 원칙 — 확인 필요 사항과 확인된 사실의 분리 (
     expect(master.prohibitedOrCarefulExpressions.careful.length).toBeGreaterThan(0);
   });
 });
+
+describe("Phase 4-8: 최상위 evidenceMap/issues/readerMeaning + factType", () => {
+  it("verifiedFacts 각각에 factType이 기계적으로 분류되어 붙는다", () => {
+    const master = buildMasterManuscript(makeArticle(), [
+      makeSource({ id: "s1", keyPoints: ["2026년 3월 새 정책이 시행된다"] }),
+      makeSource({ id: "s2", keyPoints: ["투자 규모가 20% 증가했다"] }),
+      makeSource({ id: "s3", keyPoints: ["금융위원회가 발표했다"] }),
+    ]);
+    const byFact = new Map(master.verifiedFacts.map((f) => [f.fact, f.factType]));
+    expect(byFact.get("2026년 3월 새 정책이 시행된다")).toBe("date");
+    expect(byFact.get("투자 규모가 20% 증가했다")).toBe("number");
+    expect(byFact.get("금융위원회가 발표했다")).toBe("organization");
+  });
+
+  it("최상위 evidenceMap이 verifiedFacts로부터 강도(strength)와 함께 만들어진다", () => {
+    const master = buildMasterManuscript(makeArticle(), [
+      makeSource({ id: "s1", keyPoints: ["교차 확인된 사실"] }),
+      makeSource({ id: "s2", keyPoints: ["교차 확인된 사실"] }),
+      makeSource({ id: "s3", keyPoints: ["단독 출처 사실"] }),
+    ]);
+    expect(master.evidenceMap.length).toBe(master.verifiedFacts.length);
+    const strong = master.evidenceMap.find((e) => e.claim === "교차 확인된 사실");
+    const weak = master.evidenceMap.find((e) => e.claim === "단독 출처 사실");
+    expect(strong?.strength).toBe("strong");
+    expect(strong?.supportingSourceIds.length).toBe(2);
+    expect(weak?.strength).toBe("moderate");
+  });
+
+  it("issues는 교차 확인이 안 된 사실을 우선 사용하고, 없으면 상위 확인된 사실로 대체한다", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource({ keyPoints: ["단독 출처 사실"] })]);
+    expect(master.issues.length).toBeGreaterThan(0);
+    expect(master.issues[0].issue).toBe("단독 출처 사실");
+    expect(master.issues[0].positiveView.length).toBeGreaterThan(0);
+    expect(master.issues[0].concern.length).toBeGreaterThan(0);
+  });
+
+  it("readerMeaning은 supportingMessages 각각에 대해 한 문장씩 생성된다(지어낸 구체적 사실 없이 템플릿으로만)", () => {
+    const master = buildMasterManuscript(makeArticle(), [
+      makeSource({ id: "s1", keyPoints: ["핵심 사실 A"] }),
+      makeSource({ id: "s2", keyPoints: ["핵심 사실 A"] }),
+    ]);
+    expect(master.readerMeaning.length).toBe(master.supportingMessages.length);
+    expect(master.readerMeaning[0]).toContain("핵심 사실 A");
+  });
+
+  it("evidenceMap의 caution은 factInterpretationSplit의 caution을 재사용한다(새로 지어내지 않는다)", () => {
+    const master = buildMasterManuscript(makeArticle(), [makeSource({ keyPoints: ["단독 출처 사실"] })]);
+    const interpretation = master.factInterpretationSplit.find((f) => f.fact === "단독 출처 사실");
+    const evidence = master.evidenceMap.find((e) => e.claim === "단독 출처 사실");
+    expect(evidence?.caution).toBe(interpretation?.caution);
+    expect(evidence?.caution.length).toBeGreaterThan(0);
+  });
+});

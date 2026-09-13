@@ -58,6 +58,8 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     safetyRules: ["협박형 문장 금지"],
     outputContractName: "naver-blog.schema.json",
     platformBrief: null,
+    evidenceHighlights: [],
+    verificationHighlights: [],
     ...overrides,
   };
 }

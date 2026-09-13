@@ -39,14 +39,28 @@
    또는 기사 문단 구성)과 `evidenceMap`(어떤 주장에 어떤 출처를
    쓸지)은 필수다. 언론 기사는 `newsArticleExpansion`, 수익형
    블로그/WordPress는 `monetizedBlogExpansion`을 채운다.
-7. 플랫폼별 brief(`platformBriefs.newsArticle`/`wordpressBlog`/
-   `naverBlog`/`naverCafe`/`shortSocial`/`instagram`)를 만든다 —
-   **짧고 재사용 가능하게** 만든다(플랫폼 하나가 다른 플랫폼의
-   brief까지 읽지 않아도 되게).
+7. 플랫폼별 brief(`platformBriefs.newsArticle`/`opinionColumn`/
+   `wordpressBlog`/`naverBlog`/`naverCafe`/`shortSocial`/`instagram`)를
+   만든다 — **짧고 재사용 가능하게** 만든다(플랫폼 하나가 다른
+   플랫폼의 brief까지 읽지 않아도 되게).
 8. EEAT/SEO/AEO/GEO/AGENT 대응 재료를 `optimizationSupport`에
    구조화해서 넣는다(`eeatNotes`/`seoSupport`/`aeoSupport`/
    `geoSupport`/`agentReadiness`) — 각각을 장황한 글로 만들지 않는다.
 9. 마스터 원고 자체의 자동 검토 기준(`autoReviewCriteria`)을 만든다.
+10. (Phase 4-8) 최상위 `evidenceMap`(주장/뒷받침 출처/강도(strength)/
+    주의사항)을 만든다 — `longFormSupport.evidenceMap`(claim/sourceIds만)
+    보다 풍부한 정보를 담아, 플랫폼별 글과 자동 검토가 "이 주장을
+    얼마나 단정적으로 써도 되는지" 판단할 수 있게 한다. 근거가 없는
+    새 주장을 여기 지어내지 않는다 — `verifiedFacts`에 이미 있는
+    사실만 옮긴다.
+11. (Phase 4-8) 최상위 `issues`(쟁점별 긍정적 시각/우려/독자 확인
+    포인트)와 `readerMeaning`(독자에게 어떤 실질적 의미가 있는지)을
+    만든다. 출처 재료가 부족하면 없는 시각을 지어내지 않고, "확인이
+    필요하다"는 사실 자체를 안내하는 정도로만 채운다.
+12. (Phase 4-8) `verifiedFacts[].factType`(date/number/organization/
+    policy/event/claim/other)을 표시한다 — 특히 `number`(수치) 타입은
+    `sourceIds`가 반드시 있어야 한다("출처 없는 수치 단정 금지"를
+    구조적으로 강제하기 위함).
 
 ## 비용 원칙(플랫폼별 글 생성 시 지킬 것)
 
@@ -60,6 +74,12 @@
 - `getPlatformBrief(master, platform)`(`lib/articles/master-manuscript-builder.ts`)
   가 플랫폼별로 필요한 조각만 골라주는 유일한 진입점이다 — 다른
   플랫폼의 brief나 마스터 원고 전체를 직접 참조하지 않는다.
+- (Phase 4-8) `platformBrief` 외에 `evidenceHighlights`(최상위
+  `evidenceMap` 중 근거가 있는 주장만 최대 4건, `lib/social/social-writing-context-builder.ts`)와
+  `verificationHighlights`(`verificationNeeded` 최대 3건)를 함께
+  전달한다 — "일반론으로 흐르는 문제"를 막기 위한 최소한의 그라운딩
+  재료다. `evidenceMap`/`verificationNeeded` 전체나 마스터 원고
+  전체를 넣지 않는다.
 
 ## 출력 구조
 
@@ -68,11 +88,23 @@
 
 ```
 theme, sourceSummaries, verifiedFacts, factInterpretationSplit,
-mainMessage, supportingMessages, background, verificationNeeded,
-prohibitedOrCarefulExpressions, titleCandidates, platformBriefs,
-longFormSupport, optimizationSupport, autoReviewCriteria,
-generatedFromMode, builtAt
+mainMessage, supportingMessages, background, evidenceMap, issues,
+readerMeaning, verificationNeeded, prohibitedOrCarefulExpressions,
+titleCandidates, platformBriefs, longFormSupport, optimizationSupport,
+autoReviewCriteria, generatedFromMode, builtAt
 ```
+
+## 마스터 원고 자체의 자동 검토 (Phase 4-8)
+
+`lib/articles/master-manuscript-review.ts`의 `reviewMasterManuscript()`가
+`autoReviewCriteria`를 실제로 통과/실패로 계산해 5가지 상태 중 하나로
+요약한다: `not_created`(아직 없음) / `insufficient_sources`(출처
+부족, 3건 미만) / `regenerate_recommended`(재생성 권장 — sourceId
+누락/확인 필요 사항 혼입/출처 없는 수치 단정 같은 핵심 규칙 위반) /
+`needs_check`(확인 필요) / `ready`(준비 완료 · 플랫폼 변환 가능). 이
+검토는 마스터 원고 자체의 구조적 완성도만 본다 — 플랫폼별 글
+(social_posts)의 자동 검토(`lib/social/social-quality-gate.ts`)와
+사람의 최종 승인을 대체하지 않는다.
 
 ## 왜 AI 호출이 아닌가 (현재 구현 방식)
 
