@@ -482,7 +482,21 @@ export type LogEventType =
   | "theme_candidate_duplicate_existing_theme_opened"
   | "theme_candidate_merged_canonical_opened"
   | "theme_candidate_split_as_subtheme_started"
-  | "theme_candidate_split_as_subtheme_completed";
+  | "theme_candidate_split_as_subtheme_completed"
+  // Phase 4-17: Job Progress System — job_run/job_run_step 생명주기 이벤트.
+  // details_json에는 job_run_id/job_type/target_type/target_id/step_key/
+  // status/progress_percent/retryable 등 안전한 메타데이터만 담는다(full
+  // body/prompt/AI 응답/민감정보는 절대 담지 않는다).
+  | "job_run_created"
+  | "job_run_started"
+  | "job_step_started"
+  | "job_step_completed"
+  | "job_step_failed"
+  | "job_run_completed"
+  | "job_run_partial_success"
+  | "job_run_failed"
+  | "job_run_blocked"
+  | "job_run_stalled_detected";
 
 export type LogStatus = "success" | "failed" | "info";
 

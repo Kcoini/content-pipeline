@@ -43,6 +43,22 @@ vi.mock("./social-post-approval-service", () => ({
 vi.mock("./wordpress-blog-metadata-regeneration-service", () => ({
   regenerateWordPressBlogMetadata: (...args: unknown[]) => regenerateWordPressBlogMetadata(...args),
 }));
+// Phase 4-17: Job Progress System 연동 — 실제 Supabase 접근(job_runs 생성 등)
+// 없이 NOOP tracker를 반환하게 해 기존 오케스트레이터 동작 검증에만 집중한다.
+// (tracker 자체의 동작은 job-progress-service.test.ts에서 검증한다.)
+vi.mock("@/lib/job-progress/job-progress-service", () => ({
+  createJobProgressTracker: vi.fn().mockResolvedValue({
+    jobRunId: null,
+    startStep: vi.fn(),
+    completeStep: vi.fn(),
+    skipStep: vi.fn(),
+    failStep: vi.fn(),
+    finishCompleted: vi.fn(),
+    finishPartialSuccess: vi.fn(),
+    finishFailed: vi.fn(),
+    finishBlocked: vi.fn(),
+  }),
+}));
 
 const { prepareWordPressBlogPostForPublishing, approveAndPrepareWordPressBlogPostForPublishing } = await import(
   "./wordpress-blog-publish-preparation-orchestrator"
@@ -386,6 +402,16 @@ describe("prepareWordPressBlogPostForPublishing", () => {
     const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
 
     expect(result.success).toBe(true);
+  });
+
+  it("Phase 4-17: job_run 생성 결과(jobRunId)를 반환값에 담는다(tracker가 NOOP이면 null)", async () => {
+    getSocialPostById.mockResolvedValue(makePost());
+
+    const result = await prepareWordPressBlogPostForPublishing("article-1", "post-1");
+
+    // 이 테스트 파일에서는 createJobProgressTracker를 NOOP으로 mock했으므로 null이지만,
+    // 필드 자체는 항상 존재해야 한다(실제 job_run 생성 성공 시 id가 채워진다).
+    expect(result).toHaveProperty("jobRunId", null);
   });
 });
 

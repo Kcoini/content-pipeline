@@ -201,11 +201,25 @@ function revalidateArticleWorkflowPaths(articleId: string): void {
  * Phase 3-17: formData의 returnTo(hidden input)를 읽어 안전하면 그 경로로,
  * 아니면 fallbackUrl(deep link)로 redirect한다. 외부 URL로는 절대
  * redirect하지 않는다(getSafeReturnTo가 내부 경로만 허용).
+ *
+ * Phase 4-17: jobRunId를 넘기면 query에 함께 실어 보낸다 — 돌아간 페이지가
+ * 이 값을 읽어 JobProgressPolling으로 방금 실행한 작업의 진행 상황을
+ * 보여줄 수 있게 하기 위해서다(선택 사항 — 넘기지 않으면 기존과 동일하다).
  */
-function redirectToSafeTarget(formData: FormData, fallbackUrl: string, message: string, isError: boolean): never {
+function redirectToSafeTarget(
+  formData: FormData,
+  fallbackUrl: string,
+  message: string,
+  isError: boolean,
+  jobRunId?: string | null
+): never {
   const returnToRaw = formData.get("returnTo");
   const safeUrl = getSafeReturnTo(typeof returnToRaw === "string" ? returnToRaw : null, fallbackUrl);
-  redirect(appendMessageQuery(safeUrl, message, isError));
+  const urlWithMessage = appendMessageQuery(safeUrl, message, isError);
+  const finalUrl = jobRunId
+    ? `${urlWithMessage}${urlWithMessage.includes("?") ? "&" : "?"}jobRunId=${encodeURIComponent(jobRunId)}`
+    : urlWithMessage;
+  redirect(finalUrl);
 }
 
 function toUserMessage(error: unknown): string {
@@ -894,19 +908,21 @@ export async function prepareWordPressBlogPostForPublishingAction(formData: Form
 
   let message: string;
   let isError: boolean;
+  let jobRunId: string | null = null;
 
   try {
     const result = await prepareWordPressBlogPostForPublishing(articleId, socialPostId);
     const stepSummary = result.steps.map((s) => `${s.step}:${s.status}`).join(", ");
     message = `${result.message} (${stepSummary})`;
     isError = !result.success;
+    jobRunId = result.jobRunId ?? null;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     isError = true;
   }
 
   revalidateArticleWorkflowPaths(articleId);
-  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError, jobRunId);
 }
 
 /**
@@ -924,6 +940,7 @@ export async function approveAndPrepareWordPressBlogPostForPublishingAction(form
 
   let message: string;
   let isError: boolean;
+  let jobRunId: string | null = null;
 
   try {
     const result = await approveAndPrepareWordPressBlogPostForPublishing(
@@ -935,6 +952,7 @@ export async function approveAndPrepareWordPressBlogPostForPublishingAction(form
     const stepSummary = result.steps.map((s) => `${s.step}:${s.status}`).join(", ");
     message = stepSummary.length > 0 ? `${result.message} (${stepSummary})` : result.message;
     isError = !result.success;
+    jobRunId = result.jobRunId ?? null;
   } catch (error) {
     message = describeUnexpectedError(
       error instanceof Error ? error.message : String(error),
@@ -944,7 +962,7 @@ export async function approveAndPrepareWordPressBlogPostForPublishingAction(form
   }
 
   revalidateArticleWorkflowPaths(articleId);
-  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError);
+  redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError, jobRunId);
 }
 
 /**

@@ -9,6 +9,7 @@ import { WordPressFeaturedImageFilePicker } from "@/components/social/wordpress-
 import { CopyUrlButton } from "@/components/social/copy-url-button";
 import { DeepLinkNotice, getHighlightClassName, buildAnchorId } from "@/components/navigation/deep-link-highlight";
 import { TransientNotice } from "@/components/ui/transient-notice";
+import { JobProgressPolling } from "@/components/job-progress/job-progress-polling";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 import {
   buildArticleBlogUrl,
@@ -211,6 +212,8 @@ export default async function ArticleBlogPage({
     returnTo?: string;
     page?: string;
     perPage?: string;
+    /** Phase 4-17: 방금 실행한 작업(WordPress 게시 준비 등)의 진행 상황을 보여줄 job_run id. */
+    jobRunId?: string;
   }>;
 }) {
   const { id } = await params;
@@ -224,6 +227,7 @@ export default async function ArticleBlogPage({
     returnTo,
     page: pageParam,
     perPage: perPageParam,
+    jobRunId,
   } = await searchParams;
   const activeTab = normalizeWordPressBlogCardTab(tab);
   const logFilter: WordPressBlogLogFilter =
@@ -358,6 +362,17 @@ export default async function ArticleBlogPage({
             (harness logger), 상태 자체는 각 카드의 상태 요약에 남는다. */}
         <TransientNotice message={error ?? null} variant="error" />
         <TransientNotice message={publishMessage ?? null} variant="success" />
+
+        {/* Phase 4-17: Job Progress System — WordPress 게시 준비 자동 실행처럼
+            여러 단계로 이루어진 작업을 방금 실행했다면, 그 진행/결과를
+            polling으로 보여준다. jobRunId가 없으면(예: 이전 버전 URL, 첫
+            방문) 아무것도 렌더링하지 않는다 — 기존 화면은 그대로다. */}
+        {jobRunId && (
+          <JobProgressPolling
+            jobRunId={jobRunId}
+            retryHref={targetSocialPostId ? buildArticleBlogUrl(id, { socialPostId: targetSocialPostId, highlight: targetSocialPostId }) : undefined}
+          />
+        )}
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h1 className="text-lg font-semibold">{article.title}</h1>

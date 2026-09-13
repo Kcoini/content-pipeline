@@ -17,6 +17,7 @@ import { writeSeoPluginMetadataToWordPress } from "@/lib/seo/seo-plugin-actual-w
 import { getArticleById } from "@/lib/repositories/article-repository";
 import { approveSocialPost } from "./social-post-approval-service";
 import { regenerateWordPressBlogMetadata } from "./wordpress-blog-metadata-regeneration-service";
+import { createJobProgressTracker, type JobProgressTracker } from "@/lib/job-progress/job-progress-service";
 
 export type WordPressBlogPreparationStep =
   | "quality"
@@ -46,6 +47,12 @@ export interface PrepareWordPressBlogPostForPublishingResult {
   partialSuccess: boolean;
   steps: WordPressBlogPreparationStepResult[];
   message: string;
+  /**
+   * Phase 4-17: Job Progress System — 이 실행을 추적하는 job_run id.
+   * job_run 생성이 실패해도(마이그레이션 미적용 등) null일 뿐 이 함수의
+   * 나머지 동작에는 전혀 영향이 없다.
+   */
+  jobRunId?: string | null;
 }
 
 const STEP_LABELS: Record<WordPressBlogPreparationStep, string> = {
@@ -85,7 +92,8 @@ export function getWordPressBlogPreparationStepStatusLabel(status: WordPressBlog
  */
 async function finishAndPersist(
   post: SocialPost,
-  result: PrepareWordPressBlogPostForPublishingResult
+  result: PrepareWordPressBlogPostForPublishingResult,
+  tracker: JobProgressTracker
 ): Promise<PrepareWordPressBlogPostForPublishingResult> {
   try {
     const existingMetadata = post.platformMetadata ?? {};
@@ -104,7 +112,32 @@ async function finishAndPersist(
   } catch {
     // 저장 실패는 무시한다 — 아래 주석 참고.
   }
-  return result;
+
+  // Phase 4-17: 이 함수가 모든 return 경로를 지나가므로, job_run 단계별
+  // 기록도 여기서 한 번에 동기화한다(steps 배열은 이미 순서대로 쌓여
+  // 있다). tracker가 NOOP이면(job_run 생성 실패) 아래 호출은 전부
+  // 조용히 무시된다 — 실제 게시 준비 결과에는 영향이 없다.
+  for (const step of result.steps) {
+    if (step.status === "failed") {
+      await tracker.failStep(step.step, step.message);
+    } else if (step.status === "skipped") {
+      await tracker.skipStep(step.step, step.message);
+    } else {
+      // success/warning 모두 "이 단계는 지나갔다"는 뜻이라 completed로 기록한다.
+      // warning 여부는 result.partialSuccess/message에 이미 반영돼 있다.
+      await tracker.completeStep(step.step, step.message);
+    }
+  }
+
+  if (!result.success) {
+    await tracker.finishFailed({ errorMessage: result.message, errorCategory: "wordpress_prep_step_failed", retryable: true });
+  } else if (result.partialSuccess) {
+    await tracker.finishPartialSuccess({ userMessage: result.message });
+  } else {
+    await tracker.finishCompleted({ userMessage: result.message });
+  }
+
+  return { ...result, jobRunId: tracker.jobRunId };
 }
 
 /**
@@ -134,11 +167,19 @@ export async function prepareWordPressBlogPostForPublishing(
     };
   }
 
+  // Phase 4-17: Job Progress System — 이 실행 전체를 추적하는 job_run을
+  // 만든다. job_run 생성이 실패해도(마이그레이션 미적용 등) tracker는
+  // NOOP으로 동작해 아래 로직에는 전혀 영향이 없다.
+  const tracker = await createJobProgressTracker(
+    { jobType: "wordpress_auto_prep", targetType: "social_post", targetId: socialPostId, articleId, socialPostId },
+    Object.entries(STEP_LABELS).map(([stepKey, stepLabel]) => ({ stepKey, stepLabel }))
+  );
+
   // 1) quality_status 확인 (실행하지 않고 확인만 — 품질검사는 사람이 별도 버튼으로 실행한다)
   if (post.qualityStatus !== "ready") {
     const message = `quality_status가 ready가 아닙니다 (현재: ${post.qualityStatus}). 먼저 품질검사를 통과하세요.`;
     steps.push({ step: "quality", status: "failed", message });
-    return finishAndPersist(post, { success: false, partialSuccess: false, failedStep: "quality", steps, message });
+    return finishAndPersist(post, { success: false, partialSuccess: false, failedStep: "quality", steps, message }, tracker);
   }
   steps.push({ step: "quality", status: "success", message: "quality_status=ready 확인됨." });
 
@@ -146,7 +187,7 @@ export async function prepareWordPressBlogPostForPublishing(
   if (post.approvalStatus !== "approved") {
     const message = `approval_status가 approved가 아닙니다 (현재: ${post.approvalStatus}). 먼저 승인하세요.`;
     steps.push({ step: "approval", status: "failed", message });
-    return finishAndPersist(post, { success: false, partialSuccess: false, failedStep: "approval", steps, message });
+    return finishAndPersist(post, { success: false, partialSuccess: false, failedStep: "approval", steps, message }, tracker);
   }
   steps.push({ step: "approval", status: "success", message: "approval_status=approved 확인됨." });
 
@@ -163,7 +204,7 @@ export async function prepareWordPressBlogPostForPublishing(
     : await publishArticleToWordPressDraft(articleId, { contentOverride });
   if (!draftResult.success) {
     steps.push({ step: "draft", status: "failed", message: draftResult.message });
-    return finishAndPersist(post, { success: false, partialSuccess: false, failedStep: "draft", steps, message: draftResult.message });
+    return finishAndPersist(post, { success: false, partialSuccess: false, failedStep: "draft", steps, message: draftResult.message }, tracker);
   }
   steps.push({ step: "draft", status: "success", message: draftResult.message });
 
@@ -210,13 +251,17 @@ export async function prepareWordPressBlogPostForPublishing(
   const seoResult = await updateWordPressSeoMetadataFromBlogPost(articleId, socialPostId);
   if (!seoResult.success) {
     steps.push({ step: "seo_metadata", status: "failed", message: seoResult.message });
-    return finishAndPersist(post, {
-      success: false,
-      partialSuccess: false,
-      failedStep: "seo_metadata",
-      steps,
-      message: seoResult.message,
-    });
+    return finishAndPersist(
+      post,
+      {
+        success: false,
+        partialSuccess: false,
+        failedStep: "seo_metadata",
+        steps,
+        message: seoResult.message,
+      },
+      tracker
+    );
   }
   steps.push({ step: "seo_metadata", status: "success", message: seoResult.message });
 
@@ -279,24 +324,32 @@ export async function prepareWordPressBlogPostForPublishing(
     message: guardResult.message,
   });
   if (!guardResult.success) {
-    return finishAndPersist(post, {
-      success: false,
-      partialSuccess: false,
-      failedStep: "publish_guard",
-      steps,
-      message: guardResult.message,
-    });
+    return finishAndPersist(
+      post,
+      {
+        success: false,
+        partialSuccess: false,
+        failedStep: "publish_guard",
+        steps,
+        message: guardResult.message,
+      },
+      tracker
+    );
   }
 
   const hasWarning = steps.some((step) => step.status === "warning");
-  return finishAndPersist(post, {
-    success: true,
-    partialSuccess: hasWarning,
-    steps,
-    message: hasWarning
-      ? "WordPress 게시 준비를 완료했지만 확인이 필요한 항목이 있습니다 (실제 공개 게시는 수행하지 않았습니다)."
-      : "WordPress 게시 준비를 모두 완료했습니다 (실제 공개 게시는 수행하지 않았습니다).",
-  });
+  return finishAndPersist(
+    post,
+    {
+      success: true,
+      partialSuccess: hasWarning,
+      steps,
+      message: hasWarning
+        ? "WordPress 게시 준비를 완료했지만 확인이 필요한 항목이 있습니다 (실제 공개 게시는 수행하지 않았습니다)."
+        : "WordPress 게시 준비를 모두 완료했습니다 (실제 공개 게시는 수행하지 않았습니다).",
+    },
+    tracker
+  );
 }
 
 /**

@@ -806,3 +806,19 @@ SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본
 - 기본 미리보기는 렌더링된 결과(HTML 등)를 보여주고, 원문(markdown/
   raw 데이터)은 별도의 보조 탭으로 분리한다.
 - 실제 적용 사례: [`docs/phase-4-16-wordpress-blog-list-detail-split.md`](./phase-4-16-wordpress-blog-list-detail-split.md).
+
+## 여러 단계로 이루어진 내부 작업은 진행 상황을 화면에서 확인할 수 있어야 한다 (Phase 4-17)
+
+버튼 클릭 후 내부적으로 여러 단계가 실행되는데 화면에 변화가 없으면
+사용자는 다시 눌러야 할지 기다려야 할지 알 수 없다.
+
+- 여러 단계로 이루어진 내부 작업은 공통 `job_run`(`lib/job-progress/*`)
+  으로 등록해 상태/현재 단계/완료 단계 수/마지막 진행 시각을 기록한다.
+- 화면은 "대기 중/진행 중/완료/실패/차단/확인 필요/멈춤 가능성 있음"
+  같은 사용자 친화적 문구로 보여주고, raw status/raw error는 "상세
+  단계 보기" 접힘 영역에만 둔다.
+- `running`/`retrying` 상태가 오래 지속되면(2분 이상 heartbeat 없음)
+  즉시 실패로 단정하지 않고 "멈춤 가능성 있음"으로만 표시한다.
+- 1차 구현은 polling(2~3초 간격)이다 — 실시간(Realtime) 연동은 이후
+  과제로 남긴다.
+- 실제 적용 사례: [`docs/job-progress-system.md`](./job-progress-system.md).

@@ -915,6 +915,51 @@ export type SocialPostApprovalRow = {
   created_at: string;
 };
 
+// Phase 4-17: Job Progress System — 내부 status(JobRunStatus)와 화면 표시용
+// 라벨은 lib/job-progress/job-progress-types.ts / job-progress-labels.ts에서
+// 관리한다. 여기서는 DB row 형태만 정의한다.
+export type JobRunRow = {
+  id: string;
+  job_type: string;
+  target_type: string | null;
+  target_id: string | null;
+  article_id: string | null;
+  social_post_id: string | null;
+  theme_id: string | null;
+  status: string;
+  current_step_key: string | null;
+  current_step_label: string | null;
+  total_steps: number;
+  completed_steps: number;
+  progress_percent: number;
+  user_message: string | null;
+  error_message: string | null;
+  error_category: string | null;
+  retryable: boolean;
+  next_action_label: string | null;
+  next_action_href: string | null;
+  started_at: string | null;
+  last_heartbeat_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobRunStepRow = {
+  id: string;
+  job_run_id: string;
+  step_order: number;
+  step_key: string;
+  step_label: string;
+  status: string;
+  message: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -1062,6 +1107,18 @@ export interface Database {
         Insert: Partial<SocialAbTestVariantRow> &
           Pick<SocialAbTestVariantRow, "ab_test_id" | "article_id" | "social_post_id" | "variant_label" | "platform">;
         Update: Partial<SocialAbTestVariantRow>;
+        Relationships: [];
+      };
+      job_runs: {
+        Row: JobRunRow;
+        Insert: Partial<JobRunRow> & Pick<JobRunRow, "job_type">;
+        Update: Partial<JobRunRow>;
+        Relationships: [];
+      };
+      job_run_steps: {
+        Row: JobRunStepRow;
+        Insert: Partial<JobRunStepRow> & Pick<JobRunStepRow, "job_run_id" | "step_order" | "step_key" | "step_label">;
+        Update: Partial<JobRunStepRow>;
         Relationships: [];
       };
     };

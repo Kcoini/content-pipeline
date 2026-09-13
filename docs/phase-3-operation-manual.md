@@ -611,3 +611,6 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
 - "마스터 원고 중심" 구조 전환 3차 — news_article(언론 기사) 플랫폼 추가(Phase 4-3): [`phase-4-3-news-article-platform.md`](./phase-4-3-news-article-platform.md)
 - "마스터 원고 중심" 구조 전환 4차 — 비용 최적화 + 전체 페이지 반영(Phase 4-4, `/articles/[id]` 마스터 원고 정보 섹션 신설): [`phase-4-4-master-manuscript-cost-and-rollout.md`](./phase-4-4-master-manuscript-cost-and-rollout.md)
 - 마스터 원고 생성 전략 고도화(사실/해석 분리, longFormSupport, optimizationSupport): [`master-manuscript-generation-strategy.md`](./master-manuscript-generation-strategy.md)
+- 여러 단계 내부 작업(WordPress 게시 준비 자동 실행 등)의 진행 상황을
+  job_run으로 추적하고 화면에서 polling으로 보여주는 공통 시스템
+  (Phase 4-17): [`job-progress-system.md`](./job-progress-system.md)

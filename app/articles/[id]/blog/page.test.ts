@@ -1304,3 +1304,15 @@ describe("Phase 4-16(3차): 선택한 글 상세 영역의 raw status 한국어 
     expect(pageSource).not.toContain("performance: {post.performanceStatus}");
   });
 });
+
+describe("Phase 4-17: Job Progress System 연동 (정적 소스 검사)", () => {
+  it("searchParams에서 jobRunId를 읽어 JobProgressPolling에 전달한다", () => {
+    expect(pageSource).toContain("jobRunId?: string");
+    expect(pageSource).toContain("<JobProgressPolling");
+    expect(pageSource).toContain("jobRunId={jobRunId}");
+  });
+
+  it("jobRunId가 없으면 JobProgressPolling을 렌더링하지 않는다(기존 화면 그대로)", () => {
+    expect(pageSource).toContain("{jobRunId && (");
+  });
+});

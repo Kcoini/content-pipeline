@@ -229,6 +229,17 @@ describe("wordpress_blog 게시 준비 action들 (정적 소스 검사)", () => 
     expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|approvePublicPublish/);
   });
 
+  it("Phase 4-17: prepareWordPressBlogPostForPublishingAction/approveAndPrepareWordPressBlogPostForPublishingAction은 오케스트레이터 결과의 jobRunId를 redirectToSafeTarget에 전달한다", () => {
+    for (const fnName of ["prepareWordPressBlogPostForPublishingAction", "approveAndPrepareWordPressBlogPostForPublishingAction"]) {
+      const start = actionsSource.indexOf(`export async function ${fnName}`);
+      const closingMatch = /\r?\n\}\r?\n/.exec(actionsSource.slice(start));
+      const end = closingMatch ? start + closingMatch.index + closingMatch[0].length : actionsSource.length;
+      const fnBody = actionsSource.slice(start, end);
+      expect(fnBody).toContain("result.jobRunId ?? null");
+      expect(fnBody).toContain("redirectToSafeTarget(formData, buildArticleBlogUrl(articleId, { socialPostId, highlight: socialPostId }), message, isError, jobRunId)");
+    }
+  });
+
   it("Phase 4-10: approveAndPrepareWordPressBlogPostForPublishingAction은 승인+게시준비 통합 함수를 호출하고 raw 런타임 에러를 사용자에게 그대로 노출하지 않는다", () => {
     const start = actionsSource.indexOf("export async function approveAndPrepareWordPressBlogPostForPublishingAction");
     const closingMatch = /\r?\n\}\r?\n/.exec(actionsSource.slice(start));

@@ -219,6 +219,17 @@ wordpress_blog 글이 여러 개 생성되는 화면에서는 이 문서의 게�
 1개에 대해서만 표시된다. 자세한 내용은
 [`phase-4-16-wordpress-blog-list-detail-split.md`](./phase-4-16-wordpress-blog-list-detail-split.md) 참고.
 
+## 후속: 실행 진행 상황을 job_run으로 추적 (Phase 4-17)
+
+"WordPress에 반영하기"/"승인하고 WordPress Draft 만들기" 실행은 이제
+`lib/job-progress/*`의 `createJobProgressTracker()`로 job_run을 만들어
+8단계(quality/approval/draft/seo_auto_generate/seo_metadata/
+seo_plugin/featured_image/publish_guard)의 완료/실패를 기록한다. 실행
+후 redirect되는 화면에 `JobProgressPolling`이 그 결과(현재 상태·완료
+단계 수·실패 원인)를 보여준다. job_run 기록이 실패해도(마이그레이션
+미적용 등) 이 문서가 다루는 실제 게시 준비 로직에는 전혀 영향이
+없다. 자세한 내용은 [`job-progress-system.md`](./job-progress-system.md) 참고.
+
 ## 관련 문서
 
 - [`wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md)
@@ -226,3 +237,4 @@ wordpress_blog 글이 여러 개 생성되는 화면에서는 이 문서의 게�
 - [`wordpress-safety-rules.md`](./wordpress-safety-rules.md)
 - [`phase-4-13-wordpress-publish-prep-simplification.md`](./phase-4-13-wordpress-publish-prep-simplification.md)
 - [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md) — `reviewed`/`approved` 구분의 원래 출처
+- [`job-progress-system.md`](./job-progress-system.md) — 실행 진행 상황 추적(job_run) 구조
