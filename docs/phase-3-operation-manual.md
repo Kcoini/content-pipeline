@@ -625,3 +625,6 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
 - 게시용 소제목에서 "리드문"/"본문"/"배경 설명"/"쟁점" 같은 마스터
   원고 내부 구성 항목 이름을 정리(프롬프트 수정 + sanitizer + 자동
   검토, Phase 4-21): [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md)
+- 자동 검토 issue를 auto_fixable/user_confirmation_required/blocking
+  으로 분류하고, AI가 안전하게 고칠 수 있는 문제는 자동 수정 후
+  재검토(Phase 4-22): [`phase-4-22-auto-fix-and-recheck.md`](./phase-4-22-auto-fix-and-recheck.md)

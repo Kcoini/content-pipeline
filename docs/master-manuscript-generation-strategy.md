@@ -211,6 +211,16 @@ platformBriefs/optimizationSupport 생성, 비용 원칙)을 모두 담았다.
 표시한다. 자세한 내용은
 [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md) 참고.
 
+## 자동 검토 후 안전하게 자동 수정하고 재검토한다 (Phase 4-22)
+
+자동 검토에서 발견된 문제 중 AI가 사용자에게 묻지 않고 고칠 수 있는
+표현·구조·형식 문제(예: 내부 작성용 소제목 잔존)는 자동으로 정리하고
+반드시 자동 재검토를 실행한다. 출처/수치/기관명/날짜 확인이 필요한
+문제는 새로운 사실을 만들어 채우지 않고 사용자 확인으로 남긴다.
+자동 수정과 자동 재검토는 최종 승인을 대체하지 않는다 — 승인은
+언제나 사용자가 한다. 자세한 내용은
+[`phase-4-22-auto-fix-and-recheck.md`](./phase-4-22-auto-fix-and-recheck.md) 참고.
+
 ## 관련 문서
 
 - [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

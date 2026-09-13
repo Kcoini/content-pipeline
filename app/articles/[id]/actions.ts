@@ -83,6 +83,7 @@ import {
   editSocialPostContent,
 } from "@/lib/social/social-post-service";
 import { generateSocialDraft } from "@/lib/social/social-draft-generation-service";
+import { runAutoFixAndRecheck } from "@/lib/social/post-auto-fix-service";
 import {
   generateSelectedPlatformPosts,
   generateAllPlatformPosts,
@@ -2028,6 +2029,41 @@ export async function runSocialPostQualityGateAction(formData: FormData): Promis
     socialPost = result.socialPost;
   } catch (error) {
     message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
+}
+
+/**
+ * Phase 4-22: 자동 검토에서 발견된 문제 중 AI/시스템이 사용자에게 묻지
+ * 않고 안전하게 고칠 수 있는 항목(내부 작성용 소제목 등)만 자동으로
+ * 정리하고, 반드시 자동 재검토까지 실행한다. 출처/수치/기관명처럼
+ * 사실 확인이 필요한 문제는 자동으로 채우지 않고 "확인 필요"로 남긴다.
+ * approval_status는 이 action이 직접 바꾸지 않는다 — 최종 승인은
+ * 사용자가 [승인] 버튼을 눌러야 한다.
+ */
+export async function runPostAutoFixAndRecheckAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+
+  let message: string;
+  let isError: boolean;
+  let socialPost: SocialPost | undefined;
+
+  try {
+    const result = await runAutoFixAndRecheck(socialPostId);
+    const changesSummary = result.changesApplied.length > 0 ? ` (${result.changesApplied.join(" / ")})` : "";
+    message = `${result.message}${changesSummary}`;
+    isError = !result.success || result.finalState === "blocked";
+    socialPost = result.socialPost;
+  } catch (error) {
+    message = describeUnexpectedError(
+      error instanceof Error ? error.message : String(error),
+      "자동 수정 및 재검토 중 알 수 없는 오류가 발생했습니다."
+    ).userMessage;
     isError = true;
   }
 

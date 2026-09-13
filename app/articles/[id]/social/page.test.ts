@@ -249,3 +249,19 @@ describe("Phase 4-20: '성과 보기 → 기사 개요 →' 화살표 링크 정
     expect(pageSource).toContain('label: "성과 확인"');
   });
 });
+
+describe("Phase 4-22: 자동 검토 '수정 필요' 상태에서 [자동 수정 후 재검토] 버튼 제공 (정적 소스 검사)", () => {
+  it("qualityStatus가 needs_revision일 때만 자동 수정 후 재검토 버튼을 보여준다", () => {
+    expect(pageSource).toContain('post.qualityStatus === "needs_revision"');
+    expect(pageSource).toContain("action={runPostAutoFixAndRecheckAction}");
+    expect(pageSource).toContain("자동 수정 후 재검토");
+  });
+
+  it("이 버튼은 approval_status를 직접 바꾸지 않는다(승인은 별도 버튼)", () => {
+    const btnIdx = pageSource.indexOf("action={runPostAutoFixAndRecheckAction}");
+    const formStart = pageSource.lastIndexOf("<form", btnIdx);
+    const formEnd = pageSource.indexOf("</form>", btnIdx);
+    const formBlock = pageSource.slice(formStart, formEnd);
+    expect(formBlock).not.toContain("approveSocialPostAction");
+  });
+});

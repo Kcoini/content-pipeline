@@ -1365,6 +1365,14 @@ describe("Phase 4-19: 블로그 그룹의 다른 platform(naver_blog/news_articl
   });
 });
 
+describe("Phase 4-22: 블로그 그룹의 다른 platform 카드에도 [자동 수정 후 재검토] 제공 (정적 소스 검사)", () => {
+  it("qualityStatus가 needs_revision일 때만 자동 수정 후 재검토 버튼을 보여준다", () => {
+    expect(pageSource).toContain('post.qualityStatus === "needs_revision"');
+    expect(pageSource).toContain("action={runPostAutoFixAndRecheckAction}");
+    expect(pageSource).toContain("자동 수정 후 재검토");
+  });
+});
+
 describe("Phase 4-17: Job Progress System 연동 (정적 소스 검사)", () => {
   it("searchParams에서 jobRunId를 읽어 JobProgressPolling에 전달한다", () => {
     expect(pageSource).toContain("jobRunId?: string");

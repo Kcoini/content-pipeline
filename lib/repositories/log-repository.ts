@@ -500,7 +500,23 @@ export type LogEventType =
   // Phase 4-21: 게시용 본문에서 내부 작성용 소제목(리드문/본문/배경 설명/
   // 쟁점/향후 확인할 점/출처)을 자동 정리한 이벤트. affectedKeys(어떤
   // 항목이었는지)만 남기고 full body는 절대 담지 않는다.
-  | "social_draft_internal_section_headings_sanitized";
+  | "social_draft_internal_section_headings_sanitized"
+  // Phase 4-22: 자동 검토 issue를 분류하고, 자동 수정 가능한 항목을
+  // 정리한 뒤 자동 재검토까지 실행하는 파이프라인 이벤트. details_json에는
+  // key 목록/개수/finalState 등 메타데이터만 담고, full body/prompt/AI
+  // 응답은 절대 담지 않는다.
+  | "post_auto_fix_started"
+  | "post_review_issues_classified"
+  | "post_auto_fixable_issues_found"
+  | "post_user_confirmation_issues_found"
+  | "post_blocking_issues_found"
+  | "post_auto_fix_completed"
+  | "post_auto_fix_failed"
+  | "post_auto_recheck_started"
+  | "post_auto_recheck_completed"
+  | "post_auto_recheck_failed"
+  | "post_auto_fix_partial_success"
+  | "post_auto_fix_no_safe_changes";
 
 export type LogStatus = "success" | "failed" | "info";
 

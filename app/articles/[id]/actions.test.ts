@@ -588,3 +588,24 @@ describe("generateAllPlatformPostsAction (정적 소스 검사, Phase 3-21: 고�
     expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|publishWordPressPost/);
   });
 });
+
+describe("runPostAutoFixAndRecheckAction (정적 소스 검사, Phase 4-22)", () => {
+  const start = actionsSource.indexOf("export async function runPostAutoFixAndRecheckAction");
+  const closingMatch = /\r?\n\}\r?\n/.exec(actionsSource.slice(start));
+  const end = closingMatch ? start + closingMatch.index + closingMatch[0].length : actionsSource.length;
+  const fnBody = actionsSource.slice(start, end);
+
+  it("runAutoFixAndRecheck 서비스를 사용하고 raw 런타임 에러를 그대로 노출하지 않는다", () => {
+    expect(fnBody).toContain("runAutoFixAndRecheck(socialPostId)");
+    expect(fnBody).toContain("describeUnexpectedError(");
+  });
+
+  it("approval_status를 직접 approved로 바꾸는 코드가 없다(승인은 별도 action의 책임)", () => {
+    expect(fnBody).not.toMatch(/approveSocialPost|approvalStatus.*approved/);
+  });
+
+  it("redirectToSafeTarget으로 돌아가고 실제 공개 게시 함수를 호출하지 않는다", () => {
+    expect(fnBody).toContain("redirectToSafeTarget(");
+    expect(fnBody).not.toMatch(/publishApprovedArticleToWordPress|publishWordPressPost/);
+  });
+});

@@ -337,6 +337,15 @@ SNS/커뮤니티 글 카드(Phase 4-14/4-15)와 같은 공통 컴포넌트
   항목이 남아 있으면 "수정 필요"로 표시한다.
 - 상세는 [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md) 참고.
 
+## 자동 검토 "수정 필요" 상태에서 [자동 수정 후 재검토] 버튼을 제공한다 (Phase 4-22)
+
+`qualityStatus === "needs_revision"`인 카드에는 사용자에게 직접
+본문 수정을 요구하기 전에, 내부 작성용 소제목처럼 시스템이 안전하게
+고칠 수 있는 문제를 먼저 정리하는 [자동 수정 후 재검토] 보조 버튼을
+둔다(`runPostAutoFixAndRecheckAction`). 출처/수치 확인이 필요한
+문제는 건드리지 않고, 승인 상태도 자동으로 바꾸지 않는다. 상세는
+[`phase-4-22-auto-fix-and-recheck.md`](./phase-4-22-auto-fix-and-recheck.md) 참고.
+
 ## 상세 보기/성과 보기/기사 개요는 화살표 없이 "관련 화면 보기"로 묶는다 (Phase 4-20)
 
 "상세 보기 → 성과 보기 → 기사 개요 →"처럼 화살표를 이어붙이면 작업

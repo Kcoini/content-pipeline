@@ -50,6 +50,7 @@ import {
   recordSocialPostMetricsAction,
   archiveSocialPostAction,
   saveSocialPostInlineEditAction,
+  runPostAutoFixAndRecheckAction,
 } from "../actions";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 
@@ -462,6 +463,22 @@ export default async function ArticleSocialPage({
                             {visibleSecondaryActions.map((action, i) => (
                               <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
                             ))}
+                            {/* Phase 4-22: 자동 검토가 "수정 필요"를 판단했을 때,
+                                내부 작성용 소제목처럼 AI가 사용자 확인 없이 안전하게
+                                고칠 수 있는 문제는 먼저 자동으로 정리하고 재검토까지
+                                실행한다 — 사실/출처/수치 확인이 필요한 문제는 이
+                                action이 건드리지 않고 그대로 남긴다
+                                (lib/social/post-auto-fix-service.ts). */}
+                            {post.qualityStatus === "needs_revision" && (
+                              <form action={runPostAutoFixAndRecheckAction}>
+                                <input type="hidden" name="articleId" value={article.id} />
+                                <input type="hidden" name="socialPostId" value={post.id} />
+                                <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                <button type="submit" className={secondaryClass}>
+                                  자동 수정 후 재검토
+                                </button>
+                              </form>
+                            )}
                           </div>
                           {/* Phase 4-20: 화살표를 이어붙여(성과 보기/기사 개요)
                               primary/secondary action과 나란히 보이던
