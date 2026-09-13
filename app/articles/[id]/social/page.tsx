@@ -22,6 +22,8 @@ import { getUserFacingStatus } from "@/lib/social/social-post-user-facing-status
 import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
 import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
 import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
+import { RelatedPostLinks } from "@/components/navigation/related-post-links";
+import { shouldShowPerformanceLink } from "@/lib/social/performance-link-visibility";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
@@ -460,10 +462,23 @@ export default async function ArticleSocialPage({
                             {visibleSecondaryActions.map((action, i) => (
                               <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
                             ))}
-                            <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
-                              기사 개요 →
-                            </a>
                           </div>
+                          {/* Phase 4-20: 화살표를 이어붙여(성과 보기/기사 개요)
+                              primary/secondary action과 나란히 보이던
+                              이동 링크를 "관련 화면 보기" 접힘으로 뺀다 — 기능은
+                              그대로, primary action보다 강조되지 않는 위치로만
+                              옮긴다. */}
+                          <RelatedPostLinks
+                            links={[
+                              ...(shouldShowPerformanceLink(post)
+                                ? [{ label: "성과 확인", href: buildMetricsDeepLink(article.id, post.id, selfReturnTo) }]
+                                : []),
+                              ...(post.isRewriteVersion
+                                ? [{ label: "재작성 관리에서 보기", href: buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo) }]
+                                : []),
+                              { label: "원본 기사 개요", href: buildArticleOverviewUrl(article.id) },
+                            ]}
+                          />
                         </>
                       );
                     })()}
@@ -492,16 +507,6 @@ export default async function ArticleSocialPage({
                           </>
                         )}
                       </p>
-                      <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-                        <a href={buildMetricsDeepLink(article.id, post.id, selfReturnTo)} className="text-amber-700 hover:underline">
-                          성과 보기 →
-                        </a>
-                        {post.isRewriteVersion && (
-                          <a href={buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
-                            재작성 관리에서 보기 →
-                          </a>
-                        )}
-                      </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                         {/* Phase 4-14: 품질검사 재실행/승인 요청은 기본 흐름에서
                             필수가 아니다(자동 검토가 이미 통과했으면 primary는

@@ -16,6 +16,15 @@ import type {
 import { getPlatformWritingConfig } from "./platform-writing-config";
 import { getToneTransformerRule } from "./tone-transformer-rules";
 import { classifyWordPressBlogSourceMode } from "./wordpress-blog-source-mode";
+import { detectInternalSectionHeadings } from "./internal-section-heading-sanitizer";
+
+/** 게시용 본문에 마스터 원고 내부 작성 구조명(리드문/본문/배경 설명/쟁점/향후 확인할 점/출처)이 남아 있으면 안 되는 platform. */
+const BODY_BASED_PLATFORMS_CHECKED_FOR_INTERNAL_HEADINGS: readonly SocialPlatform[] = [
+  "wordpress_blog",
+  "naver_blog",
+  "news_article",
+  "opinion_column",
+];
 
 /** 협박/공포 조장 표현. blocked 처리 대상. */
 const THREAT_PATTERNS = ["협박", "가만두지 않겠다", "당장 하지 않으면", "큰일 납니다", "후회하게 될"];
@@ -386,6 +395,25 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
             : tooLong
               ? `분량이 플랫폼 권장 최대(${config.maxLength}자)를 초과했습니다 (${length}자).`
               : `분량이 적절합니다 (${length}자).`
+        )
+      );
+    }
+
+    // Phase 4-21: 마스터 원고 내부 작성 구조명(리드문/본문/배경 설명/쟁점/
+    // 향후 확인할 점/출처)이 게시용 소제목에 그대로 남아 있으면 독자에게
+    // 기사 초안/내부 메모처럼 보인다. 저장 시점에 sanitizeInternalSectionHeadings
+    // (social-draft-generation-service.ts)가 이미 정리하지만, 그 이후에
+    // 사람이 "본문 수정"으로 직접 다시 붙여넣는 경우도 있어 여기서도 검사한다.
+    if (BODY_BASED_PLATFORMS_CHECKED_FOR_INTERNAL_HEADINGS.includes(platform)) {
+      const internalHeadingsFound = detectInternalSectionHeadings(input.postBody ?? "");
+      checklist.push(
+        checklistItem(
+          "no_internal_section_headings",
+          "내부 작성용 소제목 없음",
+          internalHeadingsFound.length > 0 ? "fail" : "pass",
+          internalHeadingsFound.length > 0
+            ? `게시용 본문에 내부 작성용 소제목이 남아 있습니다: ${internalHeadingsFound.join(", ")}. "리드문"/"본문"/"배경 설명"/"쟁점" 등은 독자가 이해하기 쉬운 내용형 제목으로 바꾸는 것이 좋습니다.`
+            : "내부 작성용 소제목이 남아 있지 않습니다."
         )
       );
     }
@@ -786,6 +814,23 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
             internalStatusFound.length > 0
               ? `본문에 내부 관리 상태값으로 보이는 문구가 있습니다: ${internalStatusFound.join(", ")}`
               : "내부 관리 상태값이 노출되지 않았습니다."
+          )
+        );
+
+        // Phase 4-21: 네이버 카페는 markdown H2를 쓰지 않고 자연스러운
+        // 문장으로 구성해야 한다(escape 여부와 무관하게 "## "로 시작하는
+        // 줄 자체가 있으면 안 된다). collectTextForPatternCheck가 만드는
+        // `text`는 필드를 공백으로 이어붙여 줄바꿈이 사라지므로, 줄 시작
+        // 앵커(^)가 의미 있는 input.postBody 원문을 직접 검사한다.
+        const markdownH2Found = MARKDOWN_HEADING_PATTERN.test(input.postBody ?? "");
+        checklist.push(
+          checklistItem(
+            "naver_cafe_no_markdown_heading",
+            "Markdown H2/H3 소제목 없음",
+            markdownH2Found ? "fail" : "pass",
+            markdownH2Found
+              ? "본문에 markdown 소제목(##, ###)이 있습니다 — 네이버 카페 글은 소제목 없이 자연스러운 문장으로 구성해야 합니다."
+              : "markdown 소제목이 없습니다."
           )
         );
         break;

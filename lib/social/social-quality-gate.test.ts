@@ -793,4 +793,78 @@ describe("runSocialPostQualityGate", () => {
       expect(result.checklist.some((c) => c.key.startsWith("wordpress_blog_"))).toBe(false);
     });
   });
+
+  describe("Phase 4-21: 내부 작성용 소제목(리드문/본문/배경 설명/쟁점 등) 검사", () => {
+    it("wordpress_blog 본문에 '## 리드문'이 남아 있으면 수정 필요(fail)로 판단한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "wordpress_blog",
+        toneStyle: "informational",
+        postTitle: "제목",
+        postBody: "## 리드문\n\n내용",
+        excerpt: "요약",
+      });
+      const item = result.checklist.find((c) => c.key === "no_internal_section_headings");
+      expect(item?.status).toBe("fail");
+      expect(result.status).toBe("needs_revision");
+    });
+
+    it("naver_blog/news_article/opinion_column에도 같은 검사를 적용한다", () => {
+      for (const platform of ["naver_blog", "news_article", "opinion_column"] as const) {
+        const result = runSocialPostQualityGate({
+          platform,
+          toneStyle: "informational",
+          postTitle: "제목",
+          postBody: "**본문**\n\n내용",
+        });
+        const item = result.checklist.find((c) => c.key === "no_internal_section_headings");
+        expect(item?.status).toBe("fail");
+      }
+    });
+
+    it("내부 작성용 소제목이 없으면 pass로 판단한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "wordpress_blog",
+        toneStyle: "informational",
+        postTitle: "제목",
+        postBody: "## 왜 지금 중요한가\n\n내용",
+        excerpt: "요약",
+      });
+      const item = result.checklist.find((c) => c.key === "no_internal_section_headings");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("naver_cafe/x/threads/instagram에는 이 검사를 적용하지 않는다", () => {
+      for (const platform of ["naver_cafe", "threads"] as const) {
+        const result = runSocialPostQualityGate({
+          platform,
+          toneStyle: "informational",
+          postTitle: "제목",
+          postBody: "**본문**\n\n내용",
+        });
+        expect(result.checklist.some((c) => c.key === "no_internal_section_headings")).toBe(false);
+      }
+    });
+
+    it("naver_cafe 본문에 markdown H2가 있으면 수정 필요(fail)로 판단한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "naver_cafe",
+        toneStyle: "curiosity",
+        postTitle: "질문 있어요",
+        postBody: "## 소제목\n\n요즘 이런 얘기가 많더라고요. 여러분은 어떻게 생각하세요? 진짜 궁금하네요?",
+      });
+      const item = result.checklist.find((c) => c.key === "naver_cafe_no_markdown_heading");
+      expect(item?.status).toBe("fail");
+    });
+
+    it("naver_cafe 본문에 markdown H2가 없으면 pass로 판단한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "naver_cafe",
+        toneStyle: "curiosity",
+        postTitle: "질문 있어요",
+        postBody: "요즘 이런 얘기가 많더라고요. 여러분은 어떻게 생각하세요? 진짜 궁금하네요?",
+      });
+      const item = result.checklist.find((c) => c.key === "naver_cafe_no_markdown_heading");
+      expect(item?.status).toBe("pass");
+    });
+  });
 });

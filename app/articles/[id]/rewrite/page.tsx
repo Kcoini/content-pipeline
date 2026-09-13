@@ -29,6 +29,8 @@ import {
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
+import { RelatedPostLinks } from "@/components/navigation/related-post-links";
+import { shouldShowPerformanceLink } from "@/lib/social/performance-link-visibility";
 import {
   getRewriteSuggestionNextAction,
   getRewriteVersionNextAction,
@@ -208,19 +210,6 @@ export default async function ArticleRewritePage({
                       )}
                     </p>
                     {s.suggestedTitle && <p className="mt-1 text-zinc-600">제안 제목: {s.suggestedTitle}</p>}
-                    {originalPost && (
-                      <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-                        <a href={buildSocialPostDetailUrl(originalPost.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
-                          원본 상세 보기 →
-                        </a>
-                        <a href={buildSocialPostDeepLink(article.id, originalPost.platform, originalPost.id, selfReturnTo)} className="text-blue-700 hover:underline">
-                          원본 글 열기 →
-                        </a>
-                        <a href={buildMetricsDeepLink(article.id, originalPost.id, selfReturnTo)} className="text-amber-700 hover:underline">
-                          원본 성과 보기 →
-                        </a>
-                      </div>
-                    )}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <form action={approveRewriteSuggestionAction}>
                         <input type="hidden" name="articleId" value={article.id} />
@@ -256,6 +245,20 @@ export default async function ArticleRewritePage({
                       {/* Phase 3-24: disabled 버튼에는 반드시 이유를 표시한다(hover title뿐 아니라 항상 보이는 텍스트로도). */}
                       {applyDisabledReason && <span className="text-[11px] text-zinc-400">{applyDisabledReason}</span>}
                     </div>
+                    {/* Phase 4-20: 화살표를 이어붙여 primary 버튼보다 위에 있던
+                        원본 글 관련 이동 링크를 "관련 화면 보기" 접힘으로 빼고,
+                        위치도 primary/secondary action 아래로 옮긴다. */}
+                    {originalPost && (
+                      <RelatedPostLinks
+                        links={[
+                          { label: "원본 상세 보기", href: buildSocialPostDetailUrl(originalPost.id, selfReturnTo) },
+                          { label: "원본 글 열기", href: buildSocialPostDeepLink(article.id, originalPost.platform, originalPost.id, selfReturnTo) },
+                          ...(shouldShowPerformanceLink(originalPost)
+                            ? [{ label: "원본 성과 확인", href: buildMetricsDeepLink(article.id, originalPost.id, selfReturnTo) }]
+                            : []),
+                        ]}
+                      />
+                    )}
                   </li>
                 );
               })}
@@ -308,31 +311,6 @@ export default async function ArticleRewritePage({
                     <p className="mt-1 text-xs text-zinc-600">
                       {describeStatusValue(v.rewriteReapprovalStatus)} · 다음 작업: <span className="font-medium">{nextAction.label}</span>
                     </p>
-
-                    <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-                      <a href={buildSocialPostDetailUrl(v.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
-                        상세 보기 →
-                      </a>
-                      {v.parentSocialPostId && (
-                        <a href={buildSocialPostDeepLink(article.id, v.platform, v.parentSocialPostId, selfReturnTo)} className="text-blue-700 hover:underline">
-                          원본 글 열기 →
-                        </a>
-                      )}
-                      <a href={buildMetricsDeepLink(article.id, v.id, selfReturnTo)} className="text-amber-700 hover:underline">
-                        성과 보기 →
-                      </a>
-                      {v.recommendedForRepost && v.parentSocialPostId && (
-                        <a
-                          href={buildArticleAbTestsUrl(article.id, { originalSocialPostId: v.parentSocialPostId, rewriteSocialPostId: v.id, returnTo: selfReturnTo })}
-                          className="text-purple-700 hover:underline"
-                        >
-                          비교 실험 만들기 →
-                        </a>
-                      )}
-                      <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
-                        기사 개요 →
-                      </a>
-                    </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <form action={compareRewriteVersionAction}>
@@ -421,6 +399,33 @@ export default async function ArticleRewritePage({
                         {generateReexportDisabledReason && <li>재내보내기 만들기: {generateReexportDisabledReason}</li>}
                       </ul>
                     )}
+
+                    {/* Phase 4-20: 화살표를 이어붙여 primary 버튼보다 위에 있던
+                        "상세 보기/원본 글 열기/성과 보기/비교 실험 만들기/기사
+                        개요" 링크를 "관련 화면 보기" 접힘으로 정리한다. 위 action
+                        행에 이미 nextAction 기반 "성과 보기"(조건부 primary/
+                        secondary)가 있어 여기서는 중복시키지 않는다. */}
+                    <RelatedPostLinks
+                      links={[
+                        { label: "글 상세 보기", href: buildSocialPostDetailUrl(v.id, selfReturnTo) },
+                        ...(v.parentSocialPostId
+                          ? [{ label: "원본 글 열기", href: buildSocialPostDeepLink(article.id, v.platform, v.parentSocialPostId, selfReturnTo) }]
+                          : []),
+                        ...(v.recommendedForRepost && v.parentSocialPostId
+                          ? [
+                              {
+                                label: "비교 실험 만들기",
+                                href: buildArticleAbTestsUrl(article.id, {
+                                  originalSocialPostId: v.parentSocialPostId,
+                                  rewriteSocialPostId: v.id,
+                                  returnTo: selfReturnTo,
+                                }),
+                              },
+                            ]
+                          : []),
+                        { label: "원본 기사 개요", href: buildArticleOverviewUrl(article.id) },
+                      ]}
+                    />
 
                     <details className="mt-2">
                       <summary className="cursor-pointer text-[11px] text-zinc-400">내부 상태값 보기 (관리자용, 기본 접힘)</summary>

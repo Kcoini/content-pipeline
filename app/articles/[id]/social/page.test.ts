@@ -227,3 +227,25 @@ describe("Phase 4-14: SNS/커뮤니티 글 목록 카드 본문 확장/버튼 �
     expect(pageSource).not.toMatch(/getSocialPostDisplayBody\(post\)\.slice\(0,\s*140\)/);
   });
 });
+
+describe("Phase 4-20: '성과 보기 → 기사 개요 →' 화살표 링크 정리 (정적 소스 검사)", () => {
+  it("primary/secondary action과 나란히 있던 '기사 개요 →'를 제거하고 RelatedPostLinks로 뺐다", () => {
+    expect(pageSource).toContain("<RelatedPostLinks");
+    expect(pageSource).not.toContain("기사 개요 →");
+    expect(pageSource).not.toContain("성과 보기 →");
+    expect(pageSource).not.toContain("재작성 관리에서 보기 →");
+  });
+
+  it("primary/secondary action을 렌더링하는 div 안에는 관련 화면 링크가 없다(강조되지 않아야 한다)", () => {
+    const primaryDivStart = pageSource.indexOf("{renderAction(cardState.primaryAction, primaryClass)}");
+    const primaryDivEnd = pageSource.indexOf("</div>", primaryDivStart);
+    const primaryDivBlock = pageSource.slice(primaryDivStart, primaryDivEnd);
+    expect(primaryDivBlock).not.toContain("RelatedPostLinks");
+    expect(primaryDivBlock).not.toContain("buildArticleOverviewUrl");
+  });
+
+  it("성과 확인 링크는 shouldShowPerformanceLink(post)일 때만 포함된다", () => {
+    expect(pageSource).toContain("shouldShowPerformanceLink(post)");
+    expect(pageSource).toContain('label: "성과 확인"');
+  });
+});

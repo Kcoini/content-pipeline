@@ -816,6 +816,35 @@ SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본
   만들지 않는다.
 - 실제 적용 사례: [`docs/phase-4-19-post-card-primary-publish-action.md`](./phase-4-19-post-card-primary-publish-action.md).
 
+## 화살표 링크를 작업 순서처럼 쓰지 않는다 (Phase 4-20)
+
+"상세 보기 → 성과 보기 → 기사 개요 →"처럼 화살표로 이어붙인 이동
+링크는 실제 작업 순서가 아닌데도 순서처럼 보인다. 특히 마지막
+링크 뒤에 붙는 화살표는 의미가 없다.
+
+- 상세 보기/성과 보기/기사 개요처럼 다른 화면으로 이동만 시키는
+  보조 링크는 라벨에 화살표를 붙이지 않는다.
+- 이런 보조 링크를 primary/secondary action 버튼과 같은 줄, 또는
+  그보다 위에 두지 않는다 — 항상 주요 작업 버튼 아래에 둔다.
+- 여러 개면 공통 컴포넌트 `RelatedPostLinks`
+  (`components/navigation/related-post-links.tsx`)로 "▸ 관련 화면
+  보기" 접힘 하나에 묶는다(기본 접힘 상태).
+- 성과 보기(확인)는 게시 전이고 성과 데이터도 없으면(`performance_status
+  === "not_measured"`) 목록에서 뺀다 — 링크 자체를 삭제하는 게
+  아니라 조건에 안 맞을 때 강조하지 않는 것뿐이다.
+- 실제 적용 사례: [`docs/phase-4-20-related-post-links-cleanup.md`](./phase-4-20-related-post-links-cleanup.md).
+
+## 게시용 소제목에 마스터 원고 내부 구성 항목 이름을 그대로 쓰지 않는다 (Phase 4-21)
+
+"리드문"/"본문"/"배경 설명"/"쟁점"/"향후 확인할 점"/"출처"는 마스터
+원고가 글을 구성할 때 참고하는 내부 항목 이름이지, 독자가 보는
+게시용 소제목이 아니다. "리드문"은 소제목 없이 제목 아래 첫 문단으로
+배치하고, 나머지는 그 문단이 실제로 다루는 내용을 보여주는 문장형
+제목으로 바꾼다("본문" → "왜 지금 이 문제가 주목받는가" 등). 이
+규칙은 프롬프트에서 먼저 안내하고, 저장 직전 sanitizer가 한 번 더
+정리하며, 자동 검토가 남은 경우를 "수정 필요"로 표시한다. 실제
+적용 사례: [`docs/phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md).
+
 ## 같은 종류의 카드가 여러 개면 "목록(compact) + 선택한 것 1개의 상세"로 나눈다 (Phase 4-16)
 
 같은 종류의 상세 패널(게시 준비, 검토 결과 등)을 모든 카드에

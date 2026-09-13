@@ -198,6 +198,19 @@ platformBriefs/optimizationSupport 생성, 비용 원칙)을 모두 담았다.
 - `npm run lint`: 0 오류.
 - `npm run build`: 성공.
 
+## 마스터 원고 내부 구조명과 게시용 소제목은 다르다 (Phase 4-21)
+
+마스터 원고가 내부적으로 쓰는 구성 항목 이름("리드문", "본문",
+"배경 설명", "쟁점", "향후 확인할 점", "출처" 등)은 글을 구성할 때
+참고하는 항목일 뿐, 플랫폼별 게시글 생성 단계에서 그대로 게시용
+소제목으로 쓰지 않는다. "리드문"은 소제목 없이 제목 아래 첫 문단으로
+배치하고, 나머지는 그 문단이 실제로 다루는 내용을 보여주는 문장형
+제목으로 바꾼다. 프롬프트(`prompts/social/*.md`)가 우선 이 규칙을
+지키도록 안내하고, 저장 직전 `sanitizeInternalSectionHeadings()`가
+한 번 더 정리하며, 자동 검토가 남아 있는 경우를 "수정 필요"로
+표시한다. 자세한 내용은
+[`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md) 참고.
+
 ## 관련 문서
 
 - [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

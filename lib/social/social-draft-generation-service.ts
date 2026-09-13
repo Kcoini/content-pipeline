@@ -21,6 +21,7 @@ import { applyToneTransform } from "./tone-transformer-rules";
 import { getPlatformWritingTemplate } from "./platform-writing-templates";
 import { generateWordPressBlogMetadata } from "./wordpress-blog-metadata-generator";
 import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
+import { sanitizeInternalSectionHeadings } from "./internal-section-heading-sanitizer";
 import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 import {
   isSocialAiGenerationEnabled,
@@ -442,6 +443,21 @@ export async function generateSocialDraft(
     }
 
     const sanitized = validation.sanitizedOutput;
+    // Phase 4-21: AI가 마스터 원고 내부 작성 구조(리드문/본문/배경 설명/
+    // 쟁점/향후 확인할 점/출처)를 실수로 게시용 소제목에 그대로 남길 수
+    // 있어, 저장 전에 한 번 더 정리한다(prompts/social/*.md도 이미 이
+    // 구조명을 그대로 쓰지 말라고 안내하지만, 이건 그 defense-in-depth
+    // 안전망이다). 문단 내용 자체는 건드리지 않고 소제목 줄만 처리한다.
+    const internalHeadingsCleaned = sanitizeInternalSectionHeadings(sanitized.post_body as string | null);
+    if (internalHeadingsCleaned.changed) {
+      await logSocialEvent(
+        "social_draft_internal_section_headings_sanitized",
+        "info",
+        "게시용 본문에서 내부 작성용 소제목을 정리했습니다.",
+        articleId,
+        { platform, toneStyle, affectedKeys: internalHeadingsCleaned.affectedKeys }
+      );
+    }
     const socialPost = await createSocialPostDraft({
       articleId,
       platform,
@@ -453,8 +469,8 @@ export async function generateSocialDraft(
       // 저장해야 하므로 건드리지 않는다.
       postBody:
         platform === "naver_cafe"
-          ? sanitizeNaverCafePlainText(sanitized.post_body as string | null) || null
-          : (sanitized.post_body as string | null),
+          ? sanitizeNaverCafePlainText(internalHeadingsCleaned.body) || null
+          : internalHeadingsCleaned.body,
       caption: sanitized.caption as string | null,
       hashtags: (sanitized.hashtags as string[]) ?? [],
       threadItems: (sanitized.thread_items as ThreadItem[]) ?? [],

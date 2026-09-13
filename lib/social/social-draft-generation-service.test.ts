@@ -311,6 +311,55 @@ describe("generateSocialDraft", () => {
     vi.unstubAllEnvs();
   });
 
+  it("Phase 4-21: wordpress_blog는 AI가 내부 작성용 소제목(리드문/본문/배경 설명)을 남겨도 저장 전에 정리한다", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog") })
+    );
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: true,
+      output: {
+        post_title: "제목",
+        post_body: "**리드문**\n\n리드 문단.\n\n**본문**\n\n핵심 내용.\n\n**배경 설명**\n\n배경 내용.",
+      },
+    });
+
+    await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    const call = createSocialPostDraft.mock.calls[0][0];
+    expect(call.postBody).not.toContain("리드문");
+    expect(call.postBody).not.toContain("**본문**");
+    expect(call.postBody).not.toContain("**배경 설명**");
+    expect(call.postBody).toContain("리드 문단.");
+    vi.unstubAllEnvs();
+  });
+
+  it("Phase 4-21: 내부 소제목을 정리했으면 social_draft_internal_section_headings_sanitized 로그를 남긴다(full body는 담지 않는다)", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    buildSocialWritingContext.mockResolvedValue(
+      makeContext({ platform: "wordpress_blog", platformConfig: getPlatformWritingConfig("wordpress_blog") })
+    );
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: true,
+      output: { post_title: "제목", post_body: "**본문**\n\n핵심 내용." },
+    });
+
+    await generateSocialDraft("article-1", "wordpress_blog", "informational");
+
+    const sanitizedLogCall = logEvent.mock.calls.find((call) => call[0].type === "social_draft_internal_section_headings_sanitized");
+    expect(sanitizedLogCall).toBeDefined();
+    expect(sanitizedLogCall?.[0].details).not.toHaveProperty("postBody");
+    expect(JSON.stringify(sanitizedLogCall?.[0])).not.toContain("핵심 내용");
+    vi.unstubAllEnvs();
+  });
+
+  it("Phase 4-21: 내부 소제목이 없으면 정리 로그를 남기지 않는다", async () => {
+    await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    const sanitizedLogCall = logEvent.mock.calls.find((call) => call[0].type === "social_draft_internal_section_headings_sanitized");
+    expect(sanitizedLogCall).toBeUndefined();
+  });
+
   it("threads draft는 post_body를 생성한다", async () => {
     buildSocialWritingContext.mockResolvedValue(
       makeContext({ platform: "threads", platformConfig: getPlatformWritingConfig("threads") })

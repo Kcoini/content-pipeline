@@ -24,7 +24,8 @@ export const PLATFORM_WRITING_TEMPLATES: Record<SocialPlatform, PlatformWritingT
   news_article: {
     platform: "news_article",
     structureGuidance: [
-      "리드문(육하원칙) → 본문 → 배경 설명 → 쟁점 → 향후 확인할 점 → 출처 순서로 작성한다.",
+      "첫 문단(소제목 없음)에 육하원칙 → 사실 → 배경 → 쟁점(있으면) → 확인할 점 → 참고 자료 순서로 내용을 구성한다. " +
+        "\"리드문\"/\"본문\"/\"배경 설명\"/\"쟁점\"/\"향후 확인할 점\"/\"출처\"라는 내부 구성 항목 이름을 소제목으로 그대로 쓰지 않는다(prompts/social/news-article.md 참고).",
       "중립적이고 간결한 문체를 사용한다.",
       "사실과 해석(전망)을 분리한다.",
       "출처 없는 수치를 단정하지 않는다.",

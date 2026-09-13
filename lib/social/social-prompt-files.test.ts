@@ -11,6 +11,8 @@ const PLATFORM_PROMPT_FILES = [
   "x-thread.md",
   "threads.md",
   "instagram-caption.md",
+  "news-article.md",
+  "opinion-column.md",
 ];
 
 const TONE_PROMPT_FILES = [
@@ -118,6 +120,42 @@ describe("prompts/social/naver-cafe.md 구조 강화 지시 (Phase 3-20)", () =>
   it("export/dry-run/handoff payload에 내부 관리 정보를 포함하지 않는다고 명시한다", () => {
     expect(content).toContain("quality_status/approval_status");
     expect(content).toContain("localhost 링크");
+  });
+});
+
+describe("prompts/social/wordpress-blog.md 내부 구성 항목 이름 금지 지시 (Phase 4-21)", () => {
+  const content = readFileSync(join(ROOT, "prompts", "social", "wordpress-blog.md"), "utf-8");
+
+  it("리드문/본문/배경 설명/쟁점/향후 확인할 점/출처를 소제목으로 그대로 쓰지 말라고 명시한다", () => {
+    expect(content).toContain('소제목에 마스터 원고 내부 구성 항목 이름("리드문", "본문", "배경');
+    expect(content).toContain("그대로 쓰지 않는다");
+  });
+
+  it("리드문은 소제목 없이 첫 문단으로 배치하라고 안내한다", () => {
+    expect(content).toContain('"리드문"은 아예 소제목 없이 제목 바로 아래 첫');
+    expect(content).toContain("문단으로 둔다");
+  });
+});
+
+describe("prompts/social/news-article.md 내부 구성 항목 이름 금지 지시 (Phase 4-21)", () => {
+  const content = readFileSync(join(ROOT, "prompts", "social", "news-article.md"), "utf-8");
+
+  it("리드문/본문/배경 설명/쟁점/향후 확인할 점/출처를 소제목으로 쓰지 말라고 명시한다", () => {
+    expect(content).toContain('"리드문"/"본문"/"배경 설명"/');
+    expect(content).toContain('"쟁점"/"향후 확인할 점"/"출처"라는 단어 자체를 `post_body`에 소제목');
+    expect(content).toContain("(`##`, `**...**` 등)으로 넣지 않는다");
+  });
+
+  it("스트레이트 기사는 소제목 없이 문단 중심으로 구성할 수 있다고 안내한다", () => {
+    expect(content).toContain("스트레이트 기사(단순 사실 전달)라면 소제목");
+  });
+
+  it("자동 검토 체크리스트에 내부 구성 항목 이름 잔존 여부 확인 항목이 있다", () => {
+    expect(content).toContain('내부 구성 항목 이름이 소제목으로 그대로 남아 있지 않은가');
+  });
+
+  it("출력 JSON 예시에도 더 이상 '리드문 → 본문 → 배경 설명 → 쟁점 → 향후 확인할 점 → 출처' 형태를 그대로 쓰지 않는다", () => {
+    expect(content).not.toContain('"post_body": "리드문 → 본문 → 배경 설명 → 쟁점 → 향후 확인할 점 → 출처 순서로 구성된 기사 본문"');
   });
 });
 

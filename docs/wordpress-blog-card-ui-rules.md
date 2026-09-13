@@ -321,6 +321,36 @@ SNS/커뮤니티 글 카드(Phase 4-14/4-15)와 같은 공통 컴포넌트
 상세는 [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md),
 [`phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md) 참고.
 
+## 게시용 소제목에 마스터 원고 내부 구성 항목 이름을 그대로 쓰지 않는다 (Phase 4-21)
+
+"리드문", "본문", "배경 설명", "쟁점", "향후 확인할 점", "출처"는
+마스터 원고 내부 구성 항목 이름일 뿐, 게시용 소제목이 아니다.
+
+- 프롬프트(`prompts/social/wordpress-blog.md`, `news-article.md`)가
+  이 이름들을 그대로 쓰지 말라고 명시하고, 독자 친화적 대체 예시를
+  제시한다.
+- 저장 직전 `sanitizeInternalSectionHeadings()`
+  (`lib/social/internal-section-heading-sanitizer.ts`)가 AI 실수를
+  한 번 더 정리한다 — "리드문"은 소제목을 지우고, 나머지는 기본
+  대체 문구로 바꾼다.
+- 자동 검토(`social-quality-gate.ts`)의 `no_internal_section_headings`
+  항목이 남아 있으면 "수정 필요"로 표시한다.
+- 상세는 [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md) 참고.
+
+## 상세 보기/성과 보기/기사 개요는 화살표 없이 "관련 화면 보기"로 묶는다 (Phase 4-20)
+
+"상세 보기 → 성과 보기 → 기사 개요 →"처럼 화살표를 이어붙이면 작업
+순서처럼 보이지만 실제로는 단순 이동 링크다.
+
+- 이 카드에서 다른 화면으로 이동만 시키는 링크(상세 보기/성과 보기/
+  기사 개요 등)는 화살표를 붙이지 않고, primary/secondary action
+  버튼 아래에 공통 컴포넌트 `RelatedPostLinks`로 묶어 기본 접힘
+  상태로 둔다.
+- 성과 보기(확인)는 게시 전 + 성과 미측정이면 목록에서 뺀다
+  (`shouldShowPerformanceLink`) — 기능 삭제가 아니라 조건에 안 맞는
+  상태에서 강조하지 않는 것뿐이다.
+- 상세는 [`phase-4-20-related-post-links-cleanup.md`](./phase-4-20-related-post-links-cleanup.md) 참고.
+
 ## 관련 문서
 
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 문서의 근거가 되는 프로젝트 전체 규칙

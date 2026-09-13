@@ -1327,6 +1327,24 @@ describe("Phase 4-18: 블로그/기사형 글 카드에 공통 본문 표시/inl
   });
 });
 
+describe("Phase 4-20: '상세 보기 → 성과 보기 → 기사 개요 →' 화살표 링크 정리 (정적 소스 검사)", () => {
+  it("화살표로 이어붙인 flat 링크 대신 RelatedPostLinks(관련 화면 보기 접힘)를 쓴다", () => {
+    expect(pageSource).toContain("<RelatedPostLinks");
+    expect(pageSource).not.toContain("상세 보기 →");
+    expect(pageSource).not.toContain("기사 개요 →");
+  });
+
+  it("링크 라벨이 '글 상세 보기'/'원본 기사 개요'로 바뀌었다", () => {
+    expect(pageSource).toContain('label: "글 상세 보기"');
+    expect(pageSource).toContain('label: "원본 기사 개요"');
+  });
+
+  it("성과 확인 링크는 shouldShowPerformanceLink(post)일 때만 포함된다(게시 전 + 성과 미측정이면 강조하지 않는다, 삭제하지는 않는다)", () => {
+    expect(pageSource).toContain("shouldShowPerformanceLink(post)");
+    expect(pageSource).toContain('label: "성과 확인"');
+  });
+});
+
 describe("Phase 4-19: 블로그 그룹의 다른 platform(naver_blog/news_article/opinion_column) 카드도 '다음 작업' 1개 + 보조 작업으로 정리 (정적 소스 검사)", () => {
   it("품질검사/승인/export 준비를 같은 수준으로 나열하던 상단 공통 버튼 대신 getSocialPostCardActionState를 재사용한다", () => {
     const guardIdx = pageSource.indexOf('{post.platform !== "wordpress_blog" &&');

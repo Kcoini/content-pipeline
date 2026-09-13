@@ -496,7 +496,11 @@ export type LogEventType =
   | "job_run_partial_success"
   | "job_run_failed"
   | "job_run_blocked"
-  | "job_run_stalled_detected";
+  | "job_run_stalled_detected"
+  // Phase 4-21: 게시용 본문에서 내부 작성용 소제목(리드문/본문/배경 설명/
+  // 쟁점/향후 확인할 점/출처)을 자동 정리한 이벤트. affectedKeys(어떤
+  // 항목이었는지)만 남기고 full body는 절대 담지 않는다.
+  | "social_draft_internal_section_headings_sanitized";
 
 export type LogStatus = "success" | "failed" | "info";
 

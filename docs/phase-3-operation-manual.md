@@ -620,3 +620,8 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
 - 모든 글 카드에 상태 기반 "다음 작업" primary action 1개 정리 —
   naver_blog/news_article/opinion_column 카드도 WordPress/SNS 카드와
   같은 공용 helper로 통일(Phase 4-19): [`phase-4-19-post-card-primary-publish-action.md`](./phase-4-19-post-card-primary-publish-action.md)
+- "상세 보기 → 성과 보기 → 기사 개요 →" 화살표 링크를 공통
+  `RelatedPostLinks`(관련 화면 보기 접힘)로 정리(Phase 4-20): [`phase-4-20-related-post-links-cleanup.md`](./phase-4-20-related-post-links-cleanup.md)
+- 게시용 소제목에서 "리드문"/"본문"/"배경 설명"/"쟁점" 같은 마스터
+  원고 내부 구성 항목 이름을 정리(프롬프트 수정 + sanitizer + 자동
+  검토, Phase 4-21): [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md)

@@ -110,3 +110,33 @@ describe("article rewrite page 사용자 친화적 표시 (정적 소스 검사,
     expect(pageSource).toContain("재내보내기 만들기");
   });
 });
+
+describe("Phase 4-20: '상세 보기 → 원본 글 열기 → 성과 보기 → 기사 개요 →' 화살표 링크 정리 (정적 소스 검사)", () => {
+  it("화살표로 이어붙인 flat 링크 대신 RelatedPostLinks(관련 화면 보기 접힘)를 쓴다", () => {
+    expect(pageSource).toContain("<RelatedPostLinks");
+    expect(pageSource).not.toContain("원본 상세 보기 →");
+    expect(pageSource).not.toContain("원본 글 열기 →");
+    expect(pageSource).not.toContain("원본 성과 보기 →");
+    expect(pageSource).not.toContain("상세 보기 →");
+    expect(pageSource).not.toContain("성과 보기 →");
+    expect(pageSource).not.toContain("비교 실험 만들기 →");
+    expect(pageSource).not.toContain("기사 개요 →");
+  });
+
+  it("관련 화면 링크는 primary/secondary action 버튼 아래(뒤)로 옮겨졌다(강조되지 않도록)", () => {
+    const suggestionActionsIdx = pageSource.indexOf("action={applyRewriteSuggestionAction}");
+    const suggestionRelatedLinksIdx = pageSource.indexOf("원본 상세 보기", suggestionActionsIdx);
+    expect(suggestionActionsIdx).toBeGreaterThan(-1);
+    expect(suggestionRelatedLinksIdx).toBeGreaterThan(suggestionActionsIdx);
+
+    const versionActionsIdx = pageSource.indexOf("action={generateRewriteReexportPayloadAction}");
+    const versionRelatedLinksIdx = pageSource.indexOf('label: "글 상세 보기"', versionActionsIdx);
+    expect(versionActionsIdx).toBeGreaterThan(-1);
+    expect(versionRelatedLinksIdx).toBeGreaterThan(versionActionsIdx);
+  });
+
+  it("성과 확인 링크(원본 성과)는 shouldShowPerformanceLink일 때만 포함된다", () => {
+    expect(pageSource).toContain("shouldShowPerformanceLink(originalPost)");
+    expect(pageSource).toContain('label: "원본 성과 확인"');
+  });
+});

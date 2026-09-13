@@ -31,6 +31,8 @@ import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit
 import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
 import { describeAutoReviewNotRunYet } from "@/lib/social/social-post-auto-review";
 import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
+import { RelatedPostLinks } from "@/components/navigation/related-post-links";
+import { shouldShowPerformanceLink } from "@/lib/social/performance-link-visibility";
 import { checkNaverBlogContentSafety } from "@/lib/social/naver-blog-content-safety-checks";
 import {
   buildWordPressBlogPublishPreparationSummary,
@@ -673,22 +675,24 @@ export default async function ArticleBlogPage({
                       )}
                     </p>
 
-                    <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-                      <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="font-medium text-zinc-700 hover:underline">
-                        상세 보기 →
-                      </a>
-                      <a href={buildMetricsDeepLink(article.id, post.id, selfReturnTo)} className="text-amber-700 hover:underline">
-                        성과 보기 →
-                      </a>
-                      {post.isRewriteVersion && (
-                        <a href={buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
-                          Rewrite 관리에서 보기 →
-                        </a>
-                      )}
-                      <a href={buildArticleOverviewUrl(article.id)} className="text-zinc-500 hover:underline">
-                        기사 개요 →
-                      </a>
-                    </div>
+                    {/* Phase 4-20: 화살표를 이어붙여 작업 순서처럼 보이던 이동 링크
+                        (상세 보기/성과 보기/기사 개요)를 "관련 화면 보기" 접힘
+                        안으로 묶는다 — 기능은 그대로, 표현/위치만 정리한다.
+                        성과 확인은 게시 전 + 성과 미측정이면 강조하지 않는다
+                        (shouldShowPerformanceLink, 링크 자체는 삭제하지 않고 목록에서
+                        뺄 뿐이다). */}
+                    <RelatedPostLinks
+                      links={[
+                        { label: "글 상세 보기", href: buildSocialPostDetailUrl(post.id, selfReturnTo) },
+                        ...(shouldShowPerformanceLink(post)
+                          ? [{ label: "성과 확인", href: buildMetricsDeepLink(article.id, post.id, selfReturnTo) }]
+                          : []),
+                        ...(post.isRewriteVersion
+                          ? [{ label: "Rewrite 관리에서 보기", href: buildRewriteVersionDeepLink(article.id, post.id, selfReturnTo) }]
+                          : []),
+                        { label: "원본 기사 개요", href: buildArticleOverviewUrl(article.id) },
+                      ]}
+                    />
 
                     {/* Phase 4-13: wordpress_blog는 이 버튼들을 전부 나열하지 않는다 —
                         아래 "WordPress 게시 준비" 요약 카드가 "현재 상태 + 남은 작업 +
