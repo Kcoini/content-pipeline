@@ -238,3 +238,4 @@ seo_plugin/featured_image/publish_guard)의 완료/실패를 기록한다. 실�
 - [`phase-4-13-wordpress-publish-prep-simplification.md`](./phase-4-13-wordpress-publish-prep-simplification.md)
 - [`phase-2-23-wordpress-draft-approval-status-clarity.md`](./phase-2-23-wordpress-draft-approval-status-clarity.md) — `reviewed`/`approved` 구분의 원래 출처
 - [`job-progress-system.md`](./job-progress-system.md) — 실행 진행 상황 추적(job_run) 구조
+- [`phase-4-19-post-card-primary-publish-action.md`](./phase-4-19-post-card-primary-publish-action.md) — 이 문서의 "WordPress Draft 만들기" 버튼이 다른 platform 카드와 같은 원칙(상태 기반 단일 primary action)으로 정리된 배경

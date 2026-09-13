@@ -790,6 +790,32 @@ SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본
   action을 만든다 — 폼 제출이 아니라 일반 함수처럼 호출한다.
 - 실제 적용 사례: [`docs/phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md).
 
+바로 위 두 규칙(Phase 4-14/4-15)은 SNS/커뮤니티 글 카드에만 한정되지
+않는다 — 블로그 글(WordPress 블로그/네이버 블로그)과 기사형 글
+(언론 기사/칼럼) 카드도 게시용 본문이 있는 이상 같은 규칙을 따르며,
+같은 공통 컴포넌트(`SocialPostBodyPanel`/`getSocialPostDisplayBody`/
+`getSocialPostEditableField`)를 재사용한다 — 카드 유형마다 표시/편집
+로직을 새로 만들지 않는다(Phase 4-18,
+[`docs/wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md) 참고).
+
+## 모든 글 카드는 상태 기반 "다음 작업" 버튼 1개를 둔다 (Phase 4-19)
+
+품질검사/승인 요청/승인/수동 export 만들기 같은 버튼을 같은 줄에
+나열하면 사용자가 지금 무엇을 눌러야 하는지 직접 판단해야 한다.
+
+- 모든 글 카드(블로그/SNS·커뮤니티/기사형)는 지금 상태에 맞는
+  primary action 1개 + secondary action 몇 개로 정리한다 — 카드
+  유형마다 새 계산 로직을 만들지 않고 이미 있는 공용 helper
+  (`getWordPressPublishPrepState`, `getSocialPostCardActionState`)를
+  재사용한다.
+- WordPress는 Draft 생성/업데이트까지만 자동화한다("WordPress Draft
+  만들기"/"WordPress Draft 최종 반영"/"WordPress Draft 보기").
+- 그 외 플랫폼(네이버 카페/네이버 블로그/X/Threads/Instagram)은
+  이 프로젝트에 OAuth/토큰 저장 인프라가 없는 한 "승인 후 본문
+  복사/export 준비"로 안내한다 — 구현되지 않은 자동 업로드 버튼을
+  만들지 않는다.
+- 실제 적용 사례: [`docs/phase-4-19-post-card-primary-publish-action.md`](./phase-4-19-post-card-primary-publish-action.md).
+
 ## 같은 종류의 카드가 여러 개면 "목록(compact) + 선택한 것 1개의 상세"로 나눈다 (Phase 4-16)
 
 같은 종류의 상세 패널(게시 준비, 검토 결과 등)을 모든 카드에

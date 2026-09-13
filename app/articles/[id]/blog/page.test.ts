@@ -534,10 +534,15 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
     expect(summaryCardIdx).toBeLessThan(step1Idx);
   });
 
-  it("WordPress Draft Export는 wordpress_blog 카드(고급 작업)에서 '수동 게시용 Draft 내보내기'로, 그 외 blog 그룹 플랫폼(naver_blog/news_article)의 상단 공통 버튼은 '수동 export 만들기'로 표시된다 (Phase 4-4/4-13)", () => {
+  it("WordPress Draft Export는 wordpress_blog 카드(고급 작업)에서 '수동 게시용 Draft 내보내기'로 표시된다 (Phase 4-4/4-13)", () => {
     expect(pageSource).toContain("수동 게시용 Draft 내보내기");
-    expect(pageSource).toContain("수동 export 만들기");
     expect(pageSource).not.toContain("Naver Blog Export");
+  });
+
+  it("Phase 4-19: 그 외 blog 그룹 플랫폼(naver_blog/news_article)은 상단 공통 버튼 대신 getSocialPostCardActionState의 primary/secondary action으로 export 준비를 안내한다(prepare_export → generateManualExportAction)", () => {
+    expect(pageSource).toContain("getSocialPostCardActionState(post)");
+    expect(pageSource).toContain('case "prepare_export":');
+    expect(pageSource).not.toContain(">수동 export 만들기<");
   });
 
   it("Phase 4-13: 품질검사/승인 요청/승인/체크리스트 준비 버튼(폼)은 wordpress_blog 카드 기본 화면에는 없고, 상단 공통 버튼(다른 플랫폼 전용)과 '고급 작업 보기' 접힘 영역에만 있다", () => {
@@ -553,7 +558,7 @@ describe("WordPress 게시 준비 단계형 workflow UI (blog 카드 내부, 정
     expect(approvalRequestFormCount).toBeGreaterThanOrEqual(2);
     expect(approveFormCount).toBeGreaterThanOrEqual(2);
     expect(checklistFormCount).toBeGreaterThanOrEqual(2);
-    expect(pageSource).toContain('post.platform !== "wordpress_blog" && (');
+    expect(pageSource).toContain('post.platform !== "wordpress_blog" &&');
     expect(pageSource).toContain("고급 작업 보기");
   });
 
@@ -1169,8 +1174,8 @@ describe("Phase 4-13: WordPress 게시 준비 화면 단순화 (blog 카드 내�
     expect(pageSource).toContain("prepState.secondaryActions.map");
   });
 
-  it("상단 공통 버튼 5개(품질검사/승인 요청/승인/수동 내보내기/체크리스트 준비)는 wordpress_blog에서는 숨겨지고 다른 플랫폼에서만 보인다", () => {
-    const guardIdx = pageSource.indexOf('{post.platform !== "wordpress_blog" && (');
+  it("상단 공통 버튼(품질검사/승인/체크리스트 준비 등)은 wordpress_blog에서는 숨겨지고 다른 플랫폼에서만 보인다", () => {
+    const guardIdx = pageSource.indexOf('{post.platform !== "wordpress_blog" &&');
     // 이 action들이 파일 전체에서 처음 등장하는 지점은 항상 이 guard로
     // 감싼 상단 공통 버튼 행이다(그 뒤에 wordpress_blog 전용 고급 작업/
     // primary action 렌더러가 이어진다).
@@ -1302,6 +1307,43 @@ describe("Phase 4-16(3차): 선택한 글 상세 영역의 raw status 한국어 
   it("성과 상태는 raw performance_status 대신 describeStatusValue() 라벨을 보여준다", () => {
     expect(pageSource).toContain("성과: {describeStatusValue(post.performanceStatus)}");
     expect(pageSource).not.toContain("performance: {post.performanceStatus}");
+  });
+});
+
+describe("Phase 4-18: 블로그/기사형 글 카드에 공통 본문 표시/inline 수정/복사 적용 (정적 소스 검사)", () => {
+  it("선택된 글/다른 platform 상세 영역이 SocialPostBodyPanel(공통 컴포넌트)로 게시용 본문을 보여준다", () => {
+    expect(pageSource).toContain("getSocialPostDisplayBody(post)");
+    expect(pageSource).toContain("<SocialPostBodyPanel");
+    expect(pageSource).toContain("editable={getSocialPostEditableField(post.platform) !== null}");
+    expect(pageSource).toContain("saveAction={saveSocialPostInlineEditAction}");
+  });
+
+  it("raw 본문 slice(140자 잘라 보여주기) 방식은 더 이상 쓰지 않는다", () => {
+    expect(pageSource).not.toContain('(post.excerpt || post.postBody || "").slice(0, 140)');
+  });
+
+  it("게시용 본문이 없으면 안내 문구를 보여준다(SocialPostBodyPanel을 렌더링하지 않는다)", () => {
+    expect(pageSource).toContain("게시용 본문이 아직 없습니다");
+  });
+});
+
+describe("Phase 4-19: 블로그 그룹의 다른 platform(naver_blog/news_article/opinion_column) 카드도 '다음 작업' 1개 + 보조 작업으로 정리 (정적 소스 검사)", () => {
+  it("품질검사/승인/export 준비를 같은 수준으로 나열하던 상단 공통 버튼 대신 getSocialPostCardActionState를 재사용한다", () => {
+    const guardIdx = pageSource.indexOf('{post.platform !== "wordpress_blog" &&');
+    const guardBlockEnd = pageSource.indexOf("{post.platform === \"wordpress_blog\" &&", guardIdx);
+    const guardBlock = pageSource.slice(guardIdx, guardBlockEnd);
+    expect(guardBlock).toContain("getSocialPostCardActionState(post)");
+    expect(guardBlock).toContain("cardState.primaryAction");
+    expect(guardBlock).toContain("cardState.secondaryActions");
+  });
+
+  it("SocialPostBodyPanel이 이미 본문 수정 버튼을 보여주므로 secondary 목록에서 edit_body 중복을 제거한다", () => {
+    expect(pageSource).toContain('!(action.actionType === "edit_body" && inlineEditable)');
+  });
+
+  it("기존 '게시 체크리스트 준비' 기능은 삭제하지 않고 보조 작업으로 남긴다", () => {
+    expect(pageSource).toContain("게시 체크리스트 준비");
+    expect(pageSource).toContain("action={prepareManualPostingRecordAction}");
   });
 });
 

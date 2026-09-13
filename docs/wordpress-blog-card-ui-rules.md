@@ -298,6 +298,29 @@ quality gate를 통과하지 못했거나 원본 기사가 아직 승인되지
 [`phase-4-10-wordpress-auto-publishing-preparation.md`](./phase-4-10-wordpress-auto-publishing-preparation.md)
 참고.
 
+## 게시용 본문은 카드 안에서 확인·수정·복사한다 (Phase 4-18)
+
+블로그/기사형 글 카드(WordPress 블로그·네이버 블로그·언론
+기사형·칼럼 등, 선택되었거나 wordpress_blog가 아닌 platform)는
+SNS/커뮤니티 글 카드(Phase 4-14/4-15)와 같은 공통 컴포넌트
+(`SocialPostBodyPanel`, `getSocialPostDisplayBody`,
+`getSocialPostEditableField`, `saveSocialPostInlineEditAction`)로
+게시용 본문을 보여준다:
+
+- 1,200자 이하는 전체 표시, 초과하면 카드 안에서만 접기/펼치기
+  (`ExpandableText`) — 상세 페이지로 이동하지 않는다.
+- 제목 옆 [본문 복사]는 화면에 표시 중인 축약문이 아니라 항상
+  `getSocialPostDisplayBody(post)` 전체를 복사한다.
+- [본문 수정]은 페이지 이동 없이 카드 안 textarea 편집 모드로
+  바뀌고, [저장만 하기]/[저장 후 자동 검토]/[저장 후 승인]을
+  제공한다. [저장 후 승인]은 항상 저장 → 자동 검토 → (통과 시)
+  승인 순서로만 진행된다(자동 검토 없이 바로 승인하지 않는다).
+- raw slice(예: 본문 앞 140자만 잘라 보여주기)로 직접 미리보기를
+  만들지 않는다 — 항상 공통 컴포넌트를 재사용한다.
+
+상세는 [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md),
+[`phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md) 참고.
+
 ## 관련 문서
 
 - [`docs/ui-ux-governance-rules.md`](./ui-ux-governance-rules.md) — 이 문서의 근거가 되는 프로젝트 전체 규칙

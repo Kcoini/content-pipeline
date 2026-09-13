@@ -26,6 +26,11 @@ import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-t
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { describeStatusValue } from "@/lib/social/status-labels";
+import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
+import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
+import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
+import { describeAutoReviewNotRunYet } from "@/lib/social/social-post-auto-review";
+import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
 import { checkNaverBlogContentSafety } from "@/lib/social/naver-blog-content-safety-checks";
 import {
   buildWordPressBlogPublishPreparationSummary,
@@ -109,6 +114,7 @@ import {
   openWordPressBlogSafetyReviewAction,
   archiveSocialPostAction,
   confirmWordPressBlogPersonalInfoFalsePositiveAction,
+  saveSocialPostInlineEditAction,
 } from "../actions";
 import type { PersonalInfoSuspectType } from "@/lib/social/wordpress-blog-personal-info-review";
 
@@ -608,7 +614,33 @@ export default async function ArticleBlogPage({
                       </p>
                     )}
                     <p className="mt-1 font-medium text-zinc-700">{post.postTitle || "(제목 없음)"}</p>
-                    <p className="mt-1 text-zinc-500">{(post.excerpt || post.postBody || "").slice(0, 140) || "(본문 없음)"}{(post.excerpt || post.postBody || "").length > 140 ? "…" : ""}</p>
+                    {/* Phase 4-18: 블로그/기사형 글 카드도 SNS/커뮤니티 글 카드
+                        (Phase 4-14/4-15)와 동일한 공통 컴포넌트로 게시용 본문을
+                        카드 안에서 바로 확인·수정·복사한다 — 상세 페이지 이동 없이.
+                        1,200자 이하는 전체 표시, 초과하면 카드 안에서만 접기/펼치기
+                        (ExpandableText). [본문 수정]은 페이지 이동 없이 같은 카드
+                        안에서 textarea 편집 모드로 바뀐다(SocialPostBodyPanel). */}
+                    {(() => {
+                      const displayBody = getSocialPostDisplayBody(post);
+                      if (!displayBody) {
+                        return (
+                          <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
+                            게시용 본문이 아직 없습니다 — {describeAutoReviewNotRunYet(post.qualityStatus)} 아래
+                            &ldquo;품질검사&rdquo; 또는 &ldquo;본문 수정&rdquo;으로 먼저 본문을 준비하세요.
+                          </p>
+                        );
+                      }
+                      return (
+                        <SocialPostBodyPanel
+                          articleId={article.id}
+                          socialPostId={post.id}
+                          returnTo={selfReturnTo}
+                          displayBody={displayBody}
+                          editable={getSocialPostEditableField(post.platform) !== null}
+                          saveAction={saveSocialPostInlineEditAction}
+                        />
+                      );
+                    })()}
                     {/* Phase 3-22: raw 상태값 나열 대신 사용자 친화적 한 줄 요약 +
                         다음 작업을 먼저 보여준다. 원문 상태값은 아래 "상세 상태
                         보기" 접힘 영역에서 계속 확인할 수 있다(제거하지 않음). */}
@@ -661,53 +693,95 @@ export default async function ArticleBlogPage({
                     {/* Phase 4-13: wordpress_blog는 이 버튼들을 전부 나열하지 않는다 —
                         아래 "WordPress 게시 준비" 요약 카드가 "현재 상태 + 남은 작업 +
                         다음 버튼 1개"로 정리해 보여주고, 이 버튼들은 그 카드의 "고급
-                        작업 보기" 접힘 영역 안으로 옮겨졌다(삭제하지 않음). 다른
-                        플랫폼(naver_blog 등)은 대응하는 요약 카드가 없으므로 기존
-                        그대로 노출한다. */}
-                    {post.platform !== "wordpress_blog" && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <form action={runSocialPostQualityGateAction}>
-                          <input type="hidden" name="articleId" value={article.id} />
-                          <input type="hidden" name="socialPostId" value={post.id} />
-                          <input type="hidden" name="returnTo" value={selfReturnTo} />
-                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                            품질검사
-                          </button>
-                        </form>
-                        <form action={requestSocialPostApprovalAction}>
-                          <input type="hidden" name="articleId" value={article.id} />
-                          <input type="hidden" name="socialPostId" value={post.id} />
-                          <input type="hidden" name="returnTo" value={selfReturnTo} />
-                          <button type="submit" className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100">
-                            승인 요청
-                          </button>
-                        </form>
-                        <form action={approveSocialPostAction}>
-                          <input type="hidden" name="articleId" value={article.id} />
-                          <input type="hidden" name="socialPostId" value={post.id} />
-                          <input type="hidden" name="returnTo" value={selfReturnTo} />
-                          <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
-                            승인
-                          </button>
-                        </form>
-                        <form action={generateManualExportAction}>
-                          <input type="hidden" name="articleId" value={article.id} />
-                          <input type="hidden" name="socialPostId" value={post.id} />
-                          <input type="hidden" name="returnTo" value={selfReturnTo} />
-                          <button type="submit" className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
-                            수동 export 만들기
-                          </button>
-                        </form>
-                        <form action={prepareManualPostingRecordAction}>
-                          <input type="hidden" name="articleId" value={article.id} />
-                          <input type="hidden" name="socialPostId" value={post.id} />
-                          <input type="hidden" name="returnTo" value={selfReturnTo} />
-                          <button type="submit" className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100">
-                            게시 체크리스트 준비
-                          </button>
-                        </form>
-                      </div>
-                    )}
+                        작업 보기" 접힘 영역 안으로 옮겨졌다(삭제하지 않음).
+                        Phase 4-19: 다른 platform(naver_blog/news_article/
+                        opinion_column)도 더 이상 품질검사/승인 요청/승인/수동
+                        export 만들기/게시 체크리스트 준비를 같은 수준으로 나열하지
+                        않는다 — social/page.tsx(Phase 4-14)와 동일한
+                        getSocialPostCardActionState로 "다음 작업" 1개 + 보조
+                        작업으로 정리한다(기능 삭제 없음 — "게시 체크리스트 준비"는
+                        보조 작업에 그대로 남는다). */}
+                    {post.platform !== "wordpress_blog" &&
+                      (() => {
+                        const cardState = getSocialPostCardActionState(post);
+                        const primaryClass = "rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500";
+                        const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+                        // SocialPostBodyPanel(Phase 4-18)이 이미 "본문 수정" 버튼을
+                        // 자체적으로 보여주므로 여기서는 중복되는 edit_body를 뺀다.
+                        const inlineEditable = getSocialPostEditableField(post.platform) !== null;
+                        const visibleSecondaryActions = cardState.secondaryActions.filter(
+                          (action) => !(action.actionType === "edit_body" && inlineEditable)
+                        );
+
+                        const renderAction = (action: SocialPostCardAction, className: string) => {
+                          switch (action.actionType) {
+                            case "run_quality_gate":
+                              return (
+                                <form action={runSocialPostQualityGateAction}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button type="submit" className={className}>
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "approve":
+                              return (
+                                <form action={approveSocialPostAction}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button type="submit" className={className}>
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "prepare_export":
+                              return (
+                                <form action={generateManualExportAction}>
+                                  <input type="hidden" name="articleId" value={article.id} />
+                                  <input type="hidden" name="socialPostId" value={post.id} />
+                                  <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                  <button type="submit" className={className}>
+                                    {action.label}
+                                  </button>
+                                </form>
+                              );
+                            case "review_quality_issues":
+                            case "copy_or_view_export":
+                            case "record_manual_result":
+                            case "edit_body":
+                            case "view_detail":
+                            default:
+                              return (
+                                <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className={className}>
+                                  {action.label}
+                                </a>
+                              );
+                          }
+                        };
+
+                        return (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                            {renderAction(cardState.primaryAction, primaryClass)}
+                            {visibleSecondaryActions.map((action, i) => (
+                              <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
+                            ))}
+                            {/* "게시 체크리스트 준비"는 getSocialPostCardActionState의
+                                action 종류에 없는 기존 기능이라 삭제하지 않고 보조
+                                작업으로 그대로 둔다. */}
+                            <form action={prepareManualPostingRecordAction}>
+                              <input type="hidden" name="articleId" value={article.id} />
+                              <input type="hidden" name="socialPostId" value={post.id} />
+                              <input type="hidden" name="returnTo" value={selfReturnTo} />
+                              <button type="submit" className={secondaryClass}>
+                                게시 체크리스트 준비
+                              </button>
+                            </form>
+                          </div>
+                        );
+                      })()}
 
                     {post.platform === "wordpress_blog" &&
                       (() => {

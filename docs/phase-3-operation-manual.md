@@ -614,3 +614,9 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
 - 여러 단계 내부 작업(WordPress 게시 준비 자동 실행 등)의 진행 상황을
   job_run으로 추적하고 화면에서 polling으로 보여주는 공통 시스템
   (Phase 4-17): [`job-progress-system.md`](./job-progress-system.md)
+- SNS/커뮤니티 글 카드의 게시용 본문 확인/inline 수정/복사 컴포넌트를
+  블로그·기사형 글 카드(WordPress 블로그/네이버 블로그/언론 기사/
+  칼럼)에도 동일 적용(Phase 4-18): [`wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md)의 "게시용 본문은 카드 안에서 확인·수정·복사한다" 섹션
+- 모든 글 카드에 상태 기반 "다음 작업" primary action 1개 정리 —
+  naver_blog/news_article/opinion_column 카드도 WordPress/SNS 카드와
+  같은 공용 helper로 통일(Phase 4-19): [`phase-4-19-post-card-primary-publish-action.md`](./phase-4-19-post-card-primary-publish-action.md)
