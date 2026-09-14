@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyReviewIssue, summarizeReviewIssues } from "./review-issue-fixability";
+import { classifyReviewIssue, summarizeReviewIssues, hasOnlyImplementedAutoFixableIssues } from "./review-issue-fixability";
 import type { SocialPostQualityChecklistItem } from "./social-platform-types";
 
 function item(overrides: Partial<SocialPostQualityChecklistItem> = {}): SocialPostQualityChecklistItem {
@@ -92,5 +92,41 @@ describe("summarizeReviewIssues", () => {
     expect(summary.autoFixable).toEqual([]);
     expect(summary.userConfirmationRequired).toEqual([]);
     expect(summary.blocking).toEqual([]);
+  });
+});
+
+describe("hasOnlyImplementedAutoFixableIssues (Phase 4-28: 글 생성 직후 자동 실행 여부 판단)", () => {
+  it("남은 문제가 전부 구현된 auto_fixable(canAutoFix=true)이면 true다", () => {
+    const checklist: SocialPostQualityChecklistItem[] = [
+      item({ key: "content_present", status: "pass" }),
+      item({ key: "no_internal_section_headings", status: "fail" }),
+    ];
+    expect(hasOnlyImplementedAutoFixableIssues(checklist)).toBe(true);
+  });
+
+  it("user_confirmation_required 문제가 하나라도 섞이면 false다", () => {
+    const checklist: SocialPostQualityChecklistItem[] = [
+      item({ key: "no_internal_section_headings", status: "fail" }),
+      item({ key: "wordpress_blog_single_source_verification_needed_section", status: "fail" }),
+    ];
+    expect(hasOnlyImplementedAutoFixableIssues(checklist)).toBe(false);
+  });
+
+  it("blocking 문제가 하나라도 섞이면 false다", () => {
+    const checklist: SocialPostQualityChecklistItem[] = [
+      item({ key: "no_internal_section_headings", status: "fail" }),
+      item({ key: "no_pii_exposure", status: "blocked" }),
+    ];
+    expect(hasOnlyImplementedAutoFixableIssues(checklist)).toBe(false);
+  });
+
+  it("auto_fixable로 분류되지만 아직 구현되지 않은 항목(canAutoFix=false)만 있으면 false다(자동 수정해도 실제로 바뀌는 게 없으므로)", () => {
+    const checklist: SocialPostQualityChecklistItem[] = [item({ key: "news_article_lead_present", status: "fail" })];
+    expect(hasOnlyImplementedAutoFixableIssues(checklist)).toBe(false);
+  });
+
+  it("문제가 하나도 없으면(전부 pass) false다(자동 수정을 실행할 이유가 없다)", () => {
+    const checklist: SocialPostQualityChecklistItem[] = [item({ key: "content_present", status: "pass" })];
+    expect(hasOnlyImplementedAutoFixableIssues(checklist)).toBe(false);
   });
 });

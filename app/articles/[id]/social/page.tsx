@@ -16,7 +16,7 @@ import { PaginationControls } from "@/components/navigation/pagination-controls"
 import { parsePagination } from "@/lib/navigation/pagination";
 import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
-import { TONE_STYLES, type SocialPlatform } from "@/lib/social/social-platform-types";
+import { TONE_STYLES, type SocialPlatform, type SocialPostQualityChecklistItem } from "@/lib/social/social-platform-types";
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import { getUserFacingStatus } from "@/lib/social/social-post-user-facing-status";
 import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
@@ -35,6 +35,7 @@ import {
   describeAutoReviewNotRunYet,
 } from "@/lib/social/social-post-auto-review";
 import { getPlatformReviewCriteria } from "@/lib/social/platform-review-criteria";
+import { hasOnlyImplementedAutoFixableIssues, summarizeReviewIssues } from "@/lib/social/review-issue-fixability";
 import {
   generatePlaceholderSocialPostAction,
   generateSocialDraftAction,
@@ -229,6 +230,17 @@ export default async function ArticleSocialPage({
             <ul className="mt-2 flex flex-col gap-3">
               {posts.map((post) => {
                 const selfReturnTo = selfReturnToFor(post.id);
+                // Phase 4-28: "자동 수정 후 재검토"가 이 카드의 기본(primary)
+                // 버튼이어야 하는지 미리 계산해 둔다 — 남은 문제가 전부 이미
+                // 구현된 자동 수정기로 고칠 수 있는 항목뿐이면(hasOnlyImplemented
+                // AutoFixableIssues), 사용자가 먼저 "문제 확인하기"를 누르게
+                // 하지 않고 곧바로 자동 정리를 권한다. 사실/출처 확인이 필요한
+                // 문제가 섞여 있으면 기존처럼 "문제 확인하기"가 기본이다.
+                const postChecklist = Array.isArray(post.qualitySummary?.checklist)
+                  ? (post.qualitySummary.checklist as unknown as SocialPostQualityChecklistItem[])
+                  : [];
+                const autoFixIsPrimary = post.qualityStatus === "needs_revision" && hasOnlyImplementedAutoFixableIssues(postChecklist);
+                const implementedAutoFixableCount = summarizeReviewIssues(postChecklist).autoFixable.filter((i) => i.canAutoFix).length;
                 return (
                   <li
                     key={post.id}
@@ -302,6 +314,17 @@ export default async function ArticleSocialPage({
                         새로 쓰지 않는다 — 항상 현재 checklist로 다시
                         계산한다. Phase 4-14: 본문보다 먼저 보이지 않도록
                         본문 블록 다음으로 옮겼다. */}
+                    {/* Phase 4-28: auto_fixable 문제만 있으면, 문제 목록을
+                        보여주기 전에 "자동으로 정리할 수 있다"는 것부터 먼저
+                        알린다 — 사용자가 직접 고치기 전에 AI가 안전하게
+                        고칠 수 있는 문제라는 확신을 준다. 새 사실/수치를
+                        추가하지 않는다는 점도 항상 함께 안내한다. */}
+                    {autoFixIsPrimary && (
+                      <div className="mt-2 rounded border border-indigo-200 bg-indigo-50 p-2 text-[11px] text-indigo-800">
+                        자동으로 정리할 수 있는 항목 {implementedAutoFixableCount}개를 발견했습니다. AI가 게시용 본문을
+                        자동으로 정리한 뒤 다시 검토할 수 있습니다. 새로운 사실이나 수치는 추가하지 않습니다.
+                      </div>
+                    )}
                     <div id={buildAnchorId("social-post-review", post.id)}>
                       {(() => {
                         const checklist = Array.isArray(post.qualitySummary?.checklist)
@@ -460,22 +483,30 @@ export default async function ArticleSocialPage({
                             상태: <span className="font-medium text-zinc-700">{cardState.statusBadge}</span>
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                            {renderAction(cardState.primaryAction, primaryClass)}
+                            {/* Phase 4-28: 남은 문제가 전부 자동으로 고칠 수 있는
+                                항목뿐이면(autoFixIsPrimary), 사용자에게 먼저 "문제
+                                확인하기"를 요구하지 않고 [자동 수정 후 재검토]를
+                                기본(primary) 버튼으로 보여준다 — 한 카드에 primary
+                                버튼은 항상 하나만 강조한다(cardState.primaryAction은
+                                이 경우 secondary로 내려간다). */}
+                            {!autoFixIsPrimary && renderAction(cardState.primaryAction, primaryClass)}
                             {visibleSecondaryActions.map((action, i) => (
                               <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
                             ))}
-                            {/* Phase 4-22: 자동 검토가 "수정 필요"를 판단했을 때,
+                            {autoFixIsPrimary && renderAction(cardState.primaryAction, secondaryClass)}
+                            {/* Phase 4-22/4-28: 자동 검토가 "수정 필요"를 판단했을 때,
                                 내부 작성용 소제목처럼 AI가 사용자 확인 없이 안전하게
                                 고칠 수 있는 문제는 먼저 자동으로 정리하고 재검토까지
                                 실행한다 — 사실/출처/수치 확인이 필요한 문제는 이
                                 action이 건드리지 않고 그대로 남긴다
-                                (lib/social/post-auto-fix-service.ts). */}
+                                (lib/social/post-auto-fix-service.ts). 남은 문제가
+                                전부 자동 수정 가능하면 이 버튼이 primary다. */}
                             {post.qualityStatus === "needs_revision" && (
                               <form action={runPostAutoFixAndRecheckAction}>
                                 <input type="hidden" name="articleId" value={article.id} />
                                 <input type="hidden" name="socialPostId" value={post.id} />
                                 <input type="hidden" name="returnTo" value={selfReturnTo} />
-                                <button type="submit" className={secondaryClass}>
+                                <button type="submit" className={autoFixIsPrimary ? primaryClass : secondaryClass}>
                                   자동 수정 후 재검토
                                 </button>
                               </form>

@@ -671,6 +671,32 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
   `expanded`/`hideToggleButton` prop으로 controlled 모드를 추가해
   자기 자신의 토글 버튼과 중복되지 않게 했다. `SocialPostBodyPanel`을
   쓰는 모든 카드(블로그/SNS/rewrite/대시보드 테이블)에 자동 적용된다.
+- 자동 검토 "수정 필요"를 글 생성 직후 자동으로 정리(Phase 4-28) —
+  기존 [자동 수정 후 재검토](Phase 4-22, `lib/social/post-auto-fix-service.ts`)를
+  다음 두 가지로 확장했다.
+  1. **글 생성 직후 자동 실행**: `generateSocialDraft()`
+     (`lib/social/social-draft-generation-service.ts`)가 quality gate
+     실행 후 상태가 `needs_revision`이고, 남은 문제 전부가 이미 구현된
+     자동 수정기로 고칠 수 있는 항목뿐이면(`hasOnlyImplementedAutoFixableIssues`,
+     `lib/social/review-issue-fixability.ts`) 사용자가 보기 전에
+     `runAutoFixAndRecheck()`를 한 번 실행하고 그 결과(정리된 본문 +
+     재검토된 quality 상태)를 반환한다. `user_confirmation_required`나
+     `blocking` 문제가 하나라도 섞여 있으면 실행하지 않고 기존처럼
+     사용자에게 보여준다. approval_status는 이 경로에서도 전혀
+     건드리지 않는다.
+  2. **UI**: `app/articles/[id]/blog/page.tsx`,
+     `app/articles/[id]/social/page.tsx`의 "수정 필요" 카드에서, 남은
+     문제가 전부 자동 수정 가능하면 [자동 수정 후 재검토]가 primary
+     버튼으로 승격되고(기존 primary였던 "문제 확인하기"는 secondary로
+     내려간다), "자동으로 정리할 수 있는 항목 N개를 발견했습니다 ...
+     새로운 사실이나 수치는 추가하지 않습니다" 안내를 함께 보여준다.
+  - **이번에 구현하지 않은 것**: 리드문 보강/문단 재작성처럼 실제
+    문장을 새로 생성해야 하는 자동 수정(AI 호출 기반, `news_article_lead_present`
+    등)은 여전히 canAutoFix=false로 남아 있다 — 환각(hallucination)
+    방지 장치가 필요한 더 큰 작업이라 이번 범위에 포함하지 않았다
+    (`lib/social/post-auto-fix-service.ts` 상단 주석 참고). Job
+    Progress 연동(`post_auto_fix_and_recheck` job_type)도 이번에는
+    하지 않았다 — 필요하면 이어서 진행한다.
 - 게시용 소제목에서 "리드문"/"본문"/"배경 설명"/"쟁점" 같은 마스터
   원고 내부 구성 항목 이름을 정리(프롬프트 수정 + sanitizer + 자동
   검토, Phase 4-21): [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md)

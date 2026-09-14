@@ -118,6 +118,16 @@ WordPress 게시 준비 자동 실행
 있으므로, 각 오케스트레이터의 공통 반환 지점에서 같은 패턴으로
 붙이면 된다.
 
+`post_auto_fix_and_recheck`(자동 수정·재검토, `lib/social/post-auto-fix-service.ts`의
+`runAutoFixAndRecheck`)도 아직 Job Progress에 연동하지 않았다 —
+review_result_loaded/issues_classified/auto_fix_started/body_revised/
+body_saved/recheck_started/recheck_completed/result_saved 8단계로
+나눌 수 있는 구조지만, 지금은 서버 action 한 번의 요청/응답
+안에서 동기적으로 끝나고(보통 수 초 내) 별도 job_run 추적 없이
+결과 메시지만 돌려준다. 실행 시간이 길어지거나(예: 향후 AI 기반
+리드문 보강 추가 시) 백그라운드로 옮길 필요가 생기면 이 패턴을
+그대로 적용한다.
+
 ## 알려진 제약 (1차 범위)
 
 - WordPress 게시 준비 자동 실행은 현재 하나의 서버 action 요청 안에서

@@ -221,6 +221,15 @@ platformBriefs/optimizationSupport 생성, 비용 원칙)을 모두 담았다.
 언제나 사용자가 한다. 자세한 내용은
 [`phase-4-22-auto-fix-and-recheck.md`](./phase-4-22-auto-fix-and-recheck.md) 참고.
 
+**Phase 4-28 확장**: 이 원칙(자동 수정 = 시스템, 재검토 = 시스템,
+승인 = 사용자)을 "글 생성 직후"까지 앞당겼다. `generateSocialDraft()`가
+quality gate 결과 남은 문제 전부가 auto_fixable + 구현된 자동
+수정기뿐이면, 사용자가 화면을 보기도 전에 자동 정리·재검토를 1회
+실행해 둔다(`hasOnlyImplementedAutoFixableIssues`). 이때도 새 AI
+재호출은 추가하지 않았다 — 기존 결정적 sanitizer(`no_internal_section_headings`
+등)만 재사용한다. 리드문 보강처럼 실제 문장을 새로 생성해야 하는
+교정(AI 재호출 필요)은 환각 방지 장치가 필요해 아직 구현하지 않았다.
+
 ## 관련 문서
 
 - [`phase-4-1-master-manuscript-terminology.md`](./phase-4-1-master-manuscript-terminology.md)

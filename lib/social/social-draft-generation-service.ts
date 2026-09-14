@@ -22,6 +22,8 @@ import { getPlatformWritingTemplate } from "./platform-writing-templates";
 import { generateWordPressBlogMetadata } from "./wordpress-blog-metadata-generator";
 import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
 import { sanitizeInternalSectionHeadings } from "./internal-section-heading-sanitizer";
+import { hasOnlyImplementedAutoFixableIssues } from "./review-issue-fixability";
+import { runAutoFixAndRecheck } from "./post-auto-fix-service";
 import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 import {
   isSocialAiGenerationEnabled,
@@ -540,6 +542,33 @@ export async function generateSocialDraft(
       );
     }
 
+    // Phase 4-28: 글 생성 직후 "수정 필요"이면서, 남은 문제가 전부
+    // auto_fixable + 실제 자동 수정기가 구현된(canAutoFix) 항목뿐이면
+    // (사용자 확인이 필요하거나 승인을 막는 문제가 하나도 없으면),
+    // 사용자가 보기 전에 자동 수정 → 자동 재검토까지 미리 실행해 둔다
+    // — runAutoFixAndRecheck를 그대로 재사용한다(새 로직을 만들지
+    // 않는다). approval_status는 이 경로에서도 절대 건드리지 않는다 —
+    // 사용자는 "자동 정리 완료 → 본문 확인 → 승인"만 보면 된다.
+    let finalSocialPost = socialPost;
+    let finalQualityStatus = qualityResult.status;
+    if (qualityResult.status === "needs_revision" && hasOnlyImplementedAutoFixableIssues(qualityResult.checklist)) {
+      await logSocialEvent(
+        "social_draft_auto_fix_triggered",
+        "info",
+        `social post(${socialPost.id}) 생성 직후 자동 수정 가능한 문제만 발견되어 자동 정리를 실행합니다.`,
+        articleId,
+        { socialPostId: socialPost.id, platform }
+      );
+      const autoFixResult = await runAutoFixAndRecheck(socialPost.id);
+      if (autoFixResult.success && autoFixResult.socialPost) {
+        finalSocialPost = autoFixResult.socialPost;
+        finalQualityStatus = finalSocialPost.qualityStatus;
+      }
+      // 실패해도 생성 자체는 성공으로 처리한다 — 사용자는 기존처럼
+      // [자동 수정 후 재검토] 버튼으로 다시 시도할 수 있다(무한 반복
+      // 금지 원칙: 이 경로는 생성 직후 1회만 실행한다).
+    }
+
     const details = {
       articleId,
       platform,
@@ -547,17 +576,17 @@ export async function generateSocialDraft(
       contractName: assembled.contractName,
       aiEnabled,
       valid: validation.valid,
-      qualityStatus: qualityResult.status,
+      qualityStatus: finalQualityStatus,
       qualityScore: qualityResult.score,
       errorCount: validation.errors.length,
       warningCount: validation.warnings.length,
-      hasPostTitle: Boolean(socialPost.postTitle),
-      hasPostBody: Boolean(socialPost.postBody),
-      postBodyLength: socialPost.postBody?.length ?? 0,
-      hasCaption: Boolean(socialPost.caption),
-      threadItemCount: socialPost.threadItems.length,
-      hashtagCount: socialPost.hashtags.length,
-      cardItemCount: socialPost.cardItems.length,
+      hasPostTitle: Boolean(finalSocialPost.postTitle),
+      hasPostBody: Boolean(finalSocialPost.postBody),
+      postBodyLength: finalSocialPost.postBody?.length ?? 0,
+      hasCaption: Boolean(finalSocialPost.caption),
+      threadItemCount: finalSocialPost.threadItems.length,
+      hashtagCount: finalSocialPost.hashtags.length,
+      cardItemCount: finalSocialPost.cardItems.length,
       inputTokens: usage?.inputTokens,
       outputTokens: usage?.outputTokens,
     };
@@ -572,8 +601,8 @@ export async function generateSocialDraft(
 
     return {
       success: true,
-      message: `social draft를 생성했습니다 (quality: ${qualityResult.status}).`,
-      socialPost,
+      message: `social draft를 생성했습니다 (quality: ${finalQualityStatus}).`,
+      socialPost: finalSocialPost,
       valid: validation.valid,
       errors: validation.errors,
       warnings: validation.warnings,

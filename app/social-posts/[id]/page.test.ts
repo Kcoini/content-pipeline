@@ -205,7 +205,10 @@ describe("Phase 3-26: 단일 글 상세 검토·수정·승인 화면", () => {
   });
 
   it("수정하기 탭은 editSocialPostAction을 재사용하고 플랫폼별 writingConfig로 필요한 필드만 보여준다", () => {
-    expect(pageSource).toContain('import { editSocialPostAction, runSocialPostQualityGateAction, approveSocialPostAction } from "@/app/articles/[id]/actions"');
+    expect(pageSource).toContain("editSocialPostAction");
+    expect(pageSource).toContain("runSocialPostQualityGateAction");
+    expect(pageSource).toContain("approveSocialPostAction");
+    expect(pageSource).toContain('from "@/app/articles/[id]/actions"');
     expect(pageSource).toContain("<form action={editSocialPostAction}");
     expect(pageSource).toContain("writingConfig.supportsTitle");
     expect(pageSource).toContain("writingConfig.supportsBody");
@@ -276,5 +279,23 @@ describe("Phase 4-26: 상세 페이지 raw 탭에서 본문 중복 표시를 제
     expect(pageSource).toContain('describeStatusField("excerpt")');
     expect(pageSource).toContain('describeStatusField("hashtags")');
     expect(pageSource).toContain('describeStatusField("post_url")');
+  });
+});
+
+describe("Phase 4-28: 상세 페이지에도 [자동 수정 후 재검토]를 추가한다 (정적 소스 검사)", () => {
+  it("runPostAutoFixAndRecheckAction을 재사용해 자동 재검토 실행 버튼 옆에 배치한다", () => {
+    expect(pageSource).toContain("runPostAutoFixAndRecheckAction");
+    expect(pageSource).toContain("자동 수정 후 재검토");
+    expect(pageSource).toContain('name="socialPostId" value={p.id}');
+  });
+
+  it("남은 문제가 전부 자동 수정 가능하면(autoFixIsPrimary) primary 스타일로 강조한다", () => {
+    expect(pageSource).toContain("hasOnlyImplementedAutoFixableIssues(checklist ?? [])");
+    expect(pageSource).toContain("autoFixIsPrimary");
+    expect(pageSource).toContain("bg-indigo-600");
+  });
+
+  it("qualityStatus가 needs_revision일 때만 이 버튼을 보여준다", () => {
+    expect(pageSource).toContain('{p.qualityStatus === "needs_revision" && (');
   });
 });

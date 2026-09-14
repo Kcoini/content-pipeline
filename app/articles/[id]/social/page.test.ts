@@ -272,3 +272,21 @@ describe("Phase 4-24: 플랫폼별 기본 viewMode를 SocialPostBodyPanel에 전
     expect(pageSource).toContain("platform={post.platform}");
   });
 });
+
+describe("Phase 4-28: 자동 수정 가능한 문제만 남았을 때 [자동 수정 후 재검토]를 primary로 승격한다 (정적 소스 검사)", () => {
+  it("hasOnlyImplementedAutoFixableIssues로 autoFixIsPrimary를 계산하고 primaryClass/secondaryClass를 조건부로 배정한다", () => {
+    expect(pageSource).toContain('from "@/lib/social/review-issue-fixability"');
+    expect(pageSource).toContain("hasOnlyImplementedAutoFixableIssues(postChecklist)");
+    expect(pageSource).toContain("autoFixIsPrimary ? primaryClass : secondaryClass");
+    expect(pageSource).toContain("!autoFixIsPrimary && renderAction(cardState.primaryAction, primaryClass)");
+  });
+
+  it("autoFixIsPrimary일 때 원래 primary였던 action(문제 확인하기)은 secondary로 내려간다(primary 버튼은 하나만 강조)", () => {
+    expect(pageSource).toContain("autoFixIsPrimary && renderAction(cardState.primaryAction, secondaryClass)");
+  });
+
+  it("자동으로 정리할 수 있는 항목이 있으면 새 사실/수치를 추가하지 않는다는 안내를 함께 보여준다", () => {
+    expect(pageSource).toContain("자동으로 정리할 수 있는 항목");
+    expect(pageSource).toContain("새로운 사실이나 수치는 추가하지 않습니다");
+  });
+});

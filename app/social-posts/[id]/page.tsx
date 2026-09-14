@@ -13,7 +13,13 @@ import { buildPlatformApiPublishDryRunPayload } from "@/lib/social/platform-api-
 import { ApiReadinessSummary } from "@/components/platform-api/api-readiness-summary";
 import { ApiDryRunPayloadPreview } from "@/components/platform-api/api-dry-run-payload-preview";
 import { preparePlatformApiPublishingAction } from "./actions";
-import { editSocialPostAction, runSocialPostQualityGateAction, approveSocialPostAction } from "@/app/articles/[id]/actions";
+import {
+  editSocialPostAction,
+  runSocialPostQualityGateAction,
+  approveSocialPostAction,
+  runPostAutoFixAndRecheckAction,
+} from "@/app/articles/[id]/actions";
+import { hasOnlyImplementedAutoFixableIssues, summarizeReviewIssues } from "@/lib/social/review-issue-fixability";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
@@ -124,6 +130,12 @@ export default async function SocialPostDetailPage({
   const hasRunReview = p.qualityStatus !== "not_checked" && checklist !== null;
   const review = summarizeAutoReview(checklist ?? []);
   const hasBlockingChecklistIssues = review.counts.blocked + review.counts.needsFix > 0;
+  // Phase 4-28: 남은 문제가 전부 이미 구현된 자동 수정기로 고칠 수 있는
+  // 항목뿐이면(hasOnlyImplementedAutoFixableIssues), [자동 수정 후
+  // 재검토]를 기본(primary) 버튼으로 보여준다 — 목록 카드(blog/social
+  // page.tsx)와 같은 기준을 이 상세 페이지에도 그대로 적용한다.
+  const autoFixIsPrimary = p.qualityStatus === "needs_revision" && hasOnlyImplementedAutoFixableIssues(checklist ?? []);
+  const implementedAutoFixableCount = summarizeReviewIssues(checklist ?? []).autoFixable.filter((i) => i.canAutoFix).length;
   const gate = getApprovalGateStatus({
     qualityStatus: p.qualityStatus,
     approvalStatus: p.approvalStatus,
@@ -429,6 +441,17 @@ export default async function SocialPostDetailPage({
                         {review.counts.needsFix}개 · 차단 {review.counts.blocked}개
                       </p>
                       <p className="mt-1">{describeApprovalReadiness(review)}</p>
+                      {/* Phase 4-28: 남은 문제가 전부 자동 수정 가능하면, 문제
+                          목록을 보여주기 전에 "자동으로 정리할 수 있다"는 것부터
+                          먼저 알린다 — 새 사실/수치를 추가하지 않는다는 점도
+                          항상 함께 안내한다. */}
+                      {autoFixIsPrimary && (
+                        <p className="mt-1.5 rounded border border-indigo-200 bg-indigo-50 p-2 text-indigo-800">
+                          자동으로 정리할 수 있는 항목 {implementedAutoFixableCount}개를 발견했습니다. AI가 게시용
+                          본문을 자동으로 정리한 뒤 다시 검토할 수 있습니다.{" "}
+                          새로운 사실이나 수치는 추가하지 않습니다.
+                        </p>
+                      )}
                       {review.issues.length > 0 && (
                         <ul className="mt-1.5 flex flex-col gap-1">
                           {review.issues.map((issue) => (
@@ -452,17 +475,43 @@ export default async function SocialPostDetailPage({
                           ))}
                         </ul>
                       )}
-                      <form action={runSocialPostQualityGateAction} className="mt-2">
-                        <input type="hidden" name="articleId" value={p.articleId} />
-                        <input type="hidden" name="socialPostId" value={p.id} />
-                        <input type="hidden" name="returnTo" value={selfReturnTo("preview")} />
-                        <button
-                          type="submit"
-                          className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
-                        >
-                          자동 재검토 실행
-                        </button>
-                      </form>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {/* Phase 4-22/4-28: 자동 검토가 "수정 필요"를 판단했을
+                            때, AI가 사용자 확인 없이 안전하게 고칠 수 있는
+                            문제(내부 소제목 등)는 먼저 자동으로 정리하고
+                            재검토까지 실행한다 — 사실/출처/수치 확인이
+                            필요한 문제는 이 action이 건드리지 않고 그대로
+                            남긴다. 남은 문제가 전부 자동 수정 가능하면 이
+                            버튼이 primary다(목록 카드와 동일 기준). */}
+                        {p.qualityStatus === "needs_revision" && (
+                          <form action={runPostAutoFixAndRecheckAction}>
+                            <input type="hidden" name="articleId" value={p.articleId} />
+                            <input type="hidden" name="socialPostId" value={p.id} />
+                            <input type="hidden" name="returnTo" value={selfReturnTo("preview")} />
+                            <button
+                              type="submit"
+                              className={
+                                autoFixIsPrimary
+                                  ? "rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
+                                  : "rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                              }
+                            >
+                              자동 수정 후 재검토
+                            </button>
+                          </form>
+                        )}
+                        <form action={runSocialPostQualityGateAction}>
+                          <input type="hidden" name="articleId" value={p.articleId} />
+                          <input type="hidden" name="socialPostId" value={p.id} />
+                          <input type="hidden" name="returnTo" value={selfReturnTo("preview")} />
+                          <button
+                            type="submit"
+                            className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                          >
+                            자동 재검토 실행
+                          </button>
+                        </form>
+                      </div>
                     </div>
                   );
                 })()

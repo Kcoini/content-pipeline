@@ -154,3 +154,16 @@ export function summarizeReviewIssues(checklist: SocialPostQualityChecklistItem[
     blocking: classified.filter((item) => item.fixability === "blocking"),
   };
 }
+
+/**
+ * Phase 4-28: "글 생성 직후 사용자가 보기 전에 자동 수정·재검토를
+ * 실행해도 되는가"를 판단하는 순수 함수 — 남은 문제(status !== "pass")가
+ * 하나 이상 있고, 그 전부가 auto_fixable이면서 실제 자동 수정기가
+ * 구현된(canAutoFix) 항목일 때만 true다. user_confirmation_required나
+ * blocking 문제가 하나라도 섞여 있으면(또는 문제가 전혀 없으면) false —
+ * 이 경우는 기존처럼 사용자가 결과를 먼저 확인해야 한다.
+ */
+export function hasOnlyImplementedAutoFixableIssues(checklist: SocialPostQualityChecklistItem[]): boolean {
+  const problems = classifyReviewIssues(checklist).filter((item) => item.status !== "pass");
+  return problems.length > 0 && problems.every((item) => item.fixability === "auto_fixable" && item.canAutoFix);
+}

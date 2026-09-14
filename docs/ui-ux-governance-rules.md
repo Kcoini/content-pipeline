@@ -356,6 +356,19 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   `components/social/post-body-action-row.tsx`
   (`docs/wordpress-blog-card-ui-rules.md`의 "본문 관련 버튼은 항상
   한 줄, 같은 순서로 배치한다 (Phase 4-27)" 섹션 참고).
+- **자동 검토 "수정 필요" 중, AI가 사용자 확인 없이 안전하게 고칠
+  수 있는 문제(auto_fixable)는 사람에게 먼저 고치라고 요구하지
+  않는다.** 남은 문제 전부가 auto_fixable(+ 실제 구현된 자동
+  수정기)이면 글 생성 직후 자동으로 정리·재검토하고, 카드의 기본
+  버튼도 [자동 수정 후 재검토]로 승격한다. 출처/수치/날짜/기관명처럼
+  사실 확인이 필요한 문제(user_confirmation_required)는 AI가 임의로
+  채우지 않고 항상 사용자 확인 항목으로 남긴다. 자동 수정·재검토는
+  시스템이 하고, 최종 승인은 항상 사용자가 한다(approval_status를
+  자동으로 바꾸지 않는다). 실제 사례:
+  `lib/social/review-issue-fixability.ts`,
+  `lib/social/post-auto-fix-service.ts`
+  (`docs/phase-3-operation-manual.md`의 "자동 검토 '수정 필요'를 글
+  생성 직후 자동으로 정리 (Phase 4-28)" 섹션 참고).
 - **플랫폼마다 "게시용 본문"의 실제 형식이 다르면(markdown 허용
   플랫폼 vs plain text 전용 플랫폼), 저장/표시/export 시점에 각
   플랫폼에 맞는 형식으로 정리한다.** naver_cafe처럼 plain text 전용

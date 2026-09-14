@@ -222,6 +222,8 @@ export type LogEventType =
   | "social_draft_generation_started"
   | "social_draft_generation_completed"
   | "social_draft_generation_failed"
+  // Phase 4-28: 글 생성 직후 auto_fixable 문제만 남았을 때 자동 정리를 미리 실행
+  | "social_draft_auto_fix_triggered"
   // Phase 3-16 추가 개선: wordpress_blog 단일 출처(single_source_mode) 허용
   | "social_draft_generation_blocked_no_source"
   // Phase 3-3: Platform Writing Templates & Real Draft Generation 이벤트

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { SocialPost } from "./social-platform-types";
 import type { SocialWritingContext } from "./social-writing-context-builder";
 
@@ -497,5 +499,32 @@ describe("generateSocialDraft", () => {
       expect(result.success).toBe(true);
       expect(createSocialPostDraft).toHaveBeenCalled();
     });
+  });
+});
+
+describe("Phase 4-28: 글 생성 직후 자동 수정·재검토 (정적 소스 검사)", () => {
+  const source = readFileSync(path.join(__dirname, "social-draft-generation-service.ts"), "utf8");
+
+  it("hasOnlyImplementedAutoFixableIssues로 판단해 needs_revision이면서 전부 구현된 auto_fixable일 때만 runAutoFixAndRecheck를 실행한다", () => {
+    expect(source).toContain('from "./review-issue-fixability"');
+    expect(source).toContain("hasOnlyImplementedAutoFixableIssues(qualityResult.checklist)");
+    expect(source).toContain('qualityResult.status === "needs_revision"');
+    expect(source).toContain("runAutoFixAndRecheck(socialPost.id)");
+  });
+
+  it("이 경로는 approval_status/승인을 직접 호출하지 않는다(자동 승인 금지 — 최종 승인은 사용자가 한다)", () => {
+    const hookStart = source.indexOf("Phase 4-28: 글 생성 직후");
+    const hookEnd = source.indexOf("const details = {", hookStart);
+    const hookBlock = source.slice(hookStart, hookEnd);
+    expect(hookBlock).not.toContain("approveSocialPost");
+    expect(hookBlock).not.toContain("updateSocialPostApproval");
+    expect(hookBlock).not.toMatch(/\bapproval_status\s*[:=]/);
+  });
+
+  it("자동 정리 결과를 반영해 최종 message/socialPost를 돌려준다(finalQualityStatus/finalSocialPost)", () => {
+    expect(source).toContain("finalSocialPost = autoFixResult.socialPost");
+    expect(source).toContain("finalQualityStatus = finalSocialPost.qualityStatus");
+    expect(source).toContain("message: `social draft를 생성했습니다 (quality: ${finalQualityStatus}).`");
+    expect(source).toContain("socialPost: finalSocialPost,");
   });
 });
