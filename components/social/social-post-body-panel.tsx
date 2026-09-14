@@ -7,8 +7,8 @@
 // 관리한다 — 저장 로직 자체는 서버에만 있다.
 
 import { useState } from "react";
-import { ExpandableText } from "./expandable-text";
-import { CopyPostBodyButton } from "./copy-post-body-button";
+import { ExpandableText, needsExpandableCollapse } from "./expandable-text";
+import { PostBodyActionRow } from "./post-body-action-row";
 import { logSocialPostInlineEditClientEventAction } from "@/app/articles/[id]/actions";
 import { getDefaultPostBodyViewMode, getPostBodyViewModeLabel } from "@/lib/social/post-body-view-mode";
 import type { SocialPlatform } from "@/lib/social/social-platform-types";
@@ -50,6 +50,11 @@ export function SocialPostBodyPanel({
   platform,
 }: SocialPostBodyPanelProps) {
   const [editing, setEditing] = useState(false);
+  // Phase 4-27: 펼침 상태를 이 컴포넌트가 소유하고 ExpandableText를
+  // controlled로 넘긴다 — [전체 보기]/[본문 접기] 버튼을 PostBodyActionRow
+  // 하나로 모으기 위해서다(본문 텍스트 아래에 ExpandableText 자신의
+  // 버튼이 또 생기지 않도록 hideToggleButton도 함께 쓴다).
+  const [expanded, setExpanded] = useState(false);
 
   const openEditor = () => {
     setEditing(true);
@@ -124,29 +129,40 @@ export function SocialPostBodyPanel({
     );
   }
 
+  // Phase 4-27: [본문 복사]/[전체 보기]·[본문 접기]/[본문 수정]을 항상
+  // 같은 줄, 같은 순서(복사 → 전체 보기/접기 → 수정)로 보여준다 —
+  // 본문이 짧아서 펼칠 필요가 없으면(needsExpandableCollapse=false)
+  // [전체 보기] 자체를 아예 렌더링하지 않는다(비활성화가 아니라 미표시).
+  const showExpandToggle = !hideBodyWhenNotEditing && needsExpandableCollapse(displayBody);
+
   return (
     <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-medium text-zinc-500">
-          {hideBodyWhenNotEditing ? "본문 확인" : bodyLabel}
-          {/* Phase 4-24: X/Threads/Instagram처럼 글자 수 제한이 실제로
-              중요한 copy 기본 플랫폼에서만 글자 수를 함께 보여준다. */}
-          {!hideBodyWhenNotEditing && isCopyMode && (
-            <span className="ml-1 font-normal text-zinc-400">({displayBody.length}자)</span>
-          )}
-        </p>
-        <CopyPostBodyButton articleId={articleId} socialPostId={socialPostId} text={displayBody} />
-      </div>
-      {!hideBodyWhenNotEditing && <ExpandableText text={displayBody} className="mt-1 text-[12px] text-zinc-800" />}
-      {editable && (
-        <button
-          type="button"
-          onClick={openEditor}
-          className="mt-2 rounded border border-indigo-300 bg-white px-2 py-0.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50"
-        >
-          본문 수정
-        </button>
+      <p className="text-[10px] font-medium text-zinc-500">
+        {hideBodyWhenNotEditing ? "본문 확인" : bodyLabel}
+        {/* Phase 4-24: X/Threads/Instagram처럼 글자 수 제한이 실제로
+            중요한 copy 기본 플랫폼에서만 글자 수를 함께 보여준다. */}
+        {!hideBodyWhenNotEditing && isCopyMode && (
+          <span className="ml-1 font-normal text-zinc-400">({displayBody.length}자)</span>
+        )}
+      </p>
+      {!hideBodyWhenNotEditing && (
+        <ExpandableText
+          text={displayBody}
+          expanded={expanded}
+          hideToggleButton
+          className="mt-1 text-[12px] text-zinc-800"
+        />
       )}
+      <PostBodyActionRow
+        articleId={articleId}
+        socialPostId={socialPostId}
+        copyText={displayBody}
+        showExpandToggle={showExpandToggle}
+        expanded={expanded}
+        onToggleExpand={() => setExpanded((prev) => !prev)}
+        editable={editable}
+        onEdit={openEditor}
+      />
     </div>
   );
 }

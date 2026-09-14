@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ExpandableText } from "./expandable-text";
+import { ExpandableText, needsExpandableCollapse } from "./expandable-text";
 
 const componentSource = readFileSync(path.join(__dirname, "expandable-text.tsx"), "utf8");
 
@@ -58,6 +58,34 @@ describe("ExpandableText 렌더링", () => {
   it("줄바꿈이 유지되도록 white-space: pre-wrap 스타일을 적용한다", () => {
     const html = renderToStaticMarkup(<ExpandableText text={"한 줄\n두 줄"} />);
     expect(html).toContain("white-space:pre-wrap");
+  });
+});
+
+describe("Phase 4-27: expanded(controlled)/hideToggleButton — 공통 버튼 행이 토글을 대신 소유할 때 쓴다", () => {
+  it("expanded=true를 넘기면 내부 상태와 무관하게 전체 텍스트를 보여준다", () => {
+    const text = "바".repeat(1500);
+    const html = renderToStaticMarkup(<ExpandableText text={text} expanded />);
+    expect(html).toContain(text);
+  });
+
+  it("expanded=false를 넘기면 접힌 상태를 보여준다", () => {
+    const text = "사".repeat(1500);
+    const html = renderToStaticMarkup(<ExpandableText text={text} expanded={false} />);
+    expect(html).not.toContain(text);
+  });
+
+  it("hideToggleButton=true면 자기 자신의 전체 보기/접기 버튼을 렌더링하지 않는다", () => {
+    const text = "아".repeat(1500);
+    const html = renderToStaticMarkup(<ExpandableText text={text} expanded={false} hideToggleButton />);
+    expect(html).not.toContain("전체 보기");
+    expect(html).not.toContain("<button");
+  });
+});
+
+describe("needsExpandableCollapse", () => {
+  it("threshold(기본 1,200자) 이하면 false, 초과하면 true를 반환한다", () => {
+    expect(needsExpandableCollapse("가".repeat(1200))).toBe(false);
+    expect(needsExpandableCollapse("가".repeat(1201))).toBe(true);
   });
 });
 

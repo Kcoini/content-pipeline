@@ -175,8 +175,58 @@ describe("SocialPostBodyPanel 정적 소스 검사", () => {
     expect(componentSource).toContain(".catch(() => {})");
   });
 
-  it("ExpandableText/CopyPostBodyButton을 재사용한다(새 텍스트 렌더링 로직을 중복 작성하지 않는다)", () => {
+  it("ExpandableText/PostBodyActionRow(내부에서 CopyPostBodyButton 재사용)를 재사용한다(새 텍스트/버튼 렌더링 로직을 중복 작성하지 않는다)", () => {
     expect(componentSource).toContain('from "./expandable-text"');
-    expect(componentSource).toContain('from "./copy-post-body-button"');
+    expect(componentSource).toContain('from "./post-body-action-row"');
+  });
+});
+
+describe("Phase 4-27: 본문 관련 버튼([본문 복사]/[전체 보기]·[본문 접기]/[본문 수정])을 한 줄로 모은다", () => {
+  it("PostBodyActionRow 하나로 세 버튼을 렌더링한다(각자 다른 위치에 흩어놓지 않는다)", () => {
+    expect(componentSource).toContain("<PostBodyActionRow");
+    expect(componentSource).toContain("showExpandToggle={showExpandToggle}");
+    expect(componentSource).toContain("onToggleExpand={() => setExpanded((prev) => !prev)}");
+    expect(componentSource).toContain("onEdit={openEditor}");
+  });
+
+  it("ExpandableText는 controlled(expanded)로 쓰고 자기 자신의 토글 버튼은 숨긴다(PostBodyActionRow와 중복되지 않도록)", () => {
+    expect(componentSource).toContain("expanded={expanded}");
+    expect(componentSource).toContain("hideToggleButton");
+  });
+
+  it("본문이 짧으면(needsExpandableCollapse=false) [전체 보기]를 PostBodyActionRow에 아예 렌더링하지 않는다", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/social"
+        displayBody="짧은 본문"
+        editable
+        saveAction={noopAction}
+      />
+    );
+    expect(html).not.toContain("전체 보기");
+    expect(html).not.toContain("본문 접기");
+  });
+
+  it("본문이 길면(1,200자 초과) [전체 보기] 버튼을 보여주고, [본문 복사] [전체 보기] [본문 수정] 순서로 나온다", () => {
+    const longBody = "가".repeat(1500);
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/social"
+        displayBody={longBody}
+        editable
+        saveAction={noopAction}
+      />
+    );
+    expect(html).toContain("전체 보기");
+    const copyIdx = html.indexOf("본문 복사");
+    const expandIdx = html.indexOf("전체 보기");
+    const editIdx = html.indexOf(">본문 수정<");
+    expect(copyIdx).toBeGreaterThan(-1);
+    expect(copyIdx).toBeLessThan(expandIdx);
+    expect(expandIdx).toBeLessThan(editIdx);
   });
 });

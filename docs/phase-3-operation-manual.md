@@ -661,6 +661,16 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
     post_body/caption을 두 번(raw 값 + 축약 미리보기) 보여주던 중복을
     제거했다 — postTitle/excerpt/hashtags/post_url 등 다른 필드는 그대로
     유지했다.
+- 본문 관련 버튼([본문 복사]/[전체 보기]·[본문 접기]/[본문 수정])
+  위치 통일(Phase 4-27) — `SocialPostBodyPanel`이 쓰던 [본문 복사]
+  (라벨 옆, 상단)/[전체 보기](본문 아래)/[본문 수정](맨 아래) 위치를
+  `PostBodyActionRow`(`components/social/post-body-action-row.tsx`)
+  하나로 모아 본문 텍스트 바로 아래 한 줄([본문 복사] → [전체
+  보기]/[본문 접기] → [본문 수정] 순서)로 통일했다. 본문이 1,200자
+  이하면 [전체 보기]는 렌더링하지 않는다. `ExpandableText`는
+  `expanded`/`hideToggleButton` prop으로 controlled 모드를 추가해
+  자기 자신의 토글 버튼과 중복되지 않게 했다. `SocialPostBodyPanel`을
+  쓰는 모든 카드(블로그/SNS/rewrite/대시보드 테이블)에 자동 적용된다.
 - 게시용 소제목에서 "리드문"/"본문"/"배경 설명"/"쟁점" 같은 마스터
   원고 내부 구성 항목 이름을 정리(프롬프트 수정 + sanitizer + 자동
   검토, Phase 4-21): [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md)

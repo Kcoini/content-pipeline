@@ -348,6 +348,14 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   (`docs/wordpress-blog-card-ui-rules.md`의 "wordpress_blog 카드는
   본문을 두 번(카드 상단 + 탭) 중복 표시하지 않는다 (Phase 4-23)"
   섹션 참고).
+- **본문 관련 버튼([본문 복사]/[전체 보기]·[본문 접기]/[본문
+  수정])은 카드마다 다른 위치에 흩어놓지 않고, 항상 같은 줄·같은
+  순서로 모아 둔다.** 순서는 [본문 복사] → [전체 보기]/[본문
+  접기](필요할 때만) → [본문 수정]. 본문이 짧아 펼칠 필요가 없으면
+  [전체 보기]는 비활성화가 아니라 아예 렌더링하지 않는다. 실제 사례:
+  `components/social/post-body-action-row.tsx`
+  (`docs/wordpress-blog-card-ui-rules.md`의 "본문 관련 버튼은 항상
+  한 줄, 같은 순서로 배치한다 (Phase 4-27)" 섹션 참고).
 - **플랫폼마다 "게시용 본문"의 실제 형식이 다르면(markdown 허용
   플랫폼 vs plain text 전용 플랫폼), 저장/표시/export 시점에 각
   플랫폼에 맞는 형식으로 정리한다.** naver_cafe처럼 plain text 전용

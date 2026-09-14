@@ -23,6 +23,24 @@ export interface ExpandableTextProps {
   expandLabel?: string;
   collapseLabel?: string;
   className?: string;
+  /**
+   * Phase 4-27: 있으면 펼침 상태를 이 값으로 제어한다(내부 useState를
+   * 쓰지 않는다) — PostBodyActionRow처럼 [본문 복사]/[전체 보기]/[본문
+   * 수정]을 한 줄에 모아 보여주는 공통 버튼 행이 토글 버튼을 대신
+   * 소유할 때 쓴다. 생략하면(기존과 동일) 내부 상태로 펼침을 관리한다.
+   */
+  expanded?: boolean;
+  /**
+   * true면 이 컴포넌트 자신의 "전체 보기"/"접기" 버튼을 렌더링하지
+   * 않는다 — 같은 토글을 PostBodyActionRow가 대신 보여줄 때, 버튼이
+   * 본문 위/아래에 중복 표시되지 않도록 한다. `expanded`와 함께 쓴다.
+   */
+  hideToggleButton?: boolean;
+}
+
+/** 본문 길이만으로 접기가 필요한지 판단하는 순수 함수(threshold는 ExpandableText와 항상 같은 기준을 쓴다). */
+export function needsExpandableCollapse(text: string, collapsedLimit: number = DEFAULT_THRESHOLD_LENGTH): boolean {
+  return text.length > collapsedLimit;
 }
 
 /**
@@ -30,7 +48,8 @@ export interface ExpandableTextProps {
  * text.length가 collapsedLimit 이하면 버튼 없이 전체를 그대로 보여주고,
  * 넘으면 previewLength만큼만 보여준 뒤 "전체 보기" 버튼으로 나머지를
  * 펼칠 수 있게 한다. 상세 페이지 이동이나 서버 action 호출은 하지
- * 않는다 — 클릭은 이 컴포넌트 안에서만 상태를 바꾼다.
+ * 않는다 — 클릭은 이 컴포넌트 안에서만 상태를 바꾼다(단, `expanded`를
+ * 넘기면 그 값을 그대로 따르는 controlled 컴포넌트가 된다).
  */
 export function ExpandableText({
   text,
@@ -40,9 +59,12 @@ export function ExpandableText({
   expandLabel = DEFAULT_EXPAND_LABEL,
   collapseLabel = DEFAULT_COLLAPSE_LABEL,
   className,
+  expanded: controlledExpanded,
+  hideToggleButton = false,
 }: ExpandableTextProps) {
-  const needsCollapse = text.length > collapsedLimit;
-  const [expanded, setExpanded] = useState(defaultExpanded || !needsCollapse);
+  const needsCollapse = needsExpandableCollapse(text, collapsedLimit);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded || !needsCollapse);
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
 
   if (!needsCollapse) {
     return <p className={className} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.7 }}>{text}</p>;
@@ -55,13 +77,15 @@ export function ExpandableText({
       <p className={className} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.7 }}>
         {displayText}
       </p>
-      <button
-        type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        className="mt-1 rounded border border-indigo-300 bg-white px-2 py-0.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50"
-      >
-        {expanded ? collapseLabel : expandLabel}
-      </button>
+      {!hideToggleButton && (
+        <button
+          type="button"
+          onClick={() => setUncontrolledExpanded((prev) => !prev)}
+          className="mt-1 rounded border border-indigo-300 bg-white px-2 py-0.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50"
+        >
+          {expanded ? collapseLabel : expandLabel}
+        </button>
+      )}
     </div>
   );
 }
