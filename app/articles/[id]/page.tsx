@@ -9,13 +9,15 @@ import { getPublishLogsByArticleId } from "@/lib/repositories/publish-repository
 import { buildArticleContentSummary } from "@/lib/social/article-content-summary-service";
 import { listSocialPostsByArticle } from "@/lib/repositories/social-posts-repository";
 import { buildArticleOverviewUrl } from "@/lib/navigation/article-deep-links";
-import { SOCIAL_PLATFORMS } from "@/lib/social/social-platform-types";
+import { SOCIAL_PLATFORMS, TONE_STYLES } from "@/lib/social/social-platform-types";
 import {
   PLATFORM_LABELS,
   PLATFORM_SHORT_DESCRIPTIONS,
   PLATFORM_COST_LEVELS,
   getRecommendedPlatforms,
+  getRecommendedToneForPlatform,
 } from "@/lib/social/platform-generation-recommendations";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { PlatformSelectionCheckboxes } from "@/components/articles/platform-selection-checkboxes";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
@@ -417,6 +419,17 @@ export default async function ArticleDetailPage({
     statusLabel: existingPlatforms.has(platform) ? "이미 생성됨 (건너뜀 — 재생성은 아래 관리 화면에서)" : "아직 생성되지 않음",
     recommended: recommendedPlatforms.has(platform),
   }));
+  // Phase 4-23: "플랫폼 선택"(어디에 올릴 글인가)과 별개로 "문체 설정"
+  // (어떤 말투로 쓸 것인가)을 함께 고를 수 있게 한다. raw enum 대신
+  // TONE_STYLE_CONFIGS의 한국어 라벨을 쓰고, 추천값은 이미 있는
+  // getRecommendedToneForPlatform()을 그대로 재사용한다(새 추천 로직을
+  // 만들지 않는다).
+  const toneSelectionConfig = {
+    toneStyleOptions: TONE_STYLES.map((toneStyle) => ({ value: toneStyle, label: TONE_STYLE_CONFIGS[toneStyle].label })),
+    recommendedToneByPlatform: Object.fromEntries(
+      SOCIAL_PLATFORMS.map((platform) => [platform, getRecommendedToneForPlatform(platform)])
+    ),
+  };
 
   const isDraft = article.status === "draft";
   const isReviewed = article.status === "reviewed";
@@ -2724,13 +2737,12 @@ export default async function ArticleDetailPage({
           <form action={generateSelectedPlatformPostsAction} className="mt-3">
             <input type="hidden" name="articleId" value={article.id} />
             <input type="hidden" name="returnTo" value={buildArticleOverviewUrl(article.id)} />
-            <input type="hidden" name="toneMode" value="auto_recommended" />
 
-            <PlatformSelectionCheckboxes options={platformSelectionOptions} />
-
-            <p className="mt-2 text-[11px] text-zinc-400">
-              문체 설정: 추천 문체 자동 적용(기본값) — 플랫폼마다 어울리는 문체가 자동으로 적용됩니다.
-            </p>
+            {/* Phase 4-23: toneMode hidden input은 이제 PlatformSelectionCheckboxes가
+                toneSelection prop을 받았을 때 자체적으로 렌더링한다(라디오/
+                드롭다운 상태를 그대로 제출값으로 반영하기 위해) — 여기서
+                고정값으로 중복 렌더링하지 않는다. */}
+            <PlatformSelectionCheckboxes options={platformSelectionOptions} toneSelection={toneSelectionConfig} />
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button

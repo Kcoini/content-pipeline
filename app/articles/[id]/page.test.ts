@@ -241,6 +241,30 @@ describe("플랫폼별 글 생성 섹션 (정적 소스 검사, Phase 3-21)", ()
     expect(pageSource).toContain("existingPlatforms.has(platform)");
   });
 
+  describe("Phase 4-23: 플랫폼별 글 생성 화면에 문체 설정 추가", () => {
+    it("PlatformSelectionCheckboxes에 toneSelection을 전달한다(추천 문체 자동 적용이 기본값)", () => {
+      expect(pageSource).toContain("toneSelection={toneSelectionConfig}");
+    });
+
+    it("toneStyleOptions은 TONE_STYLE_CONFIGS의 한국어 라벨을 쓰고, raw enum을 그대로 노출하지 않는다", () => {
+      const configStart = pageSource.indexOf("const toneSelectionConfig");
+      const configEnd = pageSource.indexOf("};", configStart);
+      const configBlock = pageSource.slice(configStart, configEnd);
+      expect(configBlock).toContain("TONE_STYLE_CONFIGS[toneStyle].label");
+    });
+
+    it("추천 문체는 기존 getRecommendedToneForPlatform()을 재사용한다(새 추천 로직을 만들지 않는다)", () => {
+      expect(pageSource).toContain("getRecommendedToneForPlatform(platform)");
+    });
+
+    it("고정된 toneMode hidden input을 중복 렌더링하지 않는다(PlatformSelectionCheckboxes가 자체적으로 렌더링한다)", () => {
+      const formStart = pageSource.indexOf("<form action={generateSelectedPlatformPostsAction}");
+      const formEnd = pageSource.indexOf("</form>", formStart);
+      const formBlock = pageSource.slice(formStart, formEnd);
+      expect(formBlock).not.toContain('name="toneMode" value="auto_recommended"');
+    });
+  });
+
   it("article은 플랫폼 글 생성을 위한 원고 context로 안내되고, article mode를 과하게 강조하지 않는다", () => {
     const start = pageSource.indexOf("플랫폼별 글 생성</h2>");
     const block = pageSource.slice(start, start + 600);

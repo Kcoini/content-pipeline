@@ -121,6 +121,13 @@ describe("prompts/social/naver-cafe.md 구조 강화 지시 (Phase 3-20)", () =>
     expect(content).toContain("quality_status/approval_status");
     expect(content).toContain("localhost 링크");
   });
+
+  it("Phase 4-24: persuasive/loss_aversion이 지정되어도 강한 설득/협박이 아니라 질문형/경험 공유로 완화하도록 명시한다", () => {
+    expect(content).toContain("**persuasive(설득형)**");
+    expect(content).toContain("의견을 묻는 질문형");
+    expect(content).toContain("**loss_aversion(손실회피형)**");
+    expect(content).toContain("경험 공유 + 부드러운 안내");
+  });
 });
 
 describe("prompts/social/wordpress-blog.md 내부 구성 항목 이름 금지 지시 (Phase 4-21)", () => {

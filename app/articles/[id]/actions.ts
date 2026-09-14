@@ -84,6 +84,8 @@ import {
 } from "@/lib/social/social-post-service";
 import { generateSocialDraft } from "@/lib/social/social-draft-generation-service";
 import { runAutoFixAndRecheck } from "@/lib/social/post-auto-fix-service";
+import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import {
   generateSelectedPlatformPosts,
   generateAllPlatformPosts,
@@ -1830,11 +1832,25 @@ export async function generateSocialDraftAction(formData: FormData): Promise<voi
 }
 
 /** PlatformGenerationSummary를 사람이 읽는 한 줄 요약으로 바꾼다("무반응 금지" 원칙 — 항상 결과를 보여준다). */
+/**
+ * Phase 4-24: raw platform enum과 raw tone_style enum을 그대로 보여주지
+ * 않는다 — PLATFORM_LABELS/TONE_STYLE_CONFIGS의 한국어 라벨을 쓰고,
+ * 생성 완료된 플랫폼에는 실제로 적용된 문체까지 함께 보여준다(사용자가
+ * "추천 문체 자동 적용"을 썼어도 결과를 바로 확인할 수 있게).
+ */
 function formatPlatformGenerationSummary(summary: PlatformGenerationSummary): string {
   const parts = summary.results.map((r) => {
-    const label =
-      r.status === "generated" ? "생성 완료" : r.status === "skipped_existing" ? "이미 생성됨 — 건너뜀" : `생성 실패 — ${r.message}`;
-    return `${r.platform}: ${label}`;
+    const platformLabel = PLATFORM_LABELS[r.platform] ?? r.platform;
+    const toneLabel = r.toneStyle ? TONE_STYLE_CONFIGS[r.toneStyle]?.label ?? r.toneStyle : null;
+    const statusLabel =
+      r.status === "generated"
+        ? toneLabel
+          ? `생성 완료 (${toneLabel})`
+          : "생성 완료"
+        : r.status === "skipped_existing"
+          ? "이미 생성됨 — 건너뜀"
+          : `생성 실패 — ${r.message}`;
+    return `${platformLabel}: ${statusLabel}`;
   });
   return `플랫폼별 글 생성 결과 — ${parts.join(" / ")}`;
 }

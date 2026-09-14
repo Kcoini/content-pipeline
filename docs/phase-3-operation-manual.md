@@ -628,3 +628,9 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
 - 자동 검토 issue를 auto_fixable/user_confirmation_required/blocking
   으로 분류하고, AI가 안전하게 고칠 수 있는 문제는 자동 수정 후
   재검토(Phase 4-22): [`phase-4-22-auto-fix-and-recheck.md`](./phase-4-22-auto-fix-and-recheck.md)
+- 플랫폼별 글 생성 화면에 문체 설정(추천 자동 적용/전체 동일/
+  플랫폼별 직접 선택) UI 추가 — 백엔드는 이미 구현되어 있어 UI만
+  연결(Phase 4-23): [`phase-4-23-platform-tone-selection-ui.md`](./phase-4-23-platform-tone-selection-ui.md)
+- "플랫폼별 문체 직접 선택" 완성 — per_platform 로직을 순수 함수로
+  분리해 직접 테스트, 생성 결과에 적용된 문체를 한국어로 표시(Phase
+  4-24): [`phase-4-24-platform-tone-selection-completion.md`](./phase-4-24-platform-tone-selection-completion.md)

@@ -14,7 +14,7 @@ vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
 }));
 
-const { generatePlatformPosts, generateSelectedPlatformPosts, generateAllPlatformPosts } = await import(
+const { generatePlatformPosts, generateSelectedPlatformPosts, generateAllPlatformPosts, resolveToneStyleForPlatform } = await import(
   "./multi-platform-generation-service"
 );
 
@@ -185,5 +185,44 @@ describe("generateAllPlatformPosts (Phase 3-21: 고급 옵션 — 전체 플랫�
     const loggedTypes = logEvent.mock.calls.map((call) => call[0].type);
     expect(loggedTypes).toContain("platform_generation_all_requested");
     expect(loggedTypes).toContain("platform_generation_cost_warning_shown");
+  });
+});
+
+describe("resolveToneStyleForPlatform (Phase 4-24: export해서 직접 단위 테스트)", () => {
+  it("toneMode=manual_per_platform이고 이 플랫폼 지정값이 있으면 그 값을 쓴다(autoSelected=false)", () => {
+    const result = resolveToneStyleForPlatform("wordpress_blog", {
+      toneMode: "manual_per_platform",
+      toneStylesByPlatform: { wordpress_blog: "comparison" },
+    });
+    expect(result).toEqual({ toneStyle: "comparison", autoSelected: false });
+  });
+
+  it("toneMode=manual_per_platform인데 이 플랫폼 지정값이 없으면 추천 문체로 안전하게 대체한다(autoSelected=true)", () => {
+    const result = resolveToneStyleForPlatform("naver_cafe", {
+      toneMode: "manual_per_platform",
+      toneStylesByPlatform: { wordpress_blog: "comparison" },
+    });
+    expect(result.autoSelected).toBe(true);
+    expect(result.toneStyle).toBe("story");
+  });
+
+  it("toneMode=same_for_all이고 uniformToneStyle이 있으면 그 값을 모든 플랫폼에 쓴다", () => {
+    const result = resolveToneStyleForPlatform("x", { toneMode: "same_for_all", uniformToneStyle: "warning" });
+    expect(result).toEqual({ toneStyle: "warning", autoSelected: false });
+  });
+
+  it("toneMode=same_for_all인데 uniformToneStyle이 없으면 추천 문체로 대체한다", () => {
+    const result = resolveToneStyleForPlatform("x", { toneMode: "same_for_all" });
+    expect(result.autoSelected).toBe(true);
+    expect(result.toneStyle).toBe("curiosity");
+  });
+
+  it("toneMode=auto_recommended이면 플랫폼별 추천 문체를 쓴다", () => {
+    expect(resolveToneStyleForPlatform("wordpress_blog", { toneMode: "auto_recommended" }).toneStyle).toBe("explanatory");
+    expect(resolveToneStyleForPlatform("naver_blog", { toneMode: "auto_recommended" }).toneStyle).toBe("explanatory");
+    expect(resolveToneStyleForPlatform("naver_cafe", { toneMode: "auto_recommended" }).toneStyle).toBe("story");
+    expect(resolveToneStyleForPlatform("x", { toneMode: "auto_recommended" }).toneStyle).toBe("curiosity");
+    expect(resolveToneStyleForPlatform("threads", { toneMode: "auto_recommended" }).toneStyle).toBe("story");
+    expect(resolveToneStyleForPlatform("news_article", { toneMode: "auto_recommended" }).toneStyle).toBe("informational");
   });
 });

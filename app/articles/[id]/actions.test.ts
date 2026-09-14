@@ -517,6 +517,22 @@ describe("generateSelectedPlatformPostsAction (정적 소스 검사, Phase 3-21)
   });
 });
 
+describe("formatPlatformGenerationSummary (정적 소스 검사, Phase 4-24)", () => {
+  const fnBody = actionsSource.slice(
+    actionsSource.indexOf("function formatPlatformGenerationSummary"),
+    actionsSource.indexOf("function parseSelectedPlatforms")
+  );
+
+  it("raw platform/tone_style enum 대신 PLATFORM_LABELS/TONE_STYLE_CONFIGS 한국어 라벨을 사용한다", () => {
+    expect(fnBody).toContain("PLATFORM_LABELS[r.platform]");
+    expect(fnBody).toContain("TONE_STYLE_CONFIGS[r.toneStyle]");
+  });
+
+  it("생성 완료된 플랫폼에는 실제로 적용된 문체를 함께 보여준다", () => {
+    expect(fnBody).toContain("생성 완료 (${toneLabel})");
+  });
+});
+
 describe("saveSocialPostInlineEditAction (정적 소스 검사, Phase 4-15)", () => {
   const fnBody = actionsSource.slice(
     actionsSource.indexOf("export async function saveSocialPostInlineEditAction"),

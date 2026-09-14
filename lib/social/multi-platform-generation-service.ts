@@ -41,6 +41,8 @@ export interface PlatformGenerationOutcome {
   status: PlatformGenerationStatus;
   message: string;
   socialPostId?: string;
+  /** 이 플랫폼에 실제로 적용한 tone_style. skipped_existing이면 계산하지 않아 undefined다. */
+  toneStyle?: ToneStyle;
 }
 
 export interface PlatformGenerationSummary {
@@ -50,8 +52,14 @@ export interface PlatformGenerationSummary {
   failedCount: number;
 }
 
-/** toneMode에 따라 이 플랫폼에 실제로 사용할 tone_style을 결정하고, 자동/수동 선택 로그 이벤트 타입을 함께 반환한다. */
-function resolveToneStyle(
+/**
+ * Phase 4-24: toneMode에 따라 이 플랫폼에 실제로 사용할 tone_style을
+ * 결정한다("생성 plan"의 핵심 계산 — 우선순위: manual_per_platform의
+ * 지정값 → same_for_all의 uniformToneStyle → 그 외 모두 추천 문체).
+ * export해서 UI/action 어느 쪽에서도 같은 계산을 다시 구현하지 않고
+ * 이 함수 하나만 신뢰하게 한다.
+ */
+export function resolveToneStyleForPlatform(
   platform: SocialPlatform,
   request: Pick<PlatformGenerationRequest, "toneMode" | "uniformToneStyle" | "toneStylesByPlatform">
 ): { toneStyle: ToneStyle; autoSelected: boolean } {
@@ -114,7 +122,7 @@ export async function generatePlatformPosts(request: PlatformGenerationRequest):
       continue;
     }
 
-    const { toneStyle, autoSelected } = resolveToneStyle(platform, request);
+    const { toneStyle, autoSelected } = resolveToneStyleForPlatform(platform, request);
     await logPlatformGenerationEvent(
       autoSelected ? "platform_generation_tone_auto_selected" : "platform_generation_tone_manual_selected",
       "info",
@@ -144,7 +152,7 @@ export async function generatePlatformPosts(request: PlatformGenerationRequest):
           platform,
           { socialPostId: result.socialPost?.id, toneStyle }
         );
-        results.push({ platform, status: "generated", message: result.message, socialPostId: result.socialPost?.id });
+        results.push({ platform, status: "generated", message: result.message, socialPostId: result.socialPost?.id, toneStyle });
       } else {
         await logPlatformGenerationEvent(
           "platform_generation_failed",
@@ -154,7 +162,7 @@ export async function generatePlatformPosts(request: PlatformGenerationRequest):
           platform,
           { toneStyle }
         );
-        results.push({ platform, status: "failed", message: result.message });
+        results.push({ platform, status: "failed", message: result.message, toneStyle });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
@@ -165,7 +173,7 @@ export async function generatePlatformPosts(request: PlatformGenerationRequest):
         articleId,
         platform
       );
-      results.push({ platform, status: "failed", message });
+      results.push({ platform, status: "failed", message, toneStyle });
     }
   }
 

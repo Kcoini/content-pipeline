@@ -864,6 +864,27 @@ SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본
   채우지 않고, 사용자 확인을 기다린다.
 - 실제 적용 사례: [`docs/phase-4-22-auto-fix-and-recheck.md`](./phase-4-22-auto-fix-and-recheck.md).
 
+## 플랫폼 선택과 문체 설정은 별도 개념이다 (Phase 4-23)
+
+플랫폼은 "어디에 올릴 글인가"를, 문체는 "어떤 말투와 구성으로 쓸
+것인가"를 정한다. 이 둘을 같은 화면에서 함께 조정할 수 있게 하되
+개념은 섞지 않는다.
+
+- 기본값은 "추천 문체 자동 적용"이다 — 플랫폼마다 어울리는 문체가
+  자동으로 적용된다.
+- 사용자는 "전체 플랫폼에 같은 문체 적용"(단일 tone_style을 선택한
+  모든 플랫폼에) 또는 "플랫폼별 문체 직접 선택"(플랫폼마다 다른
+  tone_style)을 선택할 수 있다.
+- 기본 화면은 간단하게 유지한다 — "전체 같은 문체"/"플랫폼별 직접
+  선택"의 세부 드롭다운은 그 옵션을 선택했을 때만 펼쳐진다.
+- raw tone_style enum(`explanatory`, `story` 등)을 기본 UI에 그대로
+  보여주지 않는다 — 항상 한국어 라벨(`TONE_STYLE_CONFIGS[...].label`)
+  로 표시한다.
+- 플랫폼에 맞지 않는 강한 문체가 선택되어도 각 플랫폼 prompt가
+  안전하게 완화해서 해석한다(예: 네이버 카페의 강한 설득형 →
+  질문 유도형) — 새 UI가 이 완화 로직을 우회하지 않는다.
+- 실제 적용 사례: [`docs/phase-4-23-platform-tone-selection-ui.md`](./phase-4-23-platform-tone-selection-ui.md), 완성 내역은 [`docs/phase-4-24-platform-tone-selection-completion.md`](./phase-4-24-platform-tone-selection-completion.md).
+
 ## 같은 종류의 카드가 여러 개면 "목록(compact) + 선택한 것 1개의 상세"로 나눈다 (Phase 4-16)
 
 같은 종류의 상세 패널(게시 준비, 검토 결과 등)을 모든 카드에
