@@ -298,14 +298,13 @@ quality gate를 통과하지 못했거나 원본 기사가 아직 승인되지
 [`phase-4-10-wordpress-auto-publishing-preparation.md`](./phase-4-10-wordpress-auto-publishing-preparation.md)
 참고.
 
-## 게시용 본문은 카드 안에서 확인·수정·복사한다 (Phase 4-18)
+## 게시용 본문은 카드 안에서 확인·수정·복사한다 (Phase 4-18, wordpress_blog는 Phase 4-23으로 갱신)
 
-블로그/기사형 글 카드(WordPress 블로그·네이버 블로그·언론
-기사형·칼럼 등, 선택되었거나 wordpress_blog가 아닌 platform)는
-SNS/커뮤니티 글 카드(Phase 4-14/4-15)와 같은 공통 컴포넌트
-(`SocialPostBodyPanel`, `getSocialPostDisplayBody`,
-`getSocialPostEditableField`, `saveSocialPostInlineEditAction`)로
-게시용 본문을 보여준다:
+블로그/기사형 글 카드 중 **wordpress_blog가 아닌 platform**(네이버
+블로그·언론 기사형·칼럼 등)은 SNS/커뮤니티 글 카드(Phase
+4-14/4-15)와 같은 공통 컴포넌트(`SocialPostBodyPanel`,
+`getSocialPostDisplayBody`, `getSocialPostEditableField`,
+`saveSocialPostInlineEditAction`)로 게시용 본문을 보여준다:
 
 - 1,200자 이하는 전체 표시, 초과하면 카드 안에서만 접기/펼치기
   (`ExpandableText`) — 상세 페이지로 이동하지 않는다.
@@ -320,6 +319,60 @@ SNS/커뮤니티 글 카드(Phase 4-14/4-15)와 같은 공통 컴포넌트
 
 상세는 [`phase-3-26-social-post-review-workspace.md`](./phase-3-26-social-post-review-workspace.md),
 [`phase-4-15-social-post-inline-edit-copy.md`](./phase-4-15-social-post-inline-edit-copy.md) 참고.
+
+## wordpress_blog 카드는 본문을 두 번(카드 상단 + 탭) 중복 표시하지 않는다 (Phase 4-23)
+
+wordpress_blog 카드는 카드 안에 자체 탭(`WORDPRESS_BLOG_CARD_TABS`:
+게시용 미리보기/편집용 원문/품질·승인/WordPress 반영/대표
+이미지/체크리스트)이 있어서, Phase 4-18의 `SocialPostBodyPanel`을
+카드 상단에 그대로 또 붙이면 "게시용 본문"(카드 상단, 접힌 raw
+텍스트)과 "게시용 미리보기"/"편집용 원문"(탭, 렌더링된 HTML/원문)이
+같은 화면에 동시에 노출되는 중복이 생긴다. 그래서 wordpress_blog는:
+
+- 카드 상단 공통 `SocialPostBodyPanel`을 렌더링하지 않는다
+  (`post.platform !== "wordpress_blog"`일 때만 렌더링).
+- 대신 탭 내비게이션 바로 아래, 탭 선택과 무관한 공통 위치에
+  `SocialPostBodyPanel`을 `hideBodyWhenNotEditing` prop과 함께
+  렌더링한다 — 이 prop이 true면 편집 중이 아닐 때 본문 텍스트
+  (`ExpandableText`)는 보여주지 않고 [본문 수정]/[본문 복사]
+  버튼만 보여준다("본문 확인" 라벨). 본문 전체 표시는 아래
+  preview/content 탭이 전담한다.
+- [본문 수정]을 누르면 이 영역 자체가 (탭과 무관하게) textarea
+  편집 폼으로 바뀐다 — 저장 로직은 Phase 4-18과 동일
+  (`saveSocialPostInlineEditAction`, 저장만 하기/저장 후 자동
+  검토/저장 후 승인).
+- 어느 탭을 보고 있든 [본문 수정]/[본문 복사]는 항상 같은 위치에
+  있다(탭마다 새로 만들지 않는다).
+
+기능은 삭제하지 않았다 — 본문 확인/수정/복사는 그대로 카드 안에서
+되고, "게시용 미리보기"/"편집용 원문" 탭도 그대로다. 바뀐 것은
+"본문을 몇 번 보여주는가"뿐이다.
+
+## 플랫폼별 기본 viewMode (Phase 4-24)
+
+`lib/social/post-body-view-mode.ts`의 `getDefaultPostBodyViewMode(platform)`가
+플랫폼별 기본 보기를 결정한다 — 이 값은 UI 배치(탭 구조)를 바꾸지
+않고, `SocialPostBodyPanel`이 보여주는 라벨/부가 정보만 바꾼다:
+
+| 기본 viewMode | 대상 플랫폼 | 라벨 | 부가 정보 |
+| --- | --- | --- | --- |
+| preview | wordpress_blog, naver_blog, news_article, opinion_column | "게시용 미리보기" | 없음 |
+| copy | naver_cafe, x, threads, instagram | "복사용 텍스트" | 글자 수(`(N자)`) |
+
+- `SocialPostBodyPanel`에 `platform` prop을 넘기면 이 표에 따라
+  라벨/글자 수가 자동으로 결정된다. `platform`을 넘기지 않으면(기존
+  호출부와의 하위 호환) "게시용 본문"으로 그대로 표시된다.
+- wordpress_blog는 자체 탭(`WORDPRESS_BLOG_CARD_TABS`)이 이미
+  preview/content를 분리하므로, 탭 밖 공통 위치(Phase 4-23)에서는
+  `hideBodyWhenNotEditing`이 라벨을 "본문 확인"으로 고정한다 —
+  `platform`을 넘겨도 이 경우 라벨은 바뀌지 않는다(편집 모드
+  헤더에는 반영된다).
+- naver_blog/naver_cafe/news_article/opinion_column/x/threads/instagram은
+  아직 wordpress_blog 같은 별도 "source"(원문) 탭이 없다 — 이 플랫폼들은
+  postBody/caption이 곧 게시용 원문이라 렌더링 결과와 원문이 다르지
+  않기 때문이다(마크다운→HTML 변환이 필요한 쪽은 지금은 wordpress_blog뿐).
+  나중에 이 플랫폼들도 원문/렌더링이 달라지면 그때 source 탭을
+  추가한다.
 
 ## 게시용 소제목에 마스터 원고 내부 구성 항목 이름을 그대로 쓰지 않는다 (Phase 4-21)
 

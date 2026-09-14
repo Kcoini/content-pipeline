@@ -335,6 +335,19 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   포함하지 않는다. 실제 사례: `app/social-posts/[id]/page.tsx`,
   `lib/social/social-export-builder.ts`
   (`docs/phase-3-20-naver-cafe-plain-text-cleanup.md` 참고).
+- **"게시용 본문"과 "본문 미리보기"처럼 같은 본문을 가리키는 영역을
+  한 카드 안에 두 번 펼쳐 보여주지 않는다.** 본문 확인 영역은 카드
+  하나당 한 곳만 두고, 그 안에서 게시용 미리보기/편집용 원문/복사용
+  텍스트 같은 보기 모드를 전환한다(동시에 여러 보기를 펼치지 않는다).
+  플랫폼별 기본 보기 모드는 다를 수 있다(WordPress/네이버 블로그·
+  기사형은 게시용 미리보기 기본, 네이버 카페/SNS는 복사용 텍스트
+  기본). 실제 사례: `app/articles/[id]/blog/page.tsx`의
+  wordpress_blog 카드(카드 상단 `SocialPostBodyPanel`과 탭 안
+  "게시용 미리보기"/"편집용 원문"이 동시에 보이던 문제를
+  `hideBodyWhenNotEditing`으로 해소) —
+  (`docs/wordpress-blog-card-ui-rules.md`의 "wordpress_blog 카드는
+  본문을 두 번(카드 상단 + 탭) 중복 표시하지 않는다 (Phase 4-23)"
+  섹션 참고).
 - **플랫폼마다 "게시용 본문"의 실제 형식이 다르면(markdown 허용
   플랫폼 vs plain text 전용 플랫폼), 저장/표시/export 시점에 각
   플랫폼에 맞는 형식으로 정리한다.** naver_cafe처럼 plain text 전용

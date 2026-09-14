@@ -265,3 +265,10 @@ describe("Phase 4-22: 자동 검토 '수정 필요' 상태에서 [자동 수정 
     expect(formBlock).not.toContain("approveSocialPostAction");
   });
 });
+
+describe("Phase 4-24: 플랫폼별 기본 viewMode를 SocialPostBodyPanel에 전달한다 (정적 소스 검사)", () => {
+  it("SocialPostBodyPanel 호출에 platform={post.platform}을 넘긴다(naver_cafe/x/threads/instagram은 복사용 텍스트 기본으로 전환)", () => {
+    expect(pageSource).toContain("<SocialPostBodyPanel");
+    expect(pageSource).toContain("platform={post.platform}");
+  });
+});

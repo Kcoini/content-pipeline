@@ -10,6 +10,8 @@ import { useState } from "react";
 import { ExpandableText } from "./expandable-text";
 import { CopyPostBodyButton } from "./copy-post-body-button";
 import { logSocialPostInlineEditClientEventAction } from "@/app/articles/[id]/actions";
+import { getDefaultPostBodyViewMode, getPostBodyViewModeLabel } from "@/lib/social/post-body-view-mode";
+import type { SocialPlatform } from "@/lib/social/social-platform-types";
 
 export interface SocialPostBodyPanelProps {
   articleId: string;
@@ -20,6 +22,21 @@ export interface SocialPostBodyPanelProps {
   /** false면(x처럼 threadItems 배열 기반 플랫폼) 편집 버튼을 보여주지 않는다 — 상세 페이지에서만 수정 가능. */
   editable: boolean;
   saveAction: (formData: FormData) => Promise<void>;
+  /**
+   * true면 (편집 중이 아닐 때) 본문 미리보기(ExpandableText)를 표시하지
+   * 않고 [본문 수정]/[본문 복사] 버튼만 보여준다. wordpress_blog 카드처럼
+   * 이미 다른 탭(게시용 미리보기/편집용 원문)에서 본문 전체를 보여주고
+   * 있어서, 같은 본문을 카드 안에서 또 중복 표시하지 않아야 할 때 쓴다.
+   * 편집 모드에서는 이 값과 무관하게 항상 전체 textarea를 보여준다.
+   */
+  hideBodyWhenNotEditing?: boolean;
+  /**
+   * 있으면 getDefaultPostBodyViewMode(platform)로 라벨을 결정한다
+   * (naver_cafe/x/threads/instagram은 "복사용 텍스트" + 글자 수,
+   * 그 외는 "게시용 미리보기"). 생략하면 기존처럼 "게시용 본문"으로
+   * 표시한다(hideBodyWhenNotEditing이면 "본문 확인").
+   */
+  platform?: SocialPlatform;
 }
 
 export function SocialPostBodyPanel({
@@ -29,6 +46,8 @@ export function SocialPostBodyPanel({
   displayBody,
   editable,
   saveAction,
+  hideBodyWhenNotEditing = false,
+  platform,
 }: SocialPostBodyPanelProps) {
   const [editing, setEditing] = useState(false);
 
@@ -42,10 +61,20 @@ export function SocialPostBodyPanel({
     void logSocialPostInlineEditClientEventAction({ articleId, socialPostId, event: "cancelled" }).catch(() => {});
   };
 
+  // platform이 주어지면 플랫폼별 기본 viewMode(getDefaultPostBodyViewMode)에
+  // 맞는 라벨을 쓴다 — naver_cafe/x/threads/instagram은 "복사용 텍스트"
+  // (+ 글자 수), 그 외(wordpress_blog/naver_blog/news_article/opinion_column
+  // 등)는 "게시용 미리보기". platform을 넘기지 않으면(호출부를 아직
+  // 바꾸지 않은 곳) 기존과 동일하게 "게시용 본문"을 그대로 쓴다 — 하위
+  // 호환을 깨지 않는다.
+  const viewMode = platform ? getDefaultPostBodyViewMode(platform) : null;
+  const bodyLabel = viewMode ? getPostBodyViewModeLabel(viewMode) : "게시용 본문";
+  const isCopyMode = viewMode === "copy";
+
   if (editing) {
     return (
       <div className="mt-2 rounded border border-indigo-300 bg-white p-2">
-        <p className="text-[11px] font-semibold text-indigo-900">게시용 본문 수정</p>
+        <p className="text-[11px] font-semibold text-indigo-900">{bodyLabel} 수정</p>
         <form action={saveAction}>
           <input type="hidden" name="articleId" value={articleId} />
           <input type="hidden" name="socialPostId" value={socialPostId} />
@@ -98,10 +127,17 @@ export function SocialPostBodyPanel({
   return (
     <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-medium text-zinc-500">게시용 본문</p>
+        <p className="text-[10px] font-medium text-zinc-500">
+          {hideBodyWhenNotEditing ? "본문 확인" : bodyLabel}
+          {/* Phase 4-24: X/Threads/Instagram처럼 글자 수 제한이 실제로
+              중요한 copy 기본 플랫폼에서만 글자 수를 함께 보여준다. */}
+          {!hideBodyWhenNotEditing && isCopyMode && (
+            <span className="ml-1 font-normal text-zinc-400">({displayBody.length}자)</span>
+          )}
+        </p>
         <CopyPostBodyButton articleId={articleId} socialPostId={socialPostId} text={displayBody} />
       </div>
-      <ExpandableText text={displayBody} className="mt-1 text-[12px] text-zinc-800" />
+      {!hideBodyWhenNotEditing && <ExpandableText text={displayBody} className="mt-1 text-[12px] text-zinc-800" />}
       {editable && (
         <button
           type="button"

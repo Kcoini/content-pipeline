@@ -17,9 +17,14 @@ describe("social post detail page (정적 소스 검사, Phase 3-18)", () => {
     expect(pageSource).toContain("Object.keys(p.exportPayload");
   });
 
-  it("naver_cafe는 sanitizeNaverCafePlainText로 정리된 본문(displayPostBody)을 화면에 표시한다(Phase 3-20)", () => {
-    expect(pageSource).toContain("sanitizeNaverCafePlainText");
-    expect(pageSource).toMatch(/p\.platform === "naver_cafe" \? sanitizeNaverCafePlainText\(p\.postBody\) : p\.postBody/);
+  it("naver_cafe는 게시용 미리보기 탭에서 getSocialPostDisplayBody로 정리된 본문을 보여준다(Phase 3-20, Phase 4-26에서 raw 탭의 중복 표시 제거)", () => {
+    // Phase 4-26: raw 탭 안에 있던 "본문 미리보기"(sanitizeNaverCafePlainText를
+    // 직접 다시 호출하는 중복 블록)를 제거했다 — sanitize 자체는
+    // getSocialPostDisplayBody(social-post-display.ts) 안에서 이미
+    // 일어나고, "게시용 미리보기" 탭이 그 결과를 보여준다. 그 로직은
+    // lib/social/social-post-display.test.ts에서 검증한다.
+    expect(pageSource).toContain("getSocialPostDisplayBody(p)");
+    expect(pageSource).not.toContain("sanitizeNaverCafePlainText");
   });
 
   it("SocialPostDetailNavigation을 사용한다", () => {
@@ -254,5 +259,22 @@ describe("social post detail page — 글 유형별 검토 기준 표시 + 불�
     expect(pageSource).toContain("글 유형 확인 필요");
     expect(pageSource).toContain("contentTypeMismatch.mismatched");
     expect(pageSource).toMatch(/buildTabHref\(p\.id, "edit", returnTo\)#edit-panel|buildTabHref\(p\.id, "edit", returnTo\)\}#edit-panel/);
+  });
+});
+
+describe("Phase 4-26: 상세 페이지 raw 탭에서 본문 중복 표시를 제거한다 (정적 소스 검사)", () => {
+  it("raw 탭 안에서 post_body/caption을 두 번(내부 원문 raw + 콘텐츠 미리보기의 본문/캡션 미리보기) 보여주지 않는다", () => {
+    // "내부 원문 (raw)" 섹션 한 곳에서만 p.postBody/p.caption 원문을 보여준다.
+    expect(pageSource).toContain("내부 원문 (raw)");
+    expect(pageSource).not.toContain("본문 미리보기");
+    expect(pageSource).not.toContain("캡션 미리보기");
+  });
+
+  it("postTitle/excerpt/hashtags/post_url 같은 다른 필드는 그대로 남아 있다(기능 삭제가 아니라 중복 제거)", () => {
+    expect(pageSource).toContain("콘텐츠 미리보기 (기존 필드)");
+    expect(pageSource).toContain('describeStatusField("post_title")');
+    expect(pageSource).toContain('describeStatusField("excerpt")');
+    expect(pageSource).toContain('describeStatusField("hashtags")');
+    expect(pageSource).toContain('describeStatusField("post_url")');
   });
 });

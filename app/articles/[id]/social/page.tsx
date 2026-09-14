@@ -290,6 +290,7 @@ export default async function ArticleSocialPage({
                           displayBody={displayBody}
                           editable={getSocialPostEditableField(post.platform) !== null}
                           saveAction={saveSocialPostInlineEditAction}
+                          platform={post.platform}
                         />
                       );
                     })()}

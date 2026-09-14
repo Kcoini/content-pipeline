@@ -623,27 +623,35 @@ export default async function ArticleBlogPage({
                         1,200자 이하는 전체 표시, 초과하면 카드 안에서만 접기/펼치기
                         (ExpandableText). [본문 수정]은 페이지 이동 없이 같은 카드
                         안에서 textarea 편집 모드로 바뀐다(SocialPostBodyPanel). */}
-                    {(() => {
-                      const displayBody = getSocialPostDisplayBody(post);
-                      if (!displayBody) {
+                    {/* Phase 4-23: wordpress_blog는 본문 확인 영역을 여기서 보여주지
+                        않는다 — 아래 카드 안 탭(WORDPRESS_BLOG_CARD_TABS의 preview/content)이
+                        이미 본문 전체를 보여주므로, 같은 본문을 카드 상단에 또 중복 표시하면
+                        같은 본문이 두 번(위/아래) 동시에 노출되는 문제가 재발한다.
+                        wordpress_blog의 [본문 수정]/[본문 복사]는 탭 영역 안(공통 위치)에서
+                        제공한다. */}
+                    {post.platform !== "wordpress_blog" &&
+                      (() => {
+                        const displayBody = getSocialPostDisplayBody(post);
+                        if (!displayBody) {
+                          return (
+                            <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
+                              게시용 본문이 아직 없습니다 — {describeAutoReviewNotRunYet(post.qualityStatus)} 아래
+                              &ldquo;품질검사&rdquo; 또는 &ldquo;본문 수정&rdquo;으로 먼저 본문을 준비하세요.
+                            </p>
+                          );
+                        }
                         return (
-                          <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
-                            게시용 본문이 아직 없습니다 — {describeAutoReviewNotRunYet(post.qualityStatus)} 아래
-                            &ldquo;품질검사&rdquo; 또는 &ldquo;본문 수정&rdquo;으로 먼저 본문을 준비하세요.
-                          </p>
+                          <SocialPostBodyPanel
+                            articleId={article.id}
+                            socialPostId={post.id}
+                            returnTo={selfReturnTo}
+                            displayBody={displayBody}
+                            editable={getSocialPostEditableField(post.platform) !== null}
+                            saveAction={saveSocialPostInlineEditAction}
+                            platform={post.platform}
+                          />
                         );
-                      }
-                      return (
-                        <SocialPostBodyPanel
-                          articleId={article.id}
-                          socialPostId={post.id}
-                          returnTo={selfReturnTo}
-                          displayBody={displayBody}
-                          editable={getSocialPostEditableField(post.platform) !== null}
-                          saveAction={saveSocialPostInlineEditAction}
-                        />
-                      );
-                    })()}
+                      })()}
                     {/* Phase 3-22: raw 상태값 나열 대신 사용자 친화적 한 줄 요약 +
                         다음 작업을 먼저 보여준다. 원문 상태값은 아래 "상세 상태
                         보기" 접힘 영역에서 계속 확인할 수 있다(제거하지 않음). */}
@@ -1302,6 +1310,28 @@ export default async function ArticleBlogPage({
                                 );
                               })}
                             </nav>
+
+                            {/* Phase 4-23: [본문 수정]/[본문 복사]는 어느 탭을 보고 있든 항상
+                                같은 위치에서 제공한다 — 본문 전체 표시는 아래 탭(게시용
+                                미리보기/편집용 원문)에서만 하고, 여기서는 중복 표시하지
+                                않는다(hideBodyWhenNotEditing). 편집 모드로 전환하면 이
+                                영역 자체가 textarea 편집 폼으로 바뀐다. */}
+                            {(() => {
+                              const displayBody = getSocialPostDisplayBody(post);
+                              if (!displayBody) return null;
+                              return (
+                                <SocialPostBodyPanel
+                                  articleId={article.id}
+                                  socialPostId={post.id}
+                                  returnTo={selfReturnTo}
+                                  displayBody={displayBody}
+                                  editable={getSocialPostEditableField(post.platform) !== null}
+                                  saveAction={saveSocialPostInlineEditAction}
+                                  platform={post.platform}
+                                  hideBodyWhenNotEditing
+                                />
+                              );
+                            })()}
 
                             {/* 검사가 많은 이유 — 품질·승인 탭. 왜 이렇게 단계가 많은지 한 번에 설명한다. */}
                             {activeTab === "quality" && (

@@ -9,6 +9,10 @@ import { isSocialPlatform, type SocialPlatform, type SocialPerformanceStatus } f
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
+import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
+import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
+import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
+import { saveSocialPostInlineEditAction } from "@/app/articles/[id]/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +57,20 @@ export default async function RewriteDashboardPage({
     platform,
     performanceStatus,
   });
+
+  // Phase 4-26: 본문 수정 후 저장 action이 돌아올 위치. 지금 적용된
+  // 필터를 그대로 유지한 채 이 대시보드 페이지로 돌아온다.
+  const returnTo = (() => {
+    const qs = new URLSearchParams();
+    if (platform) qs.set("platform", platform);
+    if (performanceStatus) qs.set("performanceStatus", performanceStatus);
+    if (onlyRecommendedForRepost) qs.set("onlyRecommendedForRepost", "true");
+    if (versionComparisonStatus) qs.set("versionComparisonStatus", versionComparisonStatus);
+    if (rewriteReapprovalStatus) qs.set("rewriteReapprovalStatus", rewriteReapprovalStatus);
+    if (rewriteReexportStatus) qs.set("rewriteReexportStatus", rewriteReexportStatus);
+    const query = qs.toString();
+    return query ? `/dashboard/rewrite?${query}` : "/dashboard/rewrite";
+  })();
 
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
@@ -166,9 +184,32 @@ export default async function RewriteDashboardPage({
                 <tbody className="text-zinc-700">
                   {rewriteVersions.map((p) => (
                     <tr key={p.id} className="border-t border-zinc-100">
-                      <td className="pr-3 py-1">
+                      <td className="min-w-[220px] pr-3 py-1 align-top">
                         <p className="font-medium">{p.postTitle || p.caption || "(제목 없음)"}</p>
                         <p className="text-[11px] text-zinc-400">{PLATFORM_LABELS[p.platform]} · {TONE_STYLE_CONFIGS[p.toneStyle].label}</p>
+                        {/* Phase 4-26: 대시보드 테이블에서도 본문을 바로 확인·수정·
+                            복사할 수 있게 한다 — 표 레이아웃을 해치지 않도록
+                            기본은 접어둔다. */}
+                        {(() => {
+                          const displayBody = getSocialPostDisplayBody(p);
+                          if (!displayBody) return null;
+                          return (
+                            <details className="mt-1">
+                              <summary className="cursor-pointer text-[11px] font-medium text-indigo-600">본문 보기</summary>
+                              <div className="mt-1 w-72 max-w-[80vw]">
+                                <SocialPostBodyPanel
+                                  articleId={p.articleId}
+                                  socialPostId={p.id}
+                                  returnTo={returnTo}
+                                  displayBody={displayBody}
+                                  editable={getSocialPostEditableField(p.platform) !== null}
+                                  saveAction={saveSocialPostInlineEditAction}
+                                  platform={p.platform}
+                                />
+                              </div>
+                            </details>
+                          );
+                        })()}
                       </td>
                       <td className="pr-3 py-1">
                         버전 {p.versionNumber} ({describeStatusValue(p.versionStatus)})

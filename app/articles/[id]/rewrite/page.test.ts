@@ -140,3 +140,18 @@ describe("Phase 4-20: '상세 보기 → 원본 글 열기 → 성과 보기 →
     expect(pageSource).toContain('label: "원본 성과 확인"');
   });
 });
+
+describe("Phase 4-25: rewrite 버전 카드에도 공통 본문 확인 컴포넌트(SocialPostBodyPanel)를 적용한다 (정적 소스 검사)", () => {
+  it("SocialPostBodyPanel을 재사용해 재작성 본문을 카드 안에서 확인·수정·복사할 수 있다", () => {
+    expect(pageSource).toContain('from "@/components/social/social-post-body-panel"');
+    expect(pageSource).toContain("<SocialPostBodyPanel");
+    expect(pageSource).toContain("getSocialPostDisplayBody(v)");
+    expect(pageSource).toContain("editable={getSocialPostEditableField(v.platform) !== null}");
+    expect(pageSource).toContain("saveAction={saveSocialPostInlineEditAction}");
+    expect(pageSource).toContain("platform={v.platform}");
+  });
+
+  it("본문이 없으면 안내 문구를 보여준다(SocialPostBodyPanel을 렌더링하지 않는다)", () => {
+    expect(pageSource).toContain("게시용 본문이 아직 없습니다");
+  });
+});

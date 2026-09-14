@@ -622,6 +622,45 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
   같은 공용 helper로 통일(Phase 4-19): [`phase-4-19-post-card-primary-publish-action.md`](./phase-4-19-post-card-primary-publish-action.md)
 - "상세 보기 → 성과 보기 → 기사 개요 →" 화살표 링크를 공통
   `RelatedPostLinks`(관련 화면 보기 접힘)로 정리(Phase 4-20): [`phase-4-20-related-post-links-cleanup.md`](./phase-4-20-related-post-links-cleanup.md)
+- wordpress_blog 카드에서 "게시용 본문"(카드 상단)과 "게시용
+  미리보기"/"편집용 원문"(카드 안 탭)이 동시에 펼쳐 보이던 중복을
+  제거 — `SocialPostBodyPanel`에 `hideBodyWhenNotEditing`을 추가해
+  탭 영역에서는 [본문 수정]/[본문 복사]만 제공하고 본문 전체 표시는
+  탭이 전담(Phase 4-23): [`wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md)의
+  "wordpress_blog 카드는 본문을 두 번(카드 상단 + 탭) 중복 표시하지
+  않는다" 섹션
+- 플랫폼별 기본 본문 보기(viewMode) 적용(Phase 4-24) —
+  `lib/social/post-body-view-mode.ts`: wordpress_blog/naver_blog/
+  news_article/opinion_column은 "게시용 미리보기" 기본, naver_cafe/
+  x/threads/instagram은 "복사용 텍스트"(+글자 수) 기본. `blog`/`social`
+  페이지의 모든 `SocialPostBodyPanel` 호출에 `platform` prop을 전달해
+  적용했다: [`wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md)의
+  "플랫폼별 기본 viewMode" 섹션
+- rewrite 버전 카드에도 공통 본문 확인 컴포넌트 적용(Phase 4-25) —
+  `/articles/[id]/rewrite`의 재작성 버전 카드가 이전에는 제목/상태만
+  보여주고 본문을 전혀 보여주지 않았다. 다른 글 카드와 동일하게
+  `SocialPostBodyPanel`(+`platform` prop)로 재작성 본문을 카드 안에서
+  확인·수정(저장만/저장 후 자동 검토/저장 후 승인)·복사할 수 있게
+  했다.
+- 대시보드 테이블/helper 이름 통일/상세 페이지 중복 제거(Phase 4-26):
+  - `app/dashboard/blog/page.tsx`, `app/dashboard/rewrite/page.tsx`
+    테이블의 "글" 열에 `<details>`(기본 접힘) + `SocialPostBodyPanel`을
+    붙여, 표 레이아웃을 유지한 채 대시보드에서도 본문 확인·수정·복사가
+    가능하게 했다. `app/dashboard/page.tsx`의 플랫폼별 카드와
+    `app/dashboard/content/page.tsx`(기사 단위 집계 테이블)는 애초에
+    본문 자체를 보여주지 않는 압축 상태 위젯이라(중복 표시 버그가
+    없어) 그대로 두었다.
+  - `lib/social/post-body-helpers.ts` 신설 — spec이 요청한 이름
+    (`getPostDisplayBody`/`getPostEditableBody`/`getPostCopyText`/
+    `getPostPreviewHtml`)으로 된 공식 진입점을 추가했다. 기존
+    `getSocialPostDisplayBody` 등을 감싼 얇은 alias이며, 기존 호출부
+    수십 곳을 일괄 리네이밍하지는 않았다(동작 변화 없이 새 표준 이름을
+    제공하는 것이 목적).
+  - `app/social-posts/[id]/page.tsx`의 "내부 원문 보기" 탭 안에서
+    "내부 원문 (raw)" 섹션과 "콘텐츠 미리보기 (기존 필드)" 섹션이 같은
+    post_body/caption을 두 번(raw 값 + 축약 미리보기) 보여주던 중복을
+    제거했다 — postTitle/excerpt/hashtags/post_url 등 다른 필드는 그대로
+    유지했다.
 - 게시용 소제목에서 "리드문"/"본문"/"배경 설명"/"쟁점" 같은 마스터
   원고 내부 구성 항목 이름을 정리(프롬프트 수정 + sanitizer + 자동
   검토, Phase 4-21): [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md)

@@ -43,6 +43,24 @@ describe("SocialPostBodyPanel 렌더링(기본 상태, 편집 모드 아님)", (
     expect(html).toContain("본문 수정");
   });
 
+  it("hideBodyWhenNotEditing=true면 본문 텍스트(ExpandableText)를 표시하지 않고 [본문 수정]/[본문 복사]만 보여준다(다른 곳에서 이미 본문을 보여줄 때 중복 표시를 막기 위함)", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/blog"
+        displayBody="중복 표시하면 안 되는 본문입니다."
+        editable
+        saveAction={noopAction}
+        hideBodyWhenNotEditing
+      />
+    );
+    expect(html).not.toContain("중복 표시하면 안 되는 본문입니다.");
+    expect(html).toContain("본문 확인");
+    expect(html).toContain("본문 수정");
+    expect(html).toContain("본문 복사");
+  });
+
   it("editable=false면(x처럼 threadItems 기반) [본문 수정] 버튼이 없다", () => {
     const html = renderToStaticMarkup(
       <SocialPostBodyPanel
@@ -55,6 +73,71 @@ describe("SocialPostBodyPanel 렌더링(기본 상태, 편집 모드 아님)", (
       />
     );
     expect(html).not.toContain("본문 수정");
+  });
+});
+
+describe("SocialPostBodyPanel platform prop(Phase 4-24: 플랫폼별 기본 viewMode)", () => {
+  it("platform이 copy 기본 플랫폼(naver_cafe)이면 '복사용 텍스트' 라벨과 글자 수를 보여준다", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/social"
+        displayBody="네이버 카페 본문"
+        editable
+        saveAction={noopAction}
+        platform="naver_cafe"
+      />
+    );
+    expect(html).toContain("복사용 텍스트");
+    expect(html).toContain(`(${"네이버 카페 본문".length}자)`);
+  });
+
+  it("platform이 preview 기본 플랫폼(wordpress_blog)이면 '게시용 미리보기' 라벨을 보여주고 글자 수는 보여주지 않는다", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/blog"
+        displayBody="블로그 본문"
+        editable
+        saveAction={noopAction}
+        platform="wordpress_blog"
+      />
+    );
+    expect(html).toContain("게시용 미리보기");
+    expect(html).not.toContain("자)");
+  });
+
+  it("platform을 넘기지 않으면 기존과 동일하게 '게시용 본문' 라벨을 그대로 쓴다(하위 호환)", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/social"
+        displayBody="본문"
+        editable
+        saveAction={noopAction}
+      />
+    );
+    expect(html).toContain("게시용 본문");
+  });
+
+  it("hideBodyWhenNotEditing이면 platform과 무관하게 '본문 확인' 라벨을 쓴다", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/blog"
+        displayBody="본문"
+        editable
+        saveAction={noopAction}
+        platform="naver_cafe"
+        hideBodyWhenNotEditing
+      />
+    );
+    expect(html).toContain("본문 확인");
+    expect(html).not.toContain("복사용 텍스트");
   });
 });
 

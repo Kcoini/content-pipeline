@@ -1327,6 +1327,32 @@ describe("Phase 4-18: 블로그/기사형 글 카드에 공통 본문 표시/inl
   });
 });
 
+describe("Phase 4-23: wordpress_blog 카드의 본문 중복 표시 제거 (정적 소스 검사)", () => {
+  it("wordpress_blog는 카드 상단 공통 SocialPostBodyPanel을 렌더링하지 않는다(탭 영역의 본문 표시와 중복되므로)", () => {
+    const topPanelIdx = pageSource.indexOf("<SocialPostBodyPanel");
+    expect(topPanelIdx).toBeGreaterThan(-1);
+    const guardIdx = pageSource.lastIndexOf('post.platform !== "wordpress_blog" &&', topPanelIdx);
+    expect(guardIdx).toBeGreaterThan(-1);
+    // guardIdx와 topPanelIdx 사이에는 다른 최상위 플랫폼 분기(=== "wordpress_blog")가 없어야
+    // 이 SocialPostBodyPanel이 실제로 "wordpress_blog가 아닐 때만" 블록 안에 있다고 볼 수 있다.
+    const between = pageSource.slice(guardIdx, topPanelIdx);
+    expect(between).not.toContain('post.platform === "wordpress_blog"');
+  });
+
+  it("wordpress_blog 카드 안 탭 영역에는 hideBodyWhenNotEditing으로 본문 중복 표시 없이 [본문 수정]/[본문 복사]만 제공한다", () => {
+    expect(pageSource).toContain("hideBodyWhenNotEditing");
+  });
+});
+
+describe("Phase 4-24: 플랫폼별 기본 viewMode를 SocialPostBodyPanel에 전달한다 (정적 소스 검사)", () => {
+  it("모든 SocialPostBodyPanel 호출에 platform={post.platform}을 넘긴다", () => {
+    const panelOccurrences = pageSource.split("<SocialPostBodyPanel").length - 1;
+    const platformPropOccurrences = pageSource.split("platform={post.platform}").length - 1;
+    expect(panelOccurrences).toBeGreaterThan(0);
+    expect(platformPropOccurrences).toBe(panelOccurrences);
+  });
+});
+
 describe("Phase 4-20: '상세 보기 → 성과 보기 → 기사 개요 →' 화살표 링크 정리 (정적 소스 검사)", () => {
   it("화살표로 이어붙인 flat 링크 대신 RelatedPostLinks(관련 화면 보기 접힘)를 쓴다", () => {
     expect(pageSource).toContain("<RelatedPostLinks");

@@ -25,7 +25,11 @@ import {
   approveRewriteReapprovalAction,
   prepareRewriteReexportAction,
   generateRewriteReexportPayloadAction,
+  saveSocialPostInlineEditAction,
 } from "../actions";
+import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
+import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
+import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
@@ -304,6 +308,31 @@ export default async function ArticleRewritePage({
                       {v.recommendedForRepost && <InfoBadge label="재게시 추천" />}
                     </div>
                     <p className="mt-1 font-medium text-zinc-700">{v.postTitle || v.caption || "(제목 없음)"}</p>
+                    {/* Phase 4-25: rewrite 버전 카드도 다른 글 카드(블로그/기사형/
+                        SNS)와 같은 공통 본문 확인 컴포넌트를 쓴다 — 재작성된
+                        본문을 상세 페이지로 이동하지 않고 이 카드 안에서 바로
+                        확인·수정·복사할 수 있어야 한다. */}
+                    {(() => {
+                      const displayBody = getSocialPostDisplayBody(v);
+                      if (!displayBody) {
+                        return (
+                          <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-500">
+                            게시용 본문이 아직 없습니다.
+                          </p>
+                        );
+                      }
+                      return (
+                        <SocialPostBodyPanel
+                          articleId={article.id}
+                          socialPostId={v.id}
+                          returnTo={selfReturnTo}
+                          displayBody={displayBody}
+                          editable={getSocialPostEditableField(v.platform) !== null}
+                          saveAction={saveSocialPostInlineEditAction}
+                          platform={v.platform}
+                        />
+                      );
+                    })()}
                     {/* Phase 3-24: raw 상태값(재승인/재export/workflow/버전비교 등)을
                         카드 본문에 직접 노출하지 않는다 — 사용자 친화적 한 줄
                         요약 + 다음 작업만 먼저 보여주고, 원문 상태값/내부 id는

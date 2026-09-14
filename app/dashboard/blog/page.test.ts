@@ -26,3 +26,22 @@ describe("blog dashboard page 한국어 제목/라벨 (정적 소스 검사, Pha
     expect(pageSource).toContain("블로그 글 목록 (");
   });
 });
+
+describe("Phase 4-26: 대시보드 블로그 테이블에도 본문 확인/수정/복사를 붙인다 (정적 소스 검사)", () => {
+  it("SocialPostBodyPanel을 <details>(기본 접힘)로 감싸 표 레이아웃을 해치지 않는다", () => {
+    expect(pageSource).toContain('from "@/components/social/social-post-body-panel"');
+    expect(pageSource).toContain("<details");
+    expect(pageSource).toContain("<SocialPostBodyPanel");
+    expect(pageSource).toContain("getSocialPostDisplayBody(p)");
+    expect(pageSource).toContain("platform={p.platform}");
+  });
+
+  it("본문이 없으면 <details>를 렌더링하지 않는다", () => {
+    expect(pageSource).toContain("if (!displayBody) return null;");
+  });
+
+  it("저장 action은 현재 필터를 유지한 채 이 대시보드 페이지로 돌아온다", () => {
+    expect(pageSource).toContain('"/dashboard/blog"');
+    expect(pageSource).toContain("returnTo={returnTo}");
+  });
+});

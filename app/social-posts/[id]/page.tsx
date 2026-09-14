@@ -12,7 +12,6 @@ import { checkPlatformApiPublishEligibility } from "@/lib/social/platform-api-pu
 import { buildPlatformApiPublishDryRunPayload } from "@/lib/social/platform-api-publish-payload-builder";
 import { ApiReadinessSummary } from "@/components/platform-api/api-readiness-summary";
 import { ApiDryRunPayloadPreview } from "@/components/platform-api/api-dry-run-payload-preview";
-import { sanitizeNaverCafePlainText } from "@/lib/social/naver-cafe-plain-text-sanitizer";
 import { preparePlatformApiPublishingAction } from "./actions";
 import { editSocialPostAction, runSocialPostQualityGateAction, approveSocialPostAction } from "@/app/articles/[id]/actions";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
@@ -107,13 +106,6 @@ export default async function SocialPostDetailPage({
   const safeReturnTo = getSafeReturnTo(returnTo, fallbackReturnTo);
   const selfReturnTo = (targetTab: WorkspaceTab) => buildTabHref(p.id, targetTab, returnTo);
 
-  // Phase 3-20: naver_cafe는 게시용 plain text 글이므로, 기존에 저장된
-  // 글에 escape된 markdown(\##, \**, &#x20; 등)이 남아 있어도 화면에는
-  // 항상 정리된 형태로 보여준다. 다른 플랫폼은 markdown 원문을 그대로
-  // 보여준다(wordpress_blog/naver_blog는 markdown이 정상 형식이다).
-  const displayPostBody = p.platform === "naver_cafe" ? sanitizeNaverCafePlainText(p.postBody) : p.postBody;
-  const bodyPreview = truncate(displayPostBody);
-  const captionPreview = truncate(p.caption);
   const threadPreview = p.threadItems.slice(0, 3);
   const cardPreview = p.cardItems.slice(0, 3);
 
@@ -732,33 +724,13 @@ export default async function SocialPostDetailPage({
                 </div>
               </dl>
 
-              {displayPostBody && (
-                <div className="mt-3 text-xs">
-                  <p className="font-medium text-zinc-600">
-                    본문 미리보기{p.platform === "naver_cafe" && " (텍스트 정리됨)"}
-                  </p>
-                  <p className="mt-1 whitespace-pre-wrap text-zinc-600">{bodyPreview.preview}</p>
-                  {bodyPreview.truncated && (
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-[11px] text-zinc-400">전체 본문 펼치기</summary>
-                      <p className="mt-1 whitespace-pre-wrap text-zinc-600">{displayPostBody}</p>
-                    </details>
-                  )}
-                </div>
-              )}
-
-              {p.caption && (
-                <div className="mt-3 text-xs">
-                  <p className="font-medium text-zinc-600">캡션 미리보기</p>
-                  <p className="mt-1 whitespace-pre-wrap text-zinc-600">{captionPreview.preview}</p>
-                  {captionPreview.truncated && (
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-[11px] text-zinc-400">전체 캡션 펼치기</summary>
-                      <p className="mt-1 whitespace-pre-wrap text-zinc-600">{p.caption}</p>
-                    </details>
-                  )}
-                </div>
-              )}
+              {/* Phase 4-26: post_body/caption 본문 자체는 여기서 다시 보여주지
+                  않는다 — "게시용 미리보기" 탭이 이미 게시용 본문을, 위 "내부
+                  원문 (raw)" 섹션이 이미 raw post_body/caption을 보여주고
+                  있어서, 여기서 또 (심지어 축약문으로) 세 번째로 보여주면
+                  같은 본문이 한 페이지 안에서 반복 노출된다. 본문을 보려면
+                  "게시용 미리보기" 탭(사람이 읽기 좋은 형태) 또는 바로 위
+                  "내부 원문 (raw)"(저장된 그대로)을 사용한다. */}
 
               {threadPreview.length > 0 && (
                 <div className="mt-3 text-xs">
