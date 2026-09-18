@@ -369,6 +369,19 @@ alert/info box로 만들지 않는다. `components/ui/transient-notice.tsx`
   `lib/social/post-auto-fix-service.ts`
   (`docs/phase-3-operation-manual.md`의 "자동 검토 '수정 필요'를 글
   생성 직후 자동으로 정리 (Phase 4-28)" 섹션 참고).
+- **승인 완료(approval_status === "approved") 상태에서는 [승인] 버튼을
+  다시 primary로 보여주지 않는다 — 승인 완료 카드에는 반드시 "다음
+  작업" 버튼을 함께 표시한다.** "아래에서 다음 작업을 진행하세요"처럼
+  실제 버튼 위치가 불명확한 문구만 남기지 않는다 — 안내 문장과 버튼을
+  같은 카드 안에 붙여 놓는다. 다음 작업은 플랫폼별로 다르게 계산하고
+  (`getPostApprovalNextActions`), 계산 결과가 있어도 [본문 복사]는
+  항상 안전한 fallback으로 포함해 승인 완료 상태에서 버튼이 하나도
+  없는 화면이 생기지 않게 한다. 아직 구현되지 않은 기능(예: 네이버
+  카페/X/Threads/Instagram 실제 API 게시)을 가리키는 동작하지 않는
+  버튼은 만들지 않는다 — 대신 실제로 존재하는 화면(API 게시 준비
+  상태 확인 등)으로 안내한다. 실제 사례:
+  `lib/social/post-approval-next-actions.ts`,
+  `app/social-posts/[id]/page.tsx`.
 - **플랫폼마다 "게시용 본문"의 실제 형식이 다르면(markdown 허용
   플랫폼 vs plain text 전용 플랫폼), 저장/표시/export 시점에 각
   플랫폼에 맞는 형식으로 정리한다.** naver_cafe처럼 plain text 전용

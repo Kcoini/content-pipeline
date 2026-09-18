@@ -4,7 +4,7 @@ import { SocialPostDetailNavigation } from "@/components/social-posts/social-pos
 import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-badge";
 import { getContentGroupLabel, getContentTypeLabel } from "@/lib/social/content-type-classifier";
 import { getSafeReturnTo } from "@/lib/navigation/return-to";
-import { buildArticleOverviewUrl, buildArticleBlogUrl } from "@/lib/navigation/article-deep-links";
+import { buildArticleOverviewUrl, buildArticleBlogUrl, buildArticleSocialUrl } from "@/lib/navigation/article-deep-links";
 import { logEvent } from "@/lib/harness/logger";
 import { getPlatformApiCapability } from "@/lib/social/platform-api-capabilities";
 import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
@@ -43,6 +43,9 @@ import { ensureWordPressHtmlContent } from "@/lib/wordpress/markdown-to-wordpres
 import { PLATFORM_WRITING_CONFIGS } from "@/lib/social/platform-writing-config";
 import { getPlatformReviewCriteria } from "@/lib/social/platform-review-criteria";
 import { detectContentTypeMismatch } from "@/lib/social/content-type-mismatch";
+import { getPostApprovalNextActions, type PostApprovalNextAction } from "@/lib/social/post-approval-next-actions";
+import { buildWordPressBlogPublishPreparationSummary } from "@/lib/social/wordpress-blog-publish-preparation-summary";
+import { CopyPostBodyButton } from "@/components/social/copy-post-body-button";
 
 export const dynamic = "force-dynamic";
 
@@ -156,6 +159,24 @@ export default async function SocialPostDetailPage({
   const apiReadiness = checkPlatformApiReadiness(p.platform);
   const apiEligibility = await checkPlatformApiPublishEligibility(p.id);
   const apiDryRunPayload = showDryRun === "true" ? await buildPlatformApiPublishDryRunPayload(p.id) : null;
+
+  // Phase 4-29: 승인 완료 카드의 "다음 작업"을 계산하기 위한 입력값.
+  // wordpress_blog만 추가로 Draft 존재 여부/게시 준비 상태를 조회한다
+  // (다른 플랫폼은 이미 위에서 계산한 apiReadiness.configured만 있으면
+  // 된다) — approved 상태가 아니면 불필요한 조회이므로 그 경우에만 실행한다.
+  const wordpressBlogSummary =
+    p.approvalStatus === "approved" && p.platform === "wordpress_blog"
+      ? await buildWordPressBlogPublishPreparationSummary(p.articleId, p)
+      : null;
+  const approvalNextActions =
+    p.approvalStatus === "approved"
+      ? getPostApprovalNextActions({
+          platform: p.platform,
+          wordpressDraftExists: wordpressBlogSummary?.draft.exists,
+          wordpressPublishGuardReady: wordpressBlogSummary?.guardStatus === "ready",
+          apiConfigured: apiReadiness.configured,
+        })
+      : null;
 
   // Phase 3-18: full post_body/caption/API key 등은 details_json에 남기지 않는다 — 상태값만 기록.
   await logEvent({
@@ -1028,7 +1049,7 @@ export default async function SocialPostDetailPage({
                 </p>
               </section>
 
-              <section className="mt-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+              <section id="api-readiness-panel" className="mt-3 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
                 <h2 className="text-sm font-semibold text-zinc-700">API 게시 준비 상태</h2>
                 <p className="mt-1 text-[11px] text-zinc-500">
                   이번 단계는 실제 API 게시가 아니라 API 게시 준비 상태 확인입니다. 현재 자동 게시 기능은 비활성화되어 있습니다.
@@ -1145,42 +1166,78 @@ export default async function SocialPostDetailPage({
             </div>
           </dl>
 
-          {p.approvalStatus === "approved" ? (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <p className="w-full text-zinc-600">이미 승인된 글입니다. 아래에서 다음 작업을 진행하세요.</p>
-              {p.platform === "wordpress_blog" && (
-                <Link
-                  href={buildArticleBlogUrl(p.articleId, { socialPostId: p.id, highlight: p.id })}
-                  className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100"
-                >
-                  WordPress Draft 반영하기 →
-                </Link>
-              )}
-              {p.platform === "naver_blog" && (
-                <Link
-                  href={buildTabHref(p.id, "raw", returnTo)}
-                  className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
-                >
-                  수동 export 보기 →
-                </Link>
-              )}
-              {p.platform === "naver_cafe" && (
-                <Link
-                  href={`${buildTabHref(p.id, "preview", returnTo)}#publish-preview`}
-                  className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
-                >
-                  복사용 본문 보기 →
-                </Link>
-              )}
-              {(p.platform === "x" || p.platform === "threads" || p.platform === "instagram") && (
-                <Link
-                  href={`${buildTabHref(p.id, "preview", returnTo)}#publish-preview`}
-                  className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
-                >
-                  게시 전 미리보기 →
-                </Link>
-              )}
-            </div>
+          {p.approvalStatus === "approved" && approvalNextActions ? (
+            (() => {
+              const primaryClass = "rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500";
+              const secondaryClass = "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100";
+
+              // Phase 4-29: actionType별로 실제 이동/실행 위치를 정한다.
+              // 이 카드 자체가 "상세 화면"이므로 view_detail은 다른 페이지로
+              // 보내지 않고 같은 페이지 안의 "게시용 미리보기" 탭으로
+              // 이동시킨다(섹션 6: "본문 영역으로 이동" 앵커).
+              const renderNextAction = (action: PostApprovalNextAction, className: string) => {
+                switch (action.actionType) {
+                  case "copy_body":
+                    return <CopyPostBodyButton articleId={p.articleId} socialPostId={p.id} text={displayBody} className={className} />;
+                  case "view_wordpress_draft":
+                    return (
+                      <a
+                        href={wordpressBlogSummary?.draft.postUrl ?? buildArticleBlogUrl(p.articleId, { socialPostId: p.id, highlight: p.id })}
+                        target={wordpressBlogSummary?.draft.postUrl ? "_blank" : undefined}
+                        rel={wordpressBlogSummary?.draft.postUrl ? "noopener noreferrer" : undefined}
+                        className={className}
+                      >
+                        {action.label}
+                      </a>
+                    );
+                  case "create_wordpress_draft":
+                  case "check_wordpress_publish_readiness":
+                    return (
+                      <Link href={buildArticleBlogUrl(p.articleId, { socialPostId: p.id, highlight: p.id })} className={className}>
+                        {action.label}
+                      </Link>
+                    );
+                  case "prepare_manual_export":
+                    return (
+                      <Link
+                        href={
+                          p.platform === "naver_blog" || p.platform === "news_article" || p.platform === "opinion_column"
+                            ? buildArticleBlogUrl(p.articleId, { socialPostId: p.id, highlight: p.id })
+                            : buildArticleSocialUrl(p.articleId, { socialPostId: p.id, highlight: p.id })
+                        }
+                        className={className}
+                      >
+                        {action.label}
+                      </Link>
+                    );
+                  case "check_api_readiness":
+                    return (
+                      <a href={`${buildTabHref(p.id, "raw", returnTo)}#api-readiness-panel`} className={className}>
+                        {action.label}
+                      </a>
+                    );
+                  case "view_detail":
+                  default:
+                    return (
+                      <a href={buildTabHref(p.id, "preview", returnTo)} className={className}>
+                        {action.label}
+                      </a>
+                    );
+                }
+              };
+
+              return (
+                <div className="mt-3 flex flex-col gap-2 text-xs">
+                  <p className="text-zinc-600">{approvalNextActions.message}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {renderNextAction(approvalNextActions.primaryAction, primaryClass)}
+                    {approvalNextActions.secondaryActions.map((action, i) => (
+                      <span key={`${action.actionType}-${i}`}>{renderNextAction(action, secondaryClass)}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <div className="mt-3 flex flex-col gap-2">
               {!gate.canApprove && gate.reason && (

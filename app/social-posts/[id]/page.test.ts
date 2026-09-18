@@ -238,11 +238,11 @@ describe("Phase 3-26: 단일 글 상세 검토·수정·승인 화면", () => {
     expect(pageSource).not.toContain("자동으로 승인");
   });
 
-  it("승인 완료 후 플랫폼별 다음 작업 링크(WordPress Draft 반영/수동 export/복사용 본문/게시 전 미리보기)를 보여준다", () => {
-    expect(pageSource).toContain("WordPress Draft 반영하기");
-    expect(pageSource).toContain("수동 export 보기");
-    expect(pageSource).toContain("복사용 본문 보기");
-    expect(pageSource).toContain("게시 전 미리보기 →");
+  it("Phase 4-29: 승인 완료 후 플랫폼별 다음 작업은 getPostApprovalNextActions로 계산한다(구 버전 고정 링크 대신)", () => {
+    expect(pageSource).toContain('from "@/lib/social/post-approval-next-actions"');
+    expect(pageSource).toContain("getPostApprovalNextActions({");
+    expect(pageSource).not.toContain("WordPress Draft 반영하기");
+    expect(pageSource).not.toContain("게시 전 미리보기 →");
   });
 
   it("raw enum/quality_status 원문이 상단 요약이나 최종 승인 패널의 기본 라벨로 그대로 노출되지 않는다(describeStatusValue/describeAutoReviewNotRunYet을 거친다)", () => {
@@ -297,5 +297,40 @@ describe("Phase 4-28: 상세 페이지에도 [자동 수정 후 재검토]를 �
 
   it("qualityStatus가 needs_revision일 때만 이 버튼을 보여준다", () => {
     expect(pageSource).toContain('{p.qualityStatus === "needs_revision" && (');
+  });
+});
+
+describe("Phase 4-29: 승인 완료 카드 — 문구/다음 작업 버튼 정리 (정적 소스 검사)", () => {
+  it('"이미 승인된 글입니다. 아래에서 다음 작업을 진행하세요." 문구는 더 이상 쓰지 않는다', () => {
+    expect(pageSource).not.toContain("이미 승인된 글입니다. 아래에서 다음 작업을 진행하세요.");
+  });
+
+  it("approved면 approvalNextActions.message를 보여주고, primary/secondary 버튼을 카드 안에 바로 렌더링한다", () => {
+    expect(pageSource).toContain('p.approvalStatus === "approved" && approvalNextActions');
+    expect(pageSource).toContain("{approvalNextActions.message}");
+    expect(pageSource).toContain("renderNextAction(approvalNextActions.primaryAction, primaryClass)");
+    expect(pageSource).toContain("approvalNextActions.secondaryActions.map");
+  });
+
+  it("wordpress_blog는 Draft 존재 여부/게시 준비 상태를 실제로 조회해서(buildWordPressBlogPublishPreparationSummary) 다음 작업을 계산한다", () => {
+    expect(pageSource).toContain('from "@/lib/social/wordpress-blog-publish-preparation-summary"');
+    expect(pageSource).toContain("wordpressDraftExists: wordpressBlogSummary?.draft.exists");
+    expect(pageSource).toContain('wordpressPublishGuardReady: wordpressBlogSummary?.guardStatus === "ready"');
+  });
+
+  it("naver_cafe/x/threads/instagram은 checkPlatformApiReadiness(apiReadiness.configured)를 재사용한다(새 API 준비 판단 로직을 만들지 않는다)", () => {
+    expect(pageSource).toContain("apiConfigured: apiReadiness.configured");
+  });
+
+  it("승인 완료 카드는 [본문 복사]를 CopyPostBodyButton으로 렌더링한다(항상 전체 본문을 복사)", () => {
+    expect(pageSource).toContain('case "copy_body":');
+    expect(pageSource).toContain("<CopyPostBodyButton articleId={p.articleId} socialPostId={p.id} text={displayBody}");
+  });
+
+  it("approved 상태에서는 [최종 승인] 버튼(primary form)을 다시 보여주지 않는다(승인 form은 else 분기에만 있다)", () => {
+    const approvedBranchStart = pageSource.indexOf('p.approvalStatus === "approved" && approvalNextActions');
+    const elseBranchStart = pageSource.indexOf(") : (", approvedBranchStart);
+    const approvedBranch = pageSource.slice(approvedBranchStart, elseBranchStart);
+    expect(approvedBranch).not.toContain("action={approveSocialPostAction}");
   });
 });

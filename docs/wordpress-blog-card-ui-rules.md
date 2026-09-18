@@ -430,6 +430,37 @@ naver_blog/news_article/opinion_column 카드(wordpress_blog는 별도
 `lib/social/social-draft-generation-service.ts`의 `generateSocialDraft()`
 참고. 이 경로도 approval_status는 절대 바꾸지 않는다.
 
+## 승인 완료 후 다음 작업 버튼 (Phase 4-29)
+
+`/social-posts/[id]`(상세 페이지)의 "최종 승인" 카드는 예전에
+`approval_status === "approved"`일 때 "이미 승인된 글입니다. 아래에서
+다음 작업을 진행하세요."라는 문구만 보여주고, 실제 버튼은
+플랫폼별로 하드코딩된 링크 하나뿐이었다(news_article/opinion_column은
+아예 버튼이 없었다). 이제 `getPostApprovalNextActions()`
+(`lib/social/post-approval-next-actions.ts`)가 플랫폼·상태별
+primaryAction + secondaryActions + 안내 문장을 계산해서 같은 카드
+안에 바로 렌더링한다:
+
+- **wordpress_blog**: Draft 없음 → [WordPress Draft 만들기], Draft
+  있지만 게시 준비 미완료(`guardStatus !== "ready"`) → [게시 준비
+  확인], 게시 준비 완료 → [WordPress Draft 보기](Draft URL이 있으면
+  새 탭으로 바로 연다). Draft 존재/준비 상태는
+  `buildWordPressBlogPublishPreparationSummary()`를 재사용해 조회한다
+  (새 판단 로직을 만들지 않는다).
+- **naver_blog / news_article / opinion_column**: [본문 복사]가
+  primary, [수동 export 준비](블로그/기사형 목록 화면으로 이동)가
+  secondary.
+- **naver_cafe / x / threads / instagram**: 실제 API 게시가 아직
+  구현되어 있지 않으므로(dry-run만 지원) [본문 복사]가 항상
+  primary다. `checkPlatformApiReadiness(platform).configured`가
+  true면 secondary로 [API 게시 준비 확인](같은 페이지의 "API 게시
+  준비 상태" 섹션으로 이동)을 추가한다 — "게시하기"처럼 눌러도 아무
+  일도 일어나지 않는 버튼은 만들지 않는다.
+- 모든 분기에 [본문 복사]/[상세 보기] 중 하나 이상이 포함되므로,
+  다음 작업이 하나도 없는 상태는 발생하지 않는다(fallback 겸용).
+- approved 상태에서는 [최종 승인] form을 아예 렌더링하지 않는다 —
+  else 분기에만 있다(승인 버튼이 다시 primary로 보이는 일이 없다).
+
 ## 게시용 소제목에 마스터 원고 내부 구성 항목 이름을 그대로 쓰지 않는다 (Phase 4-21)
 
 "리드문", "본문", "배경 설명", "쟁점", "향후 확인할 점", "출처"는

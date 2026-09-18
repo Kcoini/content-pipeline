@@ -697,6 +697,24 @@ wordpress_blog 카드에는 "승인하고 WordPress Draft 만들기" 버튼이
     (`lib/social/post-auto-fix-service.ts` 상단 주석 참고). Job
     Progress 연동(`post_auto_fix_and_recheck` job_type)도 이번에는
     하지 않았다 — 필요하면 이어서 진행한다.
+- 승인 완료 카드의 "다음 작업" 버튼 누락 수정(Phase 4-29) —
+  `/social-posts/[id]`의 "최종 승인" 카드가 승인 완료 후 "이미 승인된
+  글입니다. 아래에서 다음 작업을 진행하세요."라는 문구만 보여주고
+  실제 버튼이 없거나(news_article/opinion_column) 플랫폼별로
+  하드코딩된 링크 하나뿐이던 문제를 고쳤다. 새 순수 함수
+  `getPostApprovalNextActions()`(`lib/social/post-approval-next-actions.ts`)가
+  플랫폼별 primaryAction/secondaryActions/안내 문장을 계산해 같은
+  카드 안에 바로 렌더링한다 — wordpress_blog는 Draft 존재/게시 준비
+  상태에 따라 [WordPress Draft 만들기]/[게시 준비 확인]/[WordPress
+  Draft 보기]로, naver_blog/news_article/opinion_column은 [본문
+  복사] + [수동 export 준비]로, naver_cafe/x/threads/instagram은
+  실제 API 게시가 아직 없어 [본문 복사]를 항상 primary로 두고 API
+  연동이 설정되어 있으면 [API 게시 준비 확인]을 추가한다. 모든
+  분기가 [본문 복사]/[상세 보기] 중 하나 이상을 포함해 "다음 작업이
+  하나도 없는" 상태가 생기지 않는다. approved 상태에서는 [최종
+  승인] form을 렌더링하지 않는다(다시 primary로 보이지 않는다):
+  [`wordpress-blog-card-ui-rules.md`](./wordpress-blog-card-ui-rules.md)의
+  "승인 완료 후 다음 작업 버튼" 섹션 참고.
 - 게시용 소제목에서 "리드문"/"본문"/"배경 설명"/"쟁점" 같은 마스터
   원고 내부 구성 항목 이름을 정리(프롬프트 수정 + sanitizer + 자동
   검토, Phase 4-21): [`phase-4-21-internal-section-heading-cleanup.md`](./phase-4-21-internal-section-heading-cleanup.md)
