@@ -8,21 +8,48 @@
 
 ## UX-02: Critical 수정
 
-**목적**: 안전 문제와 가장 심각한 기술 정보 노출을 제거한다.
+> **진행 상태 (2026-09-18)**: `app/articles/[id]/page.tsx` 범위는
+> **UX-02A로 완료**됨. 나머지(`app/articles/[id]/blog/page.tsx`,
+> `components/wordpress/wordpress-publishing-panel.tsx`)는 **UX-02B로
+> 분리**해 아직 진행 전이다. 아래는 원래 계획이며, 완료 내역은
+> [`docs/ux/ux-02a-critical-safety-cleanup.md`](./ux-02a-critical-safety-cleanup.md) 참고.
 
-**대상 페이지**: `app/articles/[id]/page.tsx`, `app/articles/[id]/blog/page.tsx`, `components/wordpress/wordpress-publishing-panel.tsx`
+### UX-02A (완료): app/articles/[id]/page.tsx 안전 문제 + 기술정보 노출
 
-**예상 변경 범위**:
-- "테스트 실행 (실제 공개 게시)" 버튼 문구/플로우를 명확화 (테스트와 실제 게시를 문구·동선으로 분리)
-- `app/articles/[id]/page.tsx` 내 env 변수 이름(`WORDPRESS_BASE_URL` 등) 렌더링을 사용자 친화 상태 문구로 교체
-- `quality_status=ready` 같은 raw 필드명이 섞인 안내 문구를 자연어로 교체
-- `article.status` raw enum 노출 지점(`blog/page.tsx:389,1186`)에 기존 `describeStatusValue()` 적용
-- `WordPressPublishingPanel`을 기본 접힘(추후 `AdvancedDetails`) 상태로 전환하거나, 최소 조치로 raw 필드를 라벨 헬퍼로 감싸기
-- 동일 이름으로 중복된 "WordPress 게시 준비" 섹션 중 하나를 주 진입점으로 통합하거나 나머지를 관리자 전용으로 격리
+- "테스트 실행 (실제 공개 게시)" 버튼 라벨에서 "테스트"를 제거하고
+  ("WordPress 실제 공개 게시 실행"), 별도 "⚠ 관리자 전용" 접힘으로
+  한 번 더 격리했다. 실행 조건(guard)과 확인 모달은 그대로 유지.
+- env 변수 노출 지점(`WORDPRESS_BASE_URL` 등)을 실사했고, 전부 이미
+  중첩 `<details>` 안에 있어 추가 이동이 필요 없었다.
+- SEO plugin provider select를 "SEO plugin 직접 선택 (고급)" 접힘
+  안으로 옮기고, 기본 화면에는 현재 provider 이름만 보여준다.
+- 중복된 "WordPress 게시 준비" 섹션의 이름 충돌을 해소했다(자동 실행
+  섹션을 "WordPress 게시 준비 자동 실행"으로 개명). 완전한 통합은
+  UX-03에서 다시 검토.
+- 위험도는 낮았다: 버튼 라벨/접힘 위치/dt 라벨만 바꿨고 서버 액션,
+  guard, DB 스키마는 전혀 건드리지 않았다. 전체 테스트(3316개)/lint/
+  build 모두 통과.
 
-**위험도**: 중간 — WordPress 실제 게시 플로우를 건드리므로 게시 관련 회귀 테스트 필요. 특히 "테스트/실게시" 문구 변경은 운영 중 실수 게시 방지가 목적이므로 신중히 검증.
+### UX-02B (완료, 2026-09-18): 나머지 Critical 잔여 항목
 
-**의존성**: 없음 (가장 먼저 진행 가능)
+> 완료 내역은 [`docs/ux/ux-02b-wordpress-blog-cleanup.md`](./ux-02b-wordpress-blog-cleanup.md) 참고.
+
+**목적**: UX-02A가 다루지 않은 나머지 안전/기술정보 문제를 정리한다.
+
+**대상 페이지**: `app/articles/[id]/blog/page.tsx`, `components/wordpress/wordpress-publishing-panel.tsx`
+
+**실제 변경 범위**:
+- `quality_status=ready` 같은 raw 필드명이 섞인 안내 문구를 자연어로 교체 (C3), "내부 상태값 보기" 접힘 안 dt/dd도 `describeStatusField`/`describeStatusValue`로 번역
+- `article.status` raw enum 노출 지점(`blog/page.tsx:389,1186,1727`)에 신규 `describeArticleStatus()` 적용 (C6) — 기존 프로젝트 컨벤션("reviewed"=article 레벨에서는 "승인됨")과 충돌하지 않도록 공용 `describeStatusValue`와 분리한 전용 헬퍼로 추가
+- `WordPressPublishingPanel`의 기본 화면을 5줄 요약(raw enum은 `describeStatusValue`로 번역)으로 압축하고, ID/URL/raw guard/timestamp는 "상세 상태 보기" 접힘으로 이동 (C4) — `app/articles/[id]/page.tsx`(article target)와 `app/articles/[id]/blog/page.tsx`(wordpress_blog target) 양쪽 모두 영향, 두 화면 테스트 전부 통과 확인
+- 패널 자체 제목이 wordpress_blog 카드의 children(자체 "WordPress 게시 준비" 다음 작업 카드)과 중복되는 문제도 함께 정리(`isPrimaryWorkflow`일 때 "게시 상태 요약"으로 제목 구분)
+- `/dashboard/blog`, `/dashboard/rewrite` 필터는 실사 결과 이미 `describeStatusField`/`describeStatusValue`를 쓰고 있어 추가 조치 없음(UX-01 감사 원자료가 최신 코드를 반영하지 못했던 것으로 확인)
+
+**위험도**: 낮음으로 실현됨 — `WordPressPublishingPanel`은 두 화면에서 쓰이므로
+양쪽 모두 정적 소스 검사 테스트를 갱신/추가해 회귀를 방지했다. 전체
+테스트(3329개)/lint/build 모두 통과.
+
+**의존성**: UX-02A 완료 후 진행(충족됨)
 
 ---
 

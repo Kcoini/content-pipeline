@@ -160,7 +160,7 @@ describe("고급 기능: WordPress 게시 준비 자동 실행 (정적 소스 �
   });
 
   it("상태 요약에 WordPress Metadata/SEO Plugin Metadata/대표 이미지/Quality Gate/승인/Draft 상태를 모두 표시한다", () => {
-    const start = pageSource.indexOf("WordPress 게시 준비</h2>");
+    const start = pageSource.indexOf("WordPress 게시 준비 자동 실행</h2>");
     const end = pageSource.indexOf("</form>", start);
     const block = pageSource.slice(start, end);
     expect(block).toContain("WordPress Metadata:");
@@ -172,10 +172,19 @@ describe("고급 기능: WordPress 게시 준비 자동 실행 (정적 소스 �
   });
 
   it("자동 실행 버튼은 개별 기능 섹션들보다 먼저(위에) 위치한다", () => {
-    const autoRunIndex = pageSource.indexOf("WordPress 게시 준비</h2>");
+    const autoRunIndex = pageSource.indexOf("WordPress 게시 준비 자동 실행</h2>");
     const individualSectionsIndex = pageSource.indexOf("WordPress Metadata</h2>");
     expect(autoRunIndex).toBeGreaterThanOrEqual(0);
     expect(individualSectionsIndex).toBeGreaterThan(autoRunIndex);
+  });
+
+  it("Phase UX-02A: 자동 실행 섹션과 아래 게시 준비 상태 요약 카드가 서로 다른 이름을 쓴다(중복 섹션명 제거)", () => {
+    // C5: 예전에는 두 섹션 모두 "WordPress 게시 준비"라는 동일한 이름을 썼다.
+    // 이제 정확히 일치하는 "WordPress 게시 준비</h2>"는 요약 카드 한 곳에만 있고,
+    // 자동 실행 섹션은 "WordPress 게시 준비 자동 실행</h2>"로 구분된다.
+    const exactMatches = pageSource.match(/WordPress 게시 준비<\/h2>/g) ?? [];
+    expect(exactMatches.length).toBe(1);
+    expect(pageSource).toContain("WordPress 게시 준비 자동 실행</h2>");
   });
 });
 
@@ -465,5 +474,100 @@ describe("WordPress 게시 준비 요약 카드 + 개발자용 테스트 정보 
 
   it("연결 테스트/업로드 테스트 기능은 삭제되지 않고 그대로 동작한다(testWordPressConnectionAction)", () => {
     expect(pageSource).toContain("testWordPressConnectionAction");
+  });
+});
+
+describe("Phase UX-02A (C1): '테스트' 라벨의 실제 공개 게시 UI 제거 + 관리자 전용 격리", () => {
+  it("'테스트'라는 단어가 붙은 실제 공개 게시 버튼 라벨이 더 이상 없다", () => {
+    expect(pageSource).not.toContain("WordPress 공개 게시 테스트 실행");
+    expect(pageSource).not.toContain("Public Publish Test");
+  });
+
+  it("실제 공개 게시 버튼은 위험성이 분명한 라벨을 쓴다", () => {
+    expect(pageSource).toContain("WordPress 실제 공개 게시 실행");
+  });
+
+  it("publishApprovedArticleToWordPressAction(실제 공개 게시)은 별도의 관리자 전용 접힘(<details>) 안에서만 호출된다", () => {
+    // "고급 기능: 원본 article WordPress 전송" 접힘 하나만으로는 부족하다 —
+    // 실제 공개 게시는 그 안에서 한 번 더 접힘(관리자 전용 경고)으로 격리되어야
+    // 사용자가 "고급 기능"을 여는 것만으로 바로 실제 공개 게시 버튼을 보지 못한다.
+    const outerDetailsIndex = pageSource.indexOf("고급 기능: 원본 article WordPress 전송");
+    const adminOnlyDetailsIndex = pageSource.indexOf("관리자 전용: WordPress 실제 공개 게시");
+    const publishActionFormIndex = pageSource.indexOf("<form action={publishApprovedArticleToWordPressAction}");
+
+    expect(outerDetailsIndex).toBeGreaterThan(-1);
+    expect(adminOnlyDetailsIndex).toBeGreaterThan(outerDetailsIndex);
+    expect(publishActionFormIndex).toBeGreaterThan(adminOnlyDetailsIndex);
+
+    // adminOnlyDetailsIndex 바로 앞에 <details>/<summary>가 있어야 한다(진짜 접힘 영역).
+    const nearestDetailsBeforeAdmin = pageSource.lastIndexOf("<details", adminOnlyDetailsIndex);
+    const nearestSummaryEndBeforeAdmin = pageSource.indexOf("</summary>", adminOnlyDetailsIndex);
+    expect(nearestDetailsBeforeAdmin).toBeGreaterThan(-1);
+    expect(nearestSummaryEndBeforeAdmin).toBeGreaterThan(adminOnlyDetailsIndex);
+  });
+
+  it("관리자 전용 영역에는 실제로 외부에 공개된다는 명시적 경고 문구가 있다", () => {
+    const adminOnlyIndex = pageSource.indexOf("관리자 전용: WordPress 실제 공개 게시");
+    expect(adminOnlyIndex).toBeGreaterThan(-1);
+    const publishActionIndex = pageSource.indexOf("<form action={publishApprovedArticleToWordPressAction}");
+    const block = pageSource.slice(adminOnlyIndex, publishActionIndex);
+    expect(block).toContain("일반 사용자는 사용하지 않아야");
+    expect(block).toContain("되돌릴 수 없습니다");
+  });
+
+  it("실제 공개 게시 버튼은 여전히 ConfirmSubmitButton(확인 절차)을 거친다", () => {
+    const start = pageSource.indexOf("<form action={publishApprovedArticleToWordPressAction}");
+    const end = pageSource.indexOf("</form>", start);
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("ConfirmSubmitButton");
+    expect(block).toContain("실제 공개 상태로 변경합니다");
+  });
+
+  it("공개 게시 관련 dt/dd에 raw enum(publish_quality_gate_status 등 필드명)을 그대로 노출하지 않는다", () => {
+    const adminOnlyIndex = pageSource.indexOf("관리자 전용: WordPress 실제 공개 게시");
+    const detailsEnd = pageSource.indexOf("{/* Phase 3-16: 기사 개요", adminOnlyIndex);
+    const block = pageSource.slice(adminOnlyIndex, detailsEnd);
+    expect(block).not.toContain("<dt className=\"font-medium text-zinc-600\">publish_quality_gate_status</dt>");
+    expect(block).not.toContain("<dt className=\"font-medium text-zinc-600\">publish_ready</dt>");
+    expect(block).not.toContain("<dt className=\"font-medium text-zinc-600\">public_publish_approval_status</dt>");
+    expect(block).not.toContain("<dt className=\"font-medium text-zinc-600\">public_publish_approved</dt>");
+    expect(block).not.toContain("<dt className=\"font-medium text-zinc-600\">public_published</dt>");
+  });
+
+  it("WordPress Draft 생성/보기 관련 action은 이 접힘과 무관하게 그대로 유지된다(publishToWordPressDraftAction)", () => {
+    expect(pageSource).toContain("publishToWordPressDraftAction,");
+    expect(pageSource).toContain("<form action={publishToWordPressDraftAction}");
+  });
+});
+
+describe("Phase UX-02A (C7): SEO plugin provider select는 기본 화면에 노출되지 않는다", () => {
+  function getSeoPluginMetadataFormSource(): string {
+    const start = pageSource.indexOf("id=\"seo-plugin-metadata\"");
+    const end = pageSource.indexOf("</form>", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return pageSource.slice(start, end);
+  }
+
+  it("현재 연결된 SEO plugin 이름을 사용자 친화적으로 먼저 보여준다", () => {
+    const block = getSeoPluginMetadataFormSource();
+    expect(block).toContain("현재 SEO 연동");
+  });
+
+  it("provider select는 '고급' 접힘(<details>) 안에만 있다", () => {
+    const block = getSeoPluginMetadataFormSource();
+    const detailsStart = block.indexOf("<details");
+    expect(detailsStart).toBeGreaterThan(-1);
+    const beforeDetails = block.slice(0, detailsStart);
+    expect(beforeDetails).not.toContain("<select");
+    const detailsContent = block.slice(detailsStart);
+    expect(detailsContent).toContain('name="provider"');
+    expect(detailsContent).toContain("SEO plugin 직접 선택");
+  });
+
+  it("provider 옵션 목록과 생성 action은 삭제되지 않고 그대로 유지된다", () => {
+    const block = getSeoPluginMetadataFormSource();
+    expect(block).toContain("SEO_PLUGIN_PROVIDER_OPTIONS.map");
+    expect(block).toContain("generateSeoPluginMetadataAction");
   });
 });

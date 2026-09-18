@@ -81,6 +81,17 @@ const STATUS_VALUE_LABELS: Record<string, string> = {
   handoff_ready: "수동 게시 준비 완료",
   handoff_completed: "수동 게시 준비 확인 완료",
   manual_post_recorded: "수동 게시 기록 완료",
+
+  // WordPress Metadata/SEO plugin/대표 이미지/공개 게시 준비 계열
+  // (Phase UX-02B: WordPressPublishingPanel 등에서 재사용)
+  reviewed: "검토 완료",
+  generated: "생성됨",
+  prepared: "준비됨",
+  uploaded: "업로드됨",
+  ready_to_publish: "공개 준비 완료",
+  not_attached: "연결 안 됨",
+  attached: "연결됨",
+  skipped_no_media_id: "건너뜀 (media id 없음)",
 };
 
 /** raw 상태값 하나를 한국어 라벨로 바꾼다. 알 수 없는 값이면 원본을 그대로 반환한다(예외를 던지지 않는다). */
@@ -154,4 +165,24 @@ export const STATUS_FIELD_LABELS: Record<string, string> = {
 /** field 라벨을 반환한다. 알 수 없는 필드면 원본 필드명을 그대로 반환한다. */
 export function describeStatusField(field: string): string {
   return STATUS_FIELD_LABELS[field] ?? field;
+}
+
+/**
+ * article.status(마스터 원고/기사 자체의 승인 게이트) 전용 라벨.
+ * `docs/ui-ux-governance-rules.md`의 "같은 영어 값을 서로 다른 필드에
+ * 재사용할 때는 화면 라벨을 다르게 붙이지 않는다" 원칙에 따라, 이
+ * 필드의 "reviewed"는 STATUS_VALUE_LABELS의 일반적인 "검토 완료"가
+ * 아니라 이미 프로젝트 전체에서 쓰는 "승인됨"으로 고정한다(하위 항목의
+ * 선택적 검토 플래그 reviewed=검토 완료와 혼동하지 않기 위해 일부러
+ * 공용 맵과 분리했다).
+ */
+const ARTICLE_STATUS_LABELS: Record<string, string> = {
+  draft: "초안",
+  reviewed: "승인됨",
+  published: "게시됨",
+};
+
+/** article.status 하나를 한국어 라벨로 바꾼다. 알 수 없는 값이면 원본을 그대로 반환한다. */
+export function describeArticleStatus(status: string): string {
+  return ARTICLE_STATUS_LABELS[status] ?? status;
 }

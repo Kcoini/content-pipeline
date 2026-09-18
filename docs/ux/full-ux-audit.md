@@ -35,15 +35,29 @@
 
 ## 3. Critical 문제
 
-| # | 위치 | 문제 | 근거 |
-|---|---|---|---|
-| C1 | `app/articles/[id]/page.tsx:2601-2702` | "테스트 실행"이라는 문구를 쓰면서 실제로는 WordPress **실제 공개 게시**가 실행되는 버튼이 존재. 사용자가 "테스트니까 괜찮겠지"라고 판단해 실수로 공개 게시할 위험 | `"WordPress 공개 게시 테스트 실행 (실제 공개 게시)"` 버튼 텍스트 자체가 모순적 |
-| C2 | `app/articles/[id]/page.tsx` 다수 위치 | env 변수 이름이 최소 8곳 raw로 화면에 렌더링됨 (`WORDPRESS_BASE_URL`, `WORDPRESS_MEDIA_UPLOAD_ENABLED`, `WORDPRESS_PUBLISH_ENABLED`, `SEO_PLUGIN_PROVIDER`, `SEO_PLUGIN_WRITE_ENABLED`, `WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED`) | L1009-1015, L1516, L1676, L1711, L2098-2106, L2198 |
-| C3 | `app/articles/[id]/blog/page.tsx:997` | 버튼 비활성 사유 문구에 `quality_status=ready` 같은 raw DB 필드명이 그대로 문장에 섞여 노출 | `"먼저 품질검사를 통과해야 합니다(quality_status=ready 필요)."` |
-| C4 | `components/wordpress/wordpress-publishing-panel.tsx:118-225` | WordPress 게시 준비 패널이 `&lt;details&gt;`로 접히지 않고 기본 노출 상태로, `qualityStatus`/`approvalStatus` raw enum, WordPress Post ID, WordPress Media ID, Media URL, SEO 필드명(영문)을 10개 이상 dt/dd로 나열 | wordpress-publishing-panel.tsx:120-226; 호출부 blog/page.tsx:1135-1200 |
-| C5 | `app/articles/[id]/page.tsx` | "WordPress 게시 준비"라는 **동일한 이름의 섹션이 페이지 안에 두 번** 존재(자동 실행 섹션과 요약 카드 섹션) — 사용자가 어느 쪽을 눌러야 하는지 혼동 | L796-856 vs L1285-1348 |
-| C6 | `app/articles/[id]/blog/page.tsx:389, 1186` | `article status: {article.status}` 형태로 raw enum(draft/reviewed)이 번역 없이 그대로 노출. 같은 프로젝트의 `/articles/[id]/social`은 `describeStatusValue()`로 이미 번역하고 있어 **동일 데이터의 화면 간 표현 불일치**이자 raw enum 노출 | blog/page.tsx:389,1186 vs social/page.tsx:155 |
-| C7 | `app/articles/[id]/page.tsx:1009-1020` | SEO plugin provider 선택(`yoast`/`rank_math`/`aioseo`)이 접힘 없이 메인 화면에 select로 노출 | L1002-1020 |
+> **업데이트 (2026-09-18, Phase UX-02A)**: C1/C2/C5/C7은
+> `app/articles/[id]/page.tsx`에 한해 해결되었다. 자세한 변경 내용은
+> [`docs/ux/ux-02a-critical-safety-cleanup.md`](./ux-02a-critical-safety-cleanup.md)
+> 참고.
+>
+> **업데이트 (2026-09-18, Phase UX-02B)**: C3/C4/C6도 해결되었다
+> (`app/articles/[id]/blog/page.tsx`, `components/wordpress/wordpress-publishing-panel.tsx`).
+> 자세한 변경 내용은
+> [`docs/ux/ux-02b-wordpress-blog-cleanup.md`](./ux-02b-wordpress-blog-cleanup.md)
+> 참고. `/dashboard/blog`, `/dashboard/rewrite`의 필터 라벨은 실사 결과
+> 이미 `describeStatusField`/`describeStatusValue`로 번역되어 있음을
+> 확인했다(추가 조치 불필요 — Section L/M 항목의 문서 기준 원자료가
+> 최신 코드 상태를 반영하지 못했던 것으로 판단).
+
+| # | 위치 | 문제 | 근거 | 상태 |
+|---|---|---|---|---|
+| C1 | `app/articles/[id]/page.tsx:2601-2702` | "테스트 실행"이라는 문구를 쓰면서 실제로는 WordPress **실제 공개 게시**가 실행되는 버튼이 존재. 사용자가 "테스트니까 괜찮겠지"라고 판단해 실수로 공개 게시할 위험 | `"WordPress 공개 게시 테스트 실행 (실제 공개 게시)"` 버튼 텍스트 자체가 모순적 | ✅ 해결 (UX-02A) — 라벨을 "WordPress 실제 공개 게시 실행"으로 변경하고 별도 관리자 전용 접힘으로 격리 |
+| C2 | `app/articles/[id]/page.tsx` 다수 위치 | env 변수 이름이 최소 8곳 raw로 화면에 렌더링됨 (`WORDPRESS_BASE_URL`, `WORDPRESS_MEDIA_UPLOAD_ENABLED`, `WORDPRESS_PUBLISH_ENABLED`, `SEO_PLUGIN_PROVIDER`, `SEO_PLUGIN_WRITE_ENABLED`, `WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED`) | L1009-1015, L1516, L1676, L1711, L2098-2106, L2198 | ⚠️ 확인 완료 — 실사 결과 전부 이미 중첩 `<details>`(상세 보기) 안에 있었음(추가 이동 불필요). provider select만 새로 접힘 처리(C7 참고) |
+| C3 | `app/articles/[id]/blog/page.tsx:997` | 버튼 비활성 사유 문구에 `quality_status=ready` 같은 raw DB 필드명이 그대로 문장에 섞여 노출 | `"먼저 품질검사를 통과해야 합니다(quality_status=ready 필요)."` | ✅ 해결 (UX-02B) — raw 필드명 제거, "내부 상태값 보기" 접힘 안 dt/dd도 describeStatusField/describeStatusValue로 번역 |
+| C4 | `components/wordpress/wordpress-publishing-panel.tsx:118-225` | WordPress 게시 준비 패널이 `&lt;details&gt;`로 접히지 않고 기본 노출 상태로, `qualityStatus`/`approvalStatus` raw enum, WordPress Post ID, WordPress Media ID, Media URL, SEO 필드명(영문)을 10개 이상 dt/dd로 나열 | wordpress-publishing-panel.tsx:120-226; 호출부 blog/page.tsx:1135-1200 | ✅ 해결 (UX-02B) — 기본 화면은 5줄 요약(품질검사/승인/Draft/SEO/대표 이미지, 모두 describeStatusValue로 번역)만 표시, ID/URL/raw guard/timestamp는 "상세 상태 보기" 접힘으로 이동. 동일 컴포넌트를 쓰는 `/articles/[id]`도 함께 영향 받아 검증됨 |
+| C5 | `app/articles/[id]/page.tsx` | "WordPress 게시 준비"라는 **동일한 이름의 섹션이 페이지 안에 두 번** 존재(자동 실행 섹션과 요약 카드 섹션) — 사용자가 어느 쪽을 눌러야 하는지 혼동 | L796-856 vs L1285-1348 | ✅ 해결 (UX-02A) — 자동 실행 섹션 제목을 "WordPress 게시 준비 자동 실행"으로 구분(완전 통합은 UX-03에서 재검토) |
+| C6 | `app/articles/[id]/blog/page.tsx:389, 1186` | `article status: {article.status}` 형태로 raw enum(draft/reviewed)이 번역 없이 그대로 노출. 같은 프로젝트의 `/articles/[id]/social`은 `describeStatusValue()`로 이미 번역하고 있어 **동일 데이터의 화면 간 표현 불일치**이자 raw enum 노출 | blog/page.tsx:389,1186 vs social/page.tsx:155 | ✅ 해결 (UX-02B) — 신규 `describeArticleStatus()`(article.status 전용, "reviewed"→"승인됨" 고정)로 번역. 승인 안내 문구의 raw 병기도 제거 |
+| C7 | `app/articles/[id]/page.tsx:1009-1020` | SEO plugin provider 선택(`yoast`/`rank_math`/`aioseo`)이 접힘 없이 메인 화면에 select로 노출 | L1002-1020 | ✅ 해결 (UX-02A) — 현재 provider를 친화적 텍스트로 먼저 보여주고, select는 "SEO plugin 직접 선택 (고급)" 접힘 안으로 이동 |
 
 ## 4. High 문제
 

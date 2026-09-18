@@ -31,7 +31,7 @@ describe("getWordPressBlogWorkflowStatusSummary", () => {
     expect(summary.draft).toBe("생성됨");
     expect(summary.seo).toBe("준비됨");
     expect(summary.featuredImage).toBe("연결됨");
-    expect(summary.publishGuard).toBe("ready");
+    expect(summary.publishGuard).toBe("준비 완료");
     expect(summary.checklist).toBe("준비됨");
   });
 

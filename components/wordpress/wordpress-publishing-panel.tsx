@@ -12,6 +12,7 @@
 // 쓰이는 일이 없도록 각 페이지가 자기 데이터만 전달한다.
 
 import type { ReactNode } from "react";
+import { describeStatusValue } from "@/lib/social/status-labels";
 
 export type WordPressPublishingTargetType = "article" | "wordpress_blog";
 
@@ -96,10 +97,19 @@ export function WordPressPublishingPanel({
   const subTextClass = targetType === "article" ? "text-amber-700" : "text-indigo-700";
   const labelClass = targetType === "article" ? "text-amber-800" : "text-indigo-800";
 
+  // Phase UX-02B (섹션 K): isPrimaryWorkflow=true(wordpress_blog)인 화면은
+  // 이 패널의 children으로 이미 자체 "WordPress 게시 준비" 다음 작업
+  // 카드를 렌더링한다(예: app/articles/[id]/blog/page.tsx) — 같은 문구를
+  // 바로 위에 또 두면 같은 이름의 섹션이 중첩되어 보인다. 그래서
+  // isPrimaryWorkflow일 때는 이 패널을 "그 카드의 세부 상태를 담는
+  // 바깥 틀"로 구분해 다른 제목을 쓴다. isPrimaryWorkflow=false(article
+  // 고급 기능)는 children 없이 단독으로 쓰이므로 원래 제목을 유지한다.
+  const headingText = isPrimaryWorkflow ? "게시 상태 요약" : "WordPress 게시 준비";
+
   return (
     <div className={containerClass}>
       <div className="flex flex-wrap items-center gap-2">
-        <p className={`text-[11px] font-semibold ${textClass}`}>WordPress 게시 준비</p>
+        <p className={`text-[11px] font-semibold ${textClass}`}>{headingText}</p>
         <span className={`${badgeBase} ${targetBadgeClass}`}>대상: {TARGET_LABEL[targetType]}</span>
         {isPrimaryWorkflow ? (
           <>
@@ -115,116 +125,111 @@ export function WordPressPublishingPanel({
       </div>
       <p className={`mt-1 text-[11px] ${subTextClass}`}>{DESCRIPTION[targetType]}</p>
 
-      <dl className={`mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] sm:grid-cols-2 ${labelClass}`}>
-        <div>
-          <dt className="font-medium">품질 상태</dt>
-          <dd>{summary.qualityStatus}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">승인 상태</dt>
-          <dd>{summary.approvalStatus}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">WordPress Draft 상태</dt>
-          <dd>{summary.draftStatus}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">WordPress Post/Draft ID</dt>
-          <dd>
-            {summary.draftId ?? "-"}
-            {summary.draftUrl && (
-              <>
-                {" "}
-                (
-                <a href={summary.draftUrl} target="_blank" rel="noopener noreferrer" className="underline">
-                  열기
-                </a>
-                )
-              </>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium">SEO Metadata 상태</dt>
-          <dd>{summary.seoMetadataStatus}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">seoTitle</dt>
-          <dd>{summary.seoTitle ?? seoFieldMissingLabel(targetType, "SEO Title")}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">metaDescription</dt>
-          <dd>{summary.metaDescription ?? seoFieldMissingLabel(targetType, "Meta Description")}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">targetKeyword</dt>
-          <dd>{summary.targetKeyword ?? seoFieldMissingLabel(targetType, "Target Keyword")}</dd>
-        </div>
-        {summary.secondaryKeywords && (
-          <div>
-            <dt className="font-medium">secondaryKeywords</dt>
-            <dd>{summary.secondaryKeywords.length > 0 ? summary.secondaryKeywords.join(", ") : "-"}</dd>
-          </div>
+      {/*
+        Phase UX-02B (C4): 기본 화면에는 "지금 어떤 상태인지"를 한
+        눈에 보여줄 수 있는 짧은 요약만 둔다(5줄) — raw enum은
+        describeStatusValue로 번역해서 보여준다. WordPress/이미지 관련
+        내부 식별자·URL, raw publish guard 값, 마지막 갱신 시각 같은
+        세부 정보는 전부 아래 "상세 상태 보기" 접힘 안으로 옮긴다.
+      */}
+      <ul className={`mt-2 flex flex-col gap-0.5 text-[11px] ${labelClass}`}>
+        <li>품질검사: {describeStatusValue(summary.qualityStatus)}</li>
+        <li>승인: {describeStatusValue(summary.approvalStatus)}</li>
+        <li>WordPress Draft: {summary.draftStatus}</li>
+        <li>SEO 정보: {describeStatusValue(summary.seoMetadataStatus)}</li>
+        <li>대표 이미지: {describeStatusValue(summary.featuredImageStatus)}</li>
+      </ul>
+      {targetType === "wordpress_blog" &&
+        (!summary.seoTitle || !summary.metaDescription || !summary.targetKeyword) && (
+          <p className={`mt-1.5 text-[11px] ${subTextClass}`}>
+            metadata 재생성이 필요합니다. article의 SEO metadata로 자동 대체되지 않습니다 — &ldquo;SEO
+            Metadata 재생성&rdquo; 버튼을 사용하세요.
+          </p>
         )}
-        {targetType === "wordpress_blog" &&
-          (!summary.seoTitle || !summary.metaDescription || !summary.targetKeyword) && (
-            <div className="sm:col-span-2 text-amber-700">
-              metadata 재생성이 필요합니다. article의 SEO metadata로 자동 대체되지 않습니다 — &ldquo;SEO
-              Metadata 재생성&rdquo; 버튼을 사용하세요.
-            </div>
-          )}
-        <div>
-          <dt className="font-medium">대표 이미지 상태</dt>
-          <dd>{summary.featuredImageStatus}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">WordPress media ID</dt>
-          <dd>{summary.featuredImageMediaId ?? "-"}</dd>
-        </div>
-        {summary.featuredImageUrl !== undefined && (
-          <div>
-            <dt className="font-medium">Media URL</dt>
-            <dd className="break-all">{summary.featuredImageUrl ?? "-"}</dd>
-          </div>
-        )}
-        {summary.featuredImageAttachStatus !== undefined && (
-          <div>
-            <dt className="font-medium">연결 상태</dt>
-            <dd>{summary.featuredImageAttachStatus ?? "-"}</dd>
-          </div>
-        )}
-        <div>
-          <dt className="font-medium">대표 이미지 생략 여부</dt>
-          <dd>
-            {summary.featuredImageWaived ? "예" : "아니오"}
-            {summary.featuredImageWaived && summary.featuredImageWaiverReason ? ` (사유: ${summary.featuredImageWaiverReason})` : ""}
-          </dd>
-        </div>
-        {summary.featuredImageErrorMessage && (
-          <div className="sm:col-span-2">
-            <dt className="font-medium text-red-700">오류 메시지</dt>
-            <dd className="text-red-700">{summary.featuredImageErrorMessage}</dd>
-          </div>
-        )}
-        <div>
-          <dt className="font-medium">Publish Guard 상태</dt>
-          <dd>{summary.publishGuardStatus}</dd>
-        </div>
-        {summary.lastUpdatedAt && (
-          <div>
-            <dt className="font-medium">마지막 업데이트 시각</dt>
-            <dd>{summary.lastUpdatedAt}</dd>
-          </div>
-        )}
-        {summary.lastActionResult && (
-          <div className="sm:col-span-2">
-            <dt className="font-medium">마지막 실행 결과</dt>
-            <dd>{summary.lastActionResult}</dd>
-          </div>
-        )}
-      </dl>
+      {summary.featuredImageErrorMessage && (
+        <p className="mt-1.5 text-[11px] text-red-700">오류: {summary.featuredImageErrorMessage}</p>
+      )}
 
       {children}
+
+      <details className="mt-2">
+        <summary className={`cursor-pointer text-[10px] ${subTextClass}`}>상세 상태 보기</summary>
+        <dl className={`mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] sm:grid-cols-2 ${labelClass}`}>
+          <div>
+            <dt className="font-medium">WordPress Post/Draft ID</dt>
+            <dd>
+              {summary.draftId ?? "-"}
+              {summary.draftUrl && (
+                <>
+                  {" "}
+                  (
+                  <a href={summary.draftUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                    열기
+                  </a>
+                  )
+                </>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium">seoTitle</dt>
+            <dd>{summary.seoTitle ?? seoFieldMissingLabel(targetType, "SEO Title")}</dd>
+          </div>
+          <div>
+            <dt className="font-medium">metaDescription</dt>
+            <dd>{summary.metaDescription ?? seoFieldMissingLabel(targetType, "Meta Description")}</dd>
+          </div>
+          <div>
+            <dt className="font-medium">targetKeyword</dt>
+            <dd>{summary.targetKeyword ?? seoFieldMissingLabel(targetType, "Target Keyword")}</dd>
+          </div>
+          {summary.secondaryKeywords && (
+            <div>
+              <dt className="font-medium">secondaryKeywords</dt>
+              <dd>{summary.secondaryKeywords.length > 0 ? summary.secondaryKeywords.join(", ") : "-"}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="font-medium">WordPress media ID</dt>
+            <dd>{summary.featuredImageMediaId ?? "-"}</dd>
+          </div>
+          {summary.featuredImageUrl !== undefined && (
+            <div>
+              <dt className="font-medium">Media URL</dt>
+              <dd className="break-all">{summary.featuredImageUrl ?? "-"}</dd>
+            </div>
+          )}
+          {summary.featuredImageAttachStatus !== undefined && (
+            <div>
+              <dt className="font-medium">연결 상태</dt>
+              <dd>{summary.featuredImageAttachStatus ? describeStatusValue(summary.featuredImageAttachStatus) : "-"}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="font-medium">대표 이미지 생략 여부</dt>
+            <dd>
+              {summary.featuredImageWaived ? "예" : "아니오"}
+              {summary.featuredImageWaived && summary.featuredImageWaiverReason ? ` (사유: ${summary.featuredImageWaiverReason})` : ""}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium">게시 준비 상태</dt>
+            <dd>{describeStatusValue(summary.publishGuardStatus)}</dd>
+          </div>
+          {summary.lastUpdatedAt && (
+            <div>
+              <dt className="font-medium">마지막 업데이트 시각</dt>
+              <dd>{summary.lastUpdatedAt}</dd>
+            </div>
+          )}
+          {summary.lastActionResult && (
+            <div className="sm:col-span-2">
+              <dt className="font-medium">마지막 실행 결과</dt>
+              <dd>{summary.lastActionResult}</dd>
+            </div>
+          )}
+        </dl>
+      </details>
     </div>
   );
 }

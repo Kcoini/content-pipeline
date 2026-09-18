@@ -964,3 +964,93 @@ SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본
 - 1차 구현은 polling(2~3초 간격)이다 — 실시간(Realtime) 연동은 이후
   과제로 남긴다.
 - 실제 적용 사례: [`docs/job-progress-system.md`](./job-progress-system.md).
+
+## env 변수명·실제 외부 반영 action·provider 노출 금지 원칙 (Phase UX-02A)
+
+`docs/ux/full-ux-audit.md` 전체 UX 감사(Phase UX-01)에서 확인된 Critical
+문제(`app/articles/[id]/page.tsx`에 집중)를 바탕으로, 다음 4가지를 모든
+화면에 적용되는 금지/필수 규칙으로 못박는다.
+
+1. **env 변수 이름을 일반 사용자 화면에 그대로 렌더링하지 않는다.**
+   `WORDPRESS_BASE_URL`, `WORDPRESS_MEDIA_UPLOAD_ENABLED`,
+   `WORDPRESS_PUBLISH_ENABLED`, `SEO_PLUGIN_PROVIDER`,
+   `SEO_PLUGIN_WRITE_ENABLED`, `WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED` 같은
+   env 변수명은 "연결됨/연결 안 됨", "사용 가능/비활성화됨" 같은
+   사용자 친화적 문구로 바꾸거나, 꼭 필요하면 기본 접힘
+   `<details>`(가능하면 "고급 기능" 같은 상위 접힘 안에 한 번 더 접힌
+   "~상세 보기"/"고급 설정 보기")로 감싼다. env 변수명을 한국어 문장
+   옆에 그냥 병기하지 않는다.
+2. **실제로 외부 시스템을 변경하는 action에는 "테스트"라는 단어를
+   쓰지 않는다.** 버튼 라벨이 "테스트"라고 말하면서 실제로는 WordPress
+   공개 게시처럼 되돌릴 수 없는 변경이 일어나면 안 된다(사용자가
+   "테스트니까 안전하다"고 오해해 실수로 실행할 수 있다). 라벨은
+   실제로 일어나는 일을 있는 그대로 설명해야 한다(예: "WordPress
+   실제 공개 게시 실행"). 실제 적용 사례:
+   `app/articles/[id]/page.tsx`의 "WordPress 공개 게시 테스트 실행
+   (실제 공개 게시)" → "WordPress 실제 공개 게시 실행" 수정
+   (`docs/ux/ux-02a-critical-safety-cleanup.md` 참고).
+3. **되돌릴 수 없는 실제 공개 게시(public publish) 기능은 일반 사용자
+   기본 흐름에 노출하지 않는다.** 이런 기능을 완전히 제거할 수 없다면
+   (기존 fallback/관리자 경로로 유지해야 한다면), 다음 두 조건을 모두
+   만족해야 한다: (a) 일반적인 "고급 기능" 접힘 하나만으로는 부족하고,
+   그 안에서 한 번 더 별도의 "⚠ 관리자 전용" 접힘으로 격리한다. (b) 그
+   접힘을 열면 "일반 사용자는 사용하지 않아야 하며 되돌릴 수 없다"는
+   경고 문구가 버튼보다 먼저 보인다. 자동 public publish는 이 규칙과
+   무관하게 여전히 어떤 경우에도 새로 추가하지 않는다(섹션 3-26 원칙
+   그대로 유지).
+4. **provider/endpoint/ID 같은 Level 3 정보는 기본 화면에 select/입력
+   폼으로 제공하지 않는다.** provider가 사이트 전체 env 설정으로
+   이미 정해지는 값이라면(예: `SEO_PLUGIN_PROVIDER`), 기본 화면에는
+   현재 연결된 provider 이름만 사용자 친화적으로 보여주고, provider를
+   직접 바꾸는 select는 "OO 직접 선택 (고급)" 같은 별도 접힘 안에
+   둔다. WordPress Post ID/Media ID/endpoint path 등도 마찬가지로
+   기본 화면 dt/dd로 나열하지 않고 접힘 안에만 둔다.
+
+이 4가지는 `docs/ux/ui-information-levels.md`의 Level 3 분류와
+`docs/ux/ux-refactor-roadmap.md`의 UX-02A 단계에 대응한다. 새 화면을
+만들거나 기존 화면에 WordPress/SEO/공개 게시 관련 기능을 추가할 때는
+이 절을 먼저 확인한다.
+
+## raw DB 필드명·내부 ID 노출 금지, disabled 이유 자연어 원칙 (Phase UX-02B)
+
+`docs/ux/full-ux-audit.md`의 C3/C4/C6(`app/articles/[id]/blog/page.tsx`,
+`components/wordpress/wordpress-publishing-panel.tsx`)에서 확인된 패턴을
+바탕으로, 위 Phase UX-02A 원칙에 다음을 추가한다.
+
+1. **버튼 disabled 사유·안내 문구에 `field_name=value` 형태의 raw DB
+   필드명을 절대 섞지 않는다.** `"quality_status=ready 필요"`,
+   `"approval_status=approved 필요"`, `"publish_guard=blocked"` 같은
+   표현은 개발자에게는 정확하지만 일반 사용자에게는 의미 없는 코드
+   조각이다. 항상 "품질검사를 먼저 완료해 주세요.", "최종 승인이
+   필요합니다." 같은 자연어 문장으로 바꾼다. 조건이 이미 자명하면
+   (예: "아직 승인되지 않았을 때만 보이는 경고") 굳이 현재 값을 괄호로
+   덧붙이지 않는다 — 조건과 안내만으로 충분하다.
+2. **"내부 상태값 보기" 같은 접힘 영역 안에서도 dt 라벨은 raw 필드명이
+   아니라 `describeStatusField`를, dd 값은 `describeStatusValue`를
+   거친다.** 접혀 있다는 이유로 raw 그대로 두지 않는다(섹션 "페이지 간
+   일관성 원칙" 2번과 동일한 원칙을 여기서도 지킨다).
+3. **WordPress Post ID/Media ID/Media URL/provider/raw publish guard
+   값 같은 Level 3 정보를 재사용 컴포넌트(`WordPressPublishingPanel`
+   등)의 기본(비접힘) 렌더링에 두지 않는다.** 공통 컴포넌트는 기본
+   화면에 "지금 상태를 5줄 내외로 요약"만 보여주고, ID/URL/raw
+   status/timestamp 같은 세부 정보는 컴포넌트 내부의 "상세 상태
+   보기" 접힘 안에 모은다. 여러 화면이 공유하는 컴포넌트를 수정할
+   때는 모든 사용처(예: `/articles/[id]`의 `article` targetType과
+   `/articles/[id]/blog`의 `wordpress_blog` targetType)에서 정적
+   소스 검사 테스트를 함께 갱신해 회귀를 방지한다.
+4. **같은 값(`"reviewed"` 등)이 필드마다 다른 의미로 쓰이면, 그 필드
+   전용 라벨 헬퍼를 따로 둔다.** 예를 들어 `article.status ===
+   "reviewed"`는 항상 "승인됨"으로 번역해야 하는데, 공용
+   `describeStatusValue`의 `"reviewed"`는 다른 맥락(SEO/이미지 등
+   하위 항목의 선택적 검토 플래그)에서 "검토 완료"로도 쓰인다. 이런
+   충돌이 있으면 공용 맵을 억지로 하나로 통일하지 말고,
+   `describeArticleStatus`처럼 그 필드 전용의 작은 헬퍼를 추가해 각
+   필드의 실제 의미에 맞는 라벨을 고정한다(`lib/social/status-labels.ts` 참고).
+5. **공통 컴포넌트 안에서 같은 이름의 섹션 제목이 그 컴포넌트를 쓰는
+   페이지의 다른 영역과 중복되지 않게 한다.** 예: `WordPressPublishingPanel`은
+   `isPrimaryWorkflow`(wordpress_blog) 화면에서는 호출부가 이미 자체
+   "WordPress 게시 준비" 다음 작업 카드를 children으로 렌더링하므로,
+   패널 자신의 제목은 다른 문구("게시 상태 요약")를 써서 같은 이름이
+   화면에 연속으로 두 번 나오지 않게 한다.
+
+실제 적용 사례: `docs/ux/ux-02b-wordpress-blog-cleanup.md` 참고.

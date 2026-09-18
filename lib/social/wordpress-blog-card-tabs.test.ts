@@ -13,7 +13,7 @@ function makeBadgeInput(overrides: Partial<WordPressBlogCardTabBadgeInput> = {})
     approvalStatus: "승인됨",
     draftStatus: "생성됨",
     seoStatus: "준비됨",
-    publishGuardStatus: "ready",
+    publishGuardStatus: "준비 완료",
     featuredImageStatus: "연결됨",
     checklistStatus: "준비됨",
     checklistNeedsReviewCount: 0,

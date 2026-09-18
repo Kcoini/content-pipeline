@@ -26,7 +26,7 @@ import { TONE_STYLES, type SocialPlatform, type SocialPostQualityChecklistItem }
 import { hasOnlyImplementedAutoFixableIssues, summarizeReviewIssues } from "@/lib/social/review-issue-fixability";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
-import { describeStatusValue } from "@/lib/social/status-labels";
+import { describeStatusValue, describeArticleStatus, describeStatusField } from "@/lib/social/status-labels";
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
 import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
@@ -158,7 +158,7 @@ const LOG_FILTER_OPTIONS: { key: WordPressBlogLogFilter; label: string }[] = [
 
 /** WordPress 게시 준비 단계형 UI의 상태 badge 색상. 새 디자인 시스템을 추가하지 않고 기존 tailwind 팔레트만 사용한다. */
 function stepBadgeClass(status: string): string {
-  if (["완료", "승인됨", "생성됨", "준비됨", "연결됨", "ready", "handoff 완료", "성공"].includes(status)) {
+  if (["완료", "승인됨", "생성됨", "준비됨", "연결됨", "준비 완료", "handoff 완료", "성공"].includes(status)) {
     return "bg-green-100 text-green-800";
   }
   if (["실패", "차단됨", "없음"].includes(status)) {
@@ -386,7 +386,7 @@ export default async function ArticleBlogPage({
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h1 className="text-lg font-semibold">{article.title}</h1>
-          <p className="mt-1 text-xs text-zinc-500">article status: {article.status}</p>
+          <p className="mt-1 text-xs text-zinc-500">원본 기사 상태: {describeArticleStatus(article.status)}</p>
           {(article.seoTitle || article.metaDescription || article.targetKeyword) && (
             <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600">
               <p className="font-medium text-zinc-700">기사 SEO 정보 (monetized_blog)</p>
@@ -994,7 +994,7 @@ export default async function ArticleBlogPage({
                                     disabled={post.qualityStatus !== "ready" || !isArticleApprovedForWordPress}
                                     title={
                                       post.qualityStatus !== "ready"
-                                        ? "먼저 품질검사를 통과해야 합니다(quality_status=ready 필요)."
+                                        ? "먼저 품질검사를 통과해야 합니다."
                                         : !isArticleApprovedForWordPress
                                           ? "원본 기사가 아직 승인되지 않았습니다. 기사 개요 페이지에서 승인하세요."
                                           : undefined
@@ -1183,7 +1183,7 @@ export default async function ArticleBlogPage({
                                   WordPress Draft"로 실행 후에야 알게 되던 문제를 고친다. */}
                               {!isArticleApprovedForWordPress && (
                                 <p className="mt-1 text-[10px] text-amber-700">
-                                  ⚠ 원본 기사가 아직 승인되지 않았습니다(article status: {article.status}).{" "}
+                                  ⚠ 원본 기사가 아직 승인되지 않았습니다.{" "}
                                   <a href={`/articles/${article.id}`} className="underline">
                                     기사 개요 페이지
                                   </a>
@@ -1622,27 +1622,27 @@ export default async function ArticleBlogPage({
                                 <summary className="cursor-pointer text-[10px] font-medium text-zinc-500">내부 상태값 보기</summary>
                                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-zinc-600 sm:grid-cols-3">
                                   <div>
-                                    <dt className="font-medium text-zinc-700">quality_status</dt>
-                                    <dd>{post.qualityStatus}</dd>
+                                    <dt className="font-medium text-zinc-700">{describeStatusField("quality_status")}</dt>
+                                    <dd>{describeStatusValue(post.qualityStatus)}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium text-zinc-700">approval_status</dt>
-                                    <dd>{post.approvalStatus}</dd>
+                                    <dt className="font-medium text-zinc-700">{describeStatusField("approval_status")}</dt>
+                                    <dd>{describeStatusValue(post.approvalStatus)}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium text-zinc-700">publish_status</dt>
-                                    <dd>{post.publishStatus}</dd>
+                                    <dt className="font-medium text-zinc-700">{describeStatusField("publish_status")}</dt>
+                                    <dd>{describeStatusValue(post.publishStatus)}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium text-zinc-700">export_status</dt>
-                                    <dd>{post.exportStatus}</dd>
+                                    <dt className="font-medium text-zinc-700">{describeStatusField("export_status")}</dt>
+                                    <dd>{describeStatusValue(post.exportStatus)}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium text-zinc-700">manual_post_status</dt>
-                                    <dd>{post.manualPostStatus}</dd>
+                                    <dt className="font-medium text-zinc-700">{describeStatusField("manual_post_status")}</dt>
+                                    <dd>{describeStatusValue(post.manualPostStatus)}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium text-zinc-700">updatedAt</dt>
+                                    <dt className="font-medium text-zinc-700">마지막 업데이트</dt>
                                     <dd>{post.updatedAt}</dd>
                                   </div>
                                 </dl>
@@ -1724,7 +1724,7 @@ export default async function ArticleBlogPage({
                               </dl>
                               {!isArticleApprovedForWordPress && (
                                 <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
-                                  ⚠ 원본 기사가 아직 승인되지 않았습니다(article status: {article.status}). WordPress
+                                  ⚠ 원본 기사가 아직 승인되지 않았습니다. WordPress
                                   Draft를 생성/업데이트하려면 먼저{" "}
                                   <a href={`/articles/${article.id}`} className="underline">
                                     기사 개요 페이지

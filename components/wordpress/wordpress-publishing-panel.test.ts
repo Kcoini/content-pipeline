@@ -30,19 +30,60 @@ describe("WordPressPublishingPanel (정적 소스 검사)", () => {
   });
 
   it("공통 표시 항목(품질/승인/Draft/SEO/대표 이미지/guard/마지막 실행 결과)을 모두 포함한다", () => {
-    expect(componentSource).toContain("품질 상태");
-    expect(componentSource).toContain("승인 상태");
-    expect(componentSource).toContain("WordPress Draft 상태");
+    expect(componentSource).toContain("품질검사:");
+    expect(componentSource).toContain("승인:");
+    expect(componentSource).toContain("WordPress Draft:");
     expect(componentSource).toContain("WordPress Post/Draft ID");
-    expect(componentSource).toContain("SEO Metadata 상태");
+    expect(componentSource).toContain("SEO 정보:");
     expect(componentSource).toContain("seoTitle");
     expect(componentSource).toContain("metaDescription");
     expect(componentSource).toContain("targetKeyword");
-    expect(componentSource).toContain("대표 이미지 상태");
+    expect(componentSource).toContain("대표 이미지:");
     expect(componentSource).toContain("WordPress media ID");
     expect(componentSource).toContain("대표 이미지 생략 여부");
-    expect(componentSource).toContain("Publish Guard 상태");
+    expect(componentSource).toContain("게시 준비 상태");
     expect(componentSource).toContain("마지막 실행 결과");
+  });
+
+  it("Phase UX-02B (C4): raw enum 값은 기본 화면에서 describeStatusValue로 번역해서 보여준다", () => {
+    expect(componentSource).toContain('import { describeStatusValue } from "@/lib/social/status-labels"');
+    expect(componentSource).toContain("describeStatusValue(summary.qualityStatus)");
+    expect(componentSource).toContain("describeStatusValue(summary.approvalStatus)");
+    expect(componentSource).toContain("describeStatusValue(summary.seoMetadataStatus)");
+    expect(componentSource).toContain("describeStatusValue(summary.featuredImageStatus)");
+    expect(componentSource).toContain("describeStatusValue(summary.publishGuardStatus)");
+  });
+
+  it("Phase UX-02B (C4): WordPress Post/Media ID, Media URL, raw publish guard/연결 상태, 마지막 업데이트 시각은 '상세 상태 보기' 접힘 안에만 있다", () => {
+    const detailsIdx = componentSource.indexOf('<details className="mt-2">');
+    expect(detailsIdx).toBeGreaterThan(-1);
+    const beforeDetails = componentSource.slice(0, detailsIdx);
+    const afterDetails = componentSource.slice(detailsIdx);
+
+    expect(beforeDetails).not.toContain("WordPress Post/Draft ID");
+    expect(beforeDetails).not.toContain("WordPress media ID");
+    expect(beforeDetails).not.toContain("Media URL");
+    expect(beforeDetails).not.toContain("마지막 업데이트 시각");
+    expect(beforeDetails).not.toContain("게시 준비 상태");
+
+    expect(afterDetails).toContain("WordPress Post/Draft ID");
+    expect(afterDetails).toContain("WordPress media ID");
+    expect(afterDetails).toContain("Media URL");
+    expect(afterDetails).toContain("마지막 업데이트 시각");
+    expect(afterDetails).toContain("게시 준비 상태");
+    expect(afterDetails).toContain("상세 상태 보기");
+  });
+
+  it("Phase UX-02B (섹션 K): isPrimaryWorkflow=true(wordpress_blog)일 때는 children이 쓰는 'WordPress 게시 준비' 제목과 겹치지 않는 다른 제목을 쓴다", () => {
+    expect(componentSource).toContain('const headingText = isPrimaryWorkflow ? "게시 상태 요약" : "WordPress 게시 준비"');
+    expect(componentSource).toContain("{headingText}</p>");
+  });
+
+  it("기본 화면 요약(현재 상태)은 5줄 이내이고 children(다음 작업 버튼)보다 먼저 나온다", () => {
+    const summaryListIdx = componentSource.indexOf("<ul className=");
+    const childrenIdx = componentSource.indexOf("{children}");
+    expect(summaryListIdx).toBeGreaterThan(-1);
+    expect(childrenIdx).toBeGreaterThan(summaryListIdx);
   });
 
   it("실제 action을 직접 호출하지 않는다 (children으로만 전달받는 순수 표시 컴포넌트)", () => {

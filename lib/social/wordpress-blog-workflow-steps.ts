@@ -32,7 +32,7 @@ export interface WordPressBlogWorkflowStatusSummary {
   draft: "없음" | "생성됨";
   seo: "준비됨" | "누락";
   featuredImage: "연결됨" | "없음" | "이미지 없이 진행";
-  publishGuard: "미확인" | "ready" | "경고" | "차단됨" | "실패";
+  publishGuard: "미확인" | "준비 완료" | "경고" | "차단됨" | "실패";
   checklist: "미준비" | "준비됨" | "handoff 완료";
 }
 
@@ -69,7 +69,7 @@ export function getWordPressBlogWorkflowStatusSummary(
 
   const publishGuard: WordPressBlogWorkflowStatusSummary["publishGuard"] =
     input.publishGuardStatus === "ready"
-      ? "ready"
+      ? "준비 완료"
       : input.publishGuardStatus === "needs_revision"
         ? "경고"
         : input.publishGuardStatus === "blocked"

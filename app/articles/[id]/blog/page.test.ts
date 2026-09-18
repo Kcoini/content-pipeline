@@ -1428,3 +1428,75 @@ describe("Phase 4-28: 자동 수정 가능한 문제만 남았을 때 [자동 �
     expect(pageSource).toContain("새로운 사실이나 수치는 추가하지 않습니다");
   });
 });
+
+describe("Phase UX-02B (C3): 비활성 사유/안내 문구에 raw DB 필드명을 노출하지 않는다", () => {
+  it("'quality_status=', 'approval_status=', 'publish_status=' 같은 필드=값 표기가 사용자 문구에 없다", () => {
+    expect(pageSource).not.toMatch(/quality_status\s*=/);
+    expect(pageSource).not.toMatch(/approval_status\s*=/);
+    expect(pageSource).not.toMatch(/publish_status\s*=/);
+    expect(pageSource).not.toMatch(/publish_guard\s*=/);
+  });
+
+  it("품질검사 미통과 disabled 사유는 raw 필드명 없이 자연어로 표시된다", () => {
+    expect(pageSource).toContain('"먼저 품질검사를 통과해야 합니다."');
+    expect(pageSource).not.toContain("quality_status=ready");
+  });
+
+  it("'내부 상태값 보기' 접힘 영역 안에서도 dt 라벨은 raw 필드명이 아니라 describeStatusField로 번역한다", () => {
+    const start = pageSource.indexOf("내부 상태값 보기");
+    const end = pageSource.indexOf("Step 1. 품질검사");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const block = pageSource.slice(start, end);
+    expect(block).toContain('describeStatusField("quality_status")');
+    expect(block).toContain('describeStatusField("approval_status")');
+    expect(block).toContain('describeStatusField("publish_status")');
+    expect(block).toContain('describeStatusField("export_status")');
+    expect(block).toContain('describeStatusField("manual_post_status")');
+    // dt 자리에 raw 필드명 문자열이 그대로 남아있지 않아야 한다(헬퍼 호출로만 존재).
+    expect(block).not.toContain('<dt className="font-medium text-zinc-700">quality_status</dt>');
+    expect(block).not.toContain('<dt className="font-medium text-zinc-700">approval_status</dt>');
+  });
+
+  it("'내부 상태값 보기' 접힘 안 dd 값도 raw enum이 아니라 describeStatusValue로 번역한다", () => {
+    const start = pageSource.indexOf("내부 상태값 보기");
+    const end = pageSource.indexOf("Step 1. 품질검사");
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("describeStatusValue(post.qualityStatus)");
+    expect(block).toContain("describeStatusValue(post.approvalStatus)");
+    expect(block).toContain("describeStatusValue(post.publishStatus)");
+    expect(block).toContain("describeStatusValue(post.exportStatus)");
+    expect(block).toContain("describeStatusValue(post.manualPostStatus)");
+  });
+});
+
+describe("Phase UX-02B (C6): article.status raw enum을 기본 화면에 그대로 노출하지 않는다", () => {
+  it("'article status: {article.status}' 형태의 raw 표시가 없다", () => {
+    expect(pageSource).not.toMatch(/article status:\s*\{article\.status\}/);
+  });
+
+  it("원본 기사 상태는 describeArticleStatus로 번역해서 보여준다", () => {
+    expect(pageSource).toContain('import { describeStatusValue, describeArticleStatus, describeStatusField } from "@/lib/social/status-labels"');
+    expect(pageSource).toContain("원본 기사 상태: {describeArticleStatus(article.status)}");
+  });
+
+  it("원본 기사 미승인 안내 문구에도 raw article.status 값을 괄호로 병기하지 않는다", () => {
+    const warnings = pageSource.match(/⚠ 원본 기사가 아직 승인되지 않았습니다[^<]*/g) ?? [];
+    expect(warnings.length).toBeGreaterThanOrEqual(2);
+    for (const warning of warnings) {
+      expect(warning).not.toContain("article status:");
+      expect(warning).not.toContain("article.status");
+    }
+  });
+
+  it("article.status === 'reviewed' 승인 조건 비교 로직 자체는 그대로 유지된다(라벨만 바뀜, 동작 불변)", () => {
+    expect(pageSource).toContain('const isArticleApprovedForWordPress = article.status === "reviewed";');
+  });
+});
+
+describe("Phase UX-02B (C4): WordPress 게시 상태 badge에 영어 raw 값이 남지 않는다", () => {
+  it("publishGuard 배지 값은 '준비 완료'로 번역되어 있다(과거 raw 'ready' 값 제거)", () => {
+    expect(pageSource).not.toMatch(/\["완료", "승인됨", "생성됨", "준비됨", "연결됨", "ready",/);
+    expect(pageSource).toContain('"준비 완료"');
+  });
+});

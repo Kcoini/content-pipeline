@@ -56,7 +56,7 @@ export interface WordPressBlogCardTabBadgeInput {
   approvalStatus: "승인됨" | "승인 필요";
   draftStatus: "없음" | "생성됨";
   seoStatus: "준비됨" | "누락";
-  publishGuardStatus: "미확인" | "ready" | "경고" | "차단됨" | "실패";
+  publishGuardStatus: "미확인" | "준비 완료" | "경고" | "차단됨" | "실패";
   featuredImageStatus: "연결됨" | "없음" | "이미지 없이 진행";
   checklistStatus: "미준비" | "준비됨" | "handoff 완료";
   checklistNeedsReviewCount: number;
@@ -71,7 +71,7 @@ export function getWordPressBlogCardTabBadges(input: WordPressBlogCardTabBadgeIn
     input.qualityStatus === "완료" && input.approvalStatus === "승인됨" ? "완료" : "필요";
 
   const wordpress: WordPressBlogCardTabBadges["wordpress"] =
-    input.draftStatus === "생성됨" && input.seoStatus === "준비됨" && input.publishGuardStatus === "ready" ? "완료" : "필요";
+    input.draftStatus === "생성됨" && input.seoStatus === "준비됨" && input.publishGuardStatus === "준비 완료" ? "완료" : "필요";
 
   const image: WordPressBlogCardTabBadges["image"] =
     input.featuredImageStatus === "연결됨" || input.featuredImageStatus === "이미지 없이 진행" ? "완료" : "확인 필요";
