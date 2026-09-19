@@ -68,6 +68,23 @@ function collectText(post: SocialPost): string {
   return [post.postTitle, post.postBody, post.caption, post.excerpt, threadText, cardText].filter(Boolean).join(" ");
 }
 
+/**
+ * QA-01-FIX1: export_status/export_payload 전제조건은 "manual
+ * export/handoff"(social-manual-export-service.ts)를 실제로 거치는
+ * 플랫폼(naver_blog/news_article/opinion_column/naver_cafe/x/threads/
+ * instagram — lib/ui/publish-preparation-view-model.ts의
+ * PublishCapability "manual"/"copy")에만 의미가 있다. wordpress_blog는
+ * Draft 기반의 완전히 다른 게시 준비 경로(wordpress-blog-publish-prep-state.ts)를
+ * 쓰고 manual export를 전혀 거치지 않으므로 export_status가 영원히
+ * "not_exported"로 남는다 — 이 전제조건을 공통 gate로 요구하면
+ * wordpress_blog는 항상 blocked로 잘못 판정된다(실제로 발견된 버그).
+ * lib/ui를 import하지 않기 위해(레이어 방향 유지) 여기서는 같은 구분을
+ * 직접 반복한다.
+ */
+function requiresManualExportPrecondition(platform: string): boolean {
+  return platform !== "wordpress_blog";
+}
+
 /** 공통 게시 가능 조건("hard gate")을 검사한다. blocked 사유가 있으면 즉시 반환한다. */
 function buildCommonGateChecklist(post: SocialPost): PlatformPublishGuardChecklistItem[] {
   const checklist: PlatformPublishGuardChecklistItem[] = [];
@@ -100,15 +117,17 @@ function buildCommonGateChecklist(post: SocialPost): PlatformPublishGuardCheckli
     )
   );
 
-  const exportOk = post.exportStatus === "ready" || post.exportStatus === "exported";
-  checklist.push(
-    item(
-      "export_status_ready_or_exported",
-      "export_status가 ready/exported",
-      exportOk ? "pass" : "blocked",
-      exportOk ? "export_status가 ready 또는 exported입니다." : `export_status가 ready/exported가 아닙니다(${post.exportStatus}).`
-    )
-  );
+  if (requiresManualExportPrecondition(post.platform)) {
+    const exportOk = post.exportStatus === "ready" || post.exportStatus === "exported";
+    checklist.push(
+      item(
+        "export_status_ready_or_exported",
+        "export_status가 ready/exported",
+        exportOk ? "pass" : "blocked",
+        exportOk ? "export_status가 ready 또는 exported입니다." : `export_status가 ready/exported가 아닙니다(${post.exportStatus}).`
+      )
+    );
+  }
 
   const publishOk = !["blocked", "published", "failed"].includes(post.publishStatus);
   checklist.push(
@@ -125,15 +144,17 @@ function buildCommonGateChecklist(post: SocialPost): PlatformPublishGuardCheckli
     item("content_present", "콘텐츠 존재", contentPresent ? "pass" : "blocked", contentPresent ? "게시할 콘텐츠가 있습니다." : "게시할 콘텐츠가 없습니다.")
   );
 
-  const exportPayloadPresent = Object.keys(post.exportPayload ?? {}).length > 0;
-  checklist.push(
-    item(
-      "export_payload_present",
-      "export_payload 존재",
-      exportPayloadPresent ? "pass" : "blocked",
-      exportPayloadPresent ? "export_payload가 준비되어 있습니다." : "export_payload가 비어 있습니다."
-    )
-  );
+  if (requiresManualExportPrecondition(post.platform)) {
+    const exportPayloadPresent = Object.keys(post.exportPayload ?? {}).length > 0;
+    checklist.push(
+      item(
+        "export_payload_present",
+        "export_payload 존재",
+        exportPayloadPresent ? "pass" : "blocked",
+        exportPayloadPresent ? "export_payload가 준비되어 있습니다." : "export_payload가 비어 있습니다."
+      )
+    );
+  }
 
   const forbidden = checkForbiddenPatterns(collectText(post));
   checklist.push(
@@ -368,7 +389,15 @@ export async function runPlatformPublishingGuard(socialPostId: string): Promise<
         : result.status === "needs_revision"
           ? "social_platform_publish_guard_needs_revision"
           : "social_platform_publish_guard_completed";
-    const logStatus: LogStatus = result.status === "blocked" ? "failed" : "success";
+    // QA-01-FIX1: guard가 예외 없이 끝까지 실행되었다면(이 지점에
+    // 도달했다면) status가 blocked/needs_revision이어도 "실행 자체는
+    // 성공"이다 — blocked는 정상적인 검사 결과이지 실행 실패가
+    // 아니다. 실제 실행 실패는 catch 블록의
+    // "social_platform_publish_guard_failed"(logStatus: "failed")만
+    // 담당한다. 이전에는 result.status === "blocked"일 때 logStatus를
+    // "failed"로 기록해, 화면에서 "정상 차단"과 "실행 오류"를 구분할
+    // 수 없게 만들었다(실제로 발견된 버그).
+    const logStatus: LogStatus = "success";
 
     await logGuardEvent(
       eventType,

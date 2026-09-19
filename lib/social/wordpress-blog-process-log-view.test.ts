@@ -139,6 +139,16 @@ describe("filterWordPressBlogProcessLogEntries", () => {
     expect(failed).toHaveLength(1);
     expect(failed[0].id).toBe("log-2");
   });
+
+  it("QA-01-FIX1 회귀: guard가 정상적으로 blocked 결과를 낸 로그(status=success)는 failed_only에 잡히지 않는다 — 실행 성공(blocked 포함)과 실행 실패를 혼동하지 않는다", () => {
+    const guardBlockedEntries = buildWordPressBlogProcessLogEntries(
+      [makeLog({ id: "log-guard-blocked", type: "social_platform_publish_guard_blocked", status: "success" })],
+      new Set(["post-1"])
+    );
+
+    const failed = filterWordPressBlogProcessLogEntries(guardBlockedEntries, "failed_only");
+    expect(failed).toHaveLength(0);
+  });
 });
 
 describe("filterWordPressBlogProcessLogEntriesByPost", () => {

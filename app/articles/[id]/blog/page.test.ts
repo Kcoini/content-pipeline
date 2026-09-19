@@ -933,9 +933,16 @@ describe("프로세스 로그 / 실행 이력 (페이지 하단, 정적 소스 �
     expect(pageSource).toContain("sortWordPressBlogProcessLogEntriesForDisplay(");
   });
 
-  it("raw JSON은 기본 표시되지 않고 '상세 JSON 보기'로 접혀 있다", () => {
-    expect(pageSource).toContain("상세 JSON 보기");
-    expect(pageSource).toContain("JSON.stringify(entry.rawDetails");
+  it("raw JSON은 기본 표시되지 않고 '상세 JSON 보기'로 접혀 있다 — QA-01에서 항목 렌더링을 ProcessLogEntryItem으로 분리했으므로 그 컴포넌트 소스에서 확인한다", () => {
+    expect(pageSource).toContain('from "@/components/wordpress/process-log-entry-item"');
+    const itemSource = readFileSync(
+      path.join(__dirname, "..", "..", "..", "..", "components", "wordpress", "process-log-entry-item.tsx"),
+      "utf8"
+    );
+    expect(itemSource).toContain("<details");
+    expect(itemSource).toContain("상세 JSON 보기");
+    expect(itemSource).not.toMatch(/<details\s+open/);
+    expect(itemSource).toContain("JSON.stringify(entry.rawDetails");
   });
 
   it("카드 안에는 최근 실행 결과 요약과 '상세 로그 보기' 링크만 있고, 긴 로그 목록은 없다", () => {
@@ -1495,9 +1502,15 @@ describe("Phase UX-02B (C6): article.status raw enum을 기본 화면에 그대�
 });
 
 describe("Phase UX-02B (C4): WordPress 게시 상태 badge에 영어 raw 값이 남지 않는다", () => {
-  it("publishGuard 배지 값은 '준비 완료'로 번역되어 있다(과거 raw 'ready' 값 제거)", () => {
+  it("publishGuard 배지 값은 '준비 완료'로 번역되어 있다(과거 raw 'ready' 값 제거) — QA-01에서 라벨 문자열 자체는 wordpress-blog-workflow-steps.ts로 이동했고, page.tsx는 workflowStatus.publishGuard를 그대로 렌더링한다", () => {
     expect(pageSource).not.toMatch(/\["완료", "승인됨", "생성됨", "준비됨", "연결됨", "ready",/);
-    expect(pageSource).toContain('"준비 완료"');
+    expect(pageSource).toContain("workflowStatus.publishGuard");
+
+    const workflowStepsSource = readFileSync(
+      path.join(__dirname, "..", "..", "..", "..", "lib", "social", "wordpress-blog-workflow-steps.ts"),
+      "utf8"
+    );
+    expect(workflowStepsSource).toContain('"준비 완료"');
   });
 });
 
@@ -1568,5 +1581,44 @@ describe("Phase UX-05B: 이미 게시 완료로 표시된 글은 본문 수정�
 
   it("repository의 saveSocialPostRevision guard(이미 게시된 social post는 수정할 수 없습니다)는 이 페이지에서 재구현하지 않는다", () => {
     expect(pageSource).not.toContain("이미 게시된 social post는 수정할 수 없습니다");
+  });
+});
+
+describe("QA-01-FIX1/QA-01: 프로세스 로그 상태 라벨은 raw LogStatus를 그대로 노출하지 않는다 (정적 소스 검사)", () => {
+  it("프로세스 로그 항목은 ProcessLogEntryItem 공용 컴포넌트로 렌더링한다(entry.status를 직접 렌더링하지 않음)", () => {
+    expect(pageSource).not.toContain("{entry.status}");
+    expect(pageSource).toContain('from "@/components/wordpress/process-log-entry-item"');
+    expect(pageSource).toContain("<ProcessLogEntryItem key={entry.id} entry={entry} />");
+  });
+
+  it("logStatusBadgeClass(raw success/failed 2값 전용 헬퍼)는 제거되고 stepBadgeClass(describeStatusBadgeClass)로 통합되었다(중복 helper 없음)", () => {
+    expect(pageSource).not.toContain("function logStatusBadgeClass");
+    expect(pageSource).toContain('from "@/lib/ui/status-badge-class"');
+  });
+});
+
+describe("QA-01-FIX1/QA-01: Step 6 게시 가능 상태 확인에 guard의 blocked 사유를 자연어로 보여준다 (정적 소스 검사)", () => {
+  it("PublishGuardIssueList 공용 컴포넌트로 blockedCount 같은 raw 숫자 대신 실제 이유 목록을 보여준다", () => {
+    expect(pageSource).toContain('from "@/lib/social/publish-guard-issue-view"');
+    expect(pageSource).toContain('from "@/components/wordpress/publish-guard-issue-list"');
+    expect(pageSource).toContain("<PublishGuardIssueList");
+  });
+
+  it("guard 결과는 post.platformPublishGuardSummary.checklist에서 읽고 raw JSON을 그대로 뿌리지 않는다", () => {
+    expect(pageSource).toContain("post.platformPublishGuardSummary as { checklist?: PlatformPublishGuardChecklistItem[] } | null");
+  });
+});
+
+describe("QA-01: 프로세스 로그/guard 이벤트 라벨 로직은 lib/social/wordpress-blog-process-log-view.ts에 있다 (정적 소스 검사)", () => {
+  it("GUARD_EVENT_STATUS_LABEL/describeProcessLogEntryStatus는 wordpress-blog-process-log-view.ts로 옮겨졌다", () => {
+    const logViewSource = readFileSync(
+      path.join(__dirname, "..", "..", "..", "..", "lib", "social", "wordpress-blog-process-log-view.ts"),
+      "utf8"
+    );
+    expect(logViewSource).toContain("social_platform_publish_guard_blocked: \"차단됨\"");
+    expect(logViewSource).toContain("social_platform_publish_guard_needs_revision: \"경고\"");
+    expect(logViewSource).toContain("social_platform_publish_guard_completed: \"준비 완료\"");
+    expect(logViewSource).toContain("social_platform_publish_guard_failed: \"실패\"");
+    expect(logViewSource).toContain("export function describeProcessLogEntryStatus");
   });
 });

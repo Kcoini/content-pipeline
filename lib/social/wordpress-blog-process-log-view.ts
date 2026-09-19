@@ -20,6 +20,19 @@ export const WORDPRESS_BLOG_LOG_CATEGORY_LABELS: Record<WordPressBlogLogCategory
 /** 카드 안 "상세 로그 보기" 필터 옵션 + 하단 로그 섹션 필터. "failed_only"는 카테고리가 아니라 status 기준 별도 필터다. */
 export type WordPressBlogLogFilter = "all" | WordPressBlogLogCategory | "failed_only";
 
+// QA-01-FIX1: guard 이벤트는 event_name으로 실제 검사 결과(차단됨/경고/
+// 준비 완료)를 이미 구분할 수 있다 — 그런데도 status를 실행 성공/실패
+// 2값(LogStatus)으로만 기록하면 "정상적으로 차단 결과를 낸 것"과
+// "실행 자체가 실패한 것"을 화면에서 구분할 수 없다. Step 6 배지
+// (workflowStatus.publishGuard, wordpress-blog-workflow-steps.ts)와
+// 동일한 한국어 단어를 재사용해 "같은 개념 = 같은 라벨"을 지킨다.
+const GUARD_EVENT_STATUS_LABEL: Record<string, string> = {
+  social_platform_publish_guard_blocked: "차단됨",
+  social_platform_publish_guard_needs_revision: "경고",
+  social_platform_publish_guard_completed: "준비 완료",
+  social_platform_publish_guard_failed: "실패",
+};
+
 export interface WordPressBlogProcessLogEntry {
   id: string;
   eventName: string;
@@ -31,6 +44,15 @@ export interface WordPressBlogProcessLogEntry {
   /** raw JSON 대신 카드/로그 목록에 바로 보여줄 한 줄 요약. */
   detailsSummary: string;
   rawDetails: Record<string, unknown>;
+}
+
+/** 로그 항목 하나의 사용자용 상태 라벨. raw LogStatus("success"/"failed"/"info")를 그대로 노출하지 않는다. */
+export function describeProcessLogEntryStatus(entry: WordPressBlogProcessLogEntry): string {
+  const guardLabel = GUARD_EVENT_STATUS_LABEL[entry.eventName];
+  if (guardLabel) return guardLabel;
+  if (entry.status === "failed") return "처리 실패";
+  if (entry.status === "info") return "정보";
+  return "성공";
 }
 
 export interface WordPressBlogProcessLogSummary {

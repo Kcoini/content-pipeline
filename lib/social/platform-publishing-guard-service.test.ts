@@ -319,3 +319,70 @@ describe("보안 요구사항", () => {
     expect(serialized).not.toContain("문장고유토큰0 문장고유토큰1");
   });
 });
+
+describe("QA-01-FIX1: wordpress_blog에 manual export 전제조건을 요구하지 않는다", () => {
+  it("wordpress_blog는 title/body/quality/approval이 모두 준비되어 있으면 export_status가 not_exported여도 blocked되지 않는다(실제 발견된 버그 재현 케이스)", async () => {
+    getSocialPostForPublishingGuard.mockResolvedValue(
+      makeSocialPost({
+        platform: "wordpress_blog",
+        postTitle: "실제 서비스에서 관찰된 wordpress_blog 제목",
+        postBody: Array.from({ length: 400 }, (_, i) => `고유문장${i}`).join(" "),
+        excerpt: "요약",
+        caption: null,
+        hashtags: [],
+        threadItems: [],
+        cardItems: [],
+        exportStatus: "not_exported",
+        exportPayload: {},
+      })
+    );
+
+    const result = await runPlatformPublishingGuard("social-post-1");
+
+    expect(result.result?.status).not.toBe("blocked");
+    expect(result.result?.checklist.some((c) => c.key === "export_status_ready_or_exported")).toBe(false);
+    expect(result.result?.checklist.some((c) => c.key === "export_payload_present")).toBe(false);
+  });
+
+  it("naver_blog 등 manual export를 실제로 쓰는 플랫폼은 export_status_ready_or_exported/export_payload_present 검사를 계속 받는다(회귀 방지)", async () => {
+    getSocialPostForPublishingGuard.mockResolvedValue(
+      makeSocialPost({ platform: "naver_blog", exportStatus: "not_exported", exportPayload: {} })
+    );
+
+    const result = await runPlatformPublishingGuard("social-post-1");
+
+    expect(result.result?.status).toBe("blocked");
+    expect(result.result?.checklist.some((c) => c.key === "export_status_ready_or_exported")).toBe(true);
+    expect(result.result?.checklist.some((c) => c.key === "export_payload_present")).toBe(true);
+  });
+});
+
+describe("QA-01-FIX1: guard 실행 성공과 실행 실패를 log status로 구분한다", () => {
+  it("guard가 예외 없이 완료되면(blocked 결과 포함) logEvent의 status는 항상 success다", async () => {
+    getSocialPostForPublishingGuard.mockResolvedValue(makeSocialPost({ approvalStatus: "rejected" }));
+
+    const result = await runPlatformPublishingGuard("social-post-1");
+    expect(result.result?.status).toBe("blocked");
+
+    const completionCall = logEvent.mock.calls.find(
+      (call) => (call[0] as { type?: string }).type === "social_platform_publish_guard_blocked"
+    );
+    expect(completionCall).toBeDefined();
+    expect((completionCall?.[0] as { status?: string }).status).toBe("success");
+  });
+
+  it("guard 실행 자체가 예외로 실패하면 logEvent의 status는 failed이고 platform_publish_ready=false로 저장된다", async () => {
+    getSocialPostForPublishingGuard.mockResolvedValue(makeSocialPost());
+    updatePlatformPublishGuardResult.mockRejectedValue(new Error("DB 연결 실패"));
+
+    const result = await runPlatformPublishingGuard("social-post-1");
+
+    expect(result.success).toBe(false);
+    expect(markPlatformPublishGuardFailed).toHaveBeenCalledWith("social-post-1", "DB 연결 실패");
+    const failedCall = logEvent.mock.calls.find(
+      (call) => (call[0] as { type?: string }).type === "social_platform_publish_guard_failed"
+    );
+    expect(failedCall).toBeDefined();
+    expect((failedCall?.[0] as { status?: string }).status).toBe("failed");
+  });
+});

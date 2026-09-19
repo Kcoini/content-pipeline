@@ -27,7 +27,12 @@ import { PaginationControls } from "@/components/navigation/pagination-controls"
 import { parsePagination } from "@/lib/navigation/pagination";
 import { checkPlatformApiReadiness } from "@/lib/social/platform-api-readiness-checker";
 import { ApiReadinessBadge } from "@/components/platform-api/api-readiness-badge";
-import { TONE_STYLES, type SocialPlatform, type SocialPostQualityChecklistItem } from "@/lib/social/social-platform-types";
+import {
+  TONE_STYLES,
+  type SocialPlatform,
+  type SocialPostQualityChecklistItem,
+  type PlatformPublishGuardChecklistItem,
+} from "@/lib/social/social-platform-types";
 import { hasOnlyImplementedAutoFixableIssues, summarizeReviewIssues } from "@/lib/social/review-issue-fixability";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
@@ -54,6 +59,10 @@ import {
   getWordPressBlogNextRecommendedAction,
 } from "@/lib/social/wordpress-blog-workflow-steps";
 import { getWordPressPublishPrepState } from "@/lib/social/wordpress-blog-publish-prep-state";
+import { describePublishGuardIssues } from "@/lib/social/publish-guard-issue-view";
+import { describeStatusBadgeClass } from "@/lib/ui/status-badge-class";
+import { PublishGuardIssueList } from "@/components/wordpress/publish-guard-issue-list";
+import { ProcessLogEntryItem } from "@/components/wordpress/process-log-entry-item";
 import { buildWordPressBlogPostPreview } from "@/lib/social/wordpress-blog-post-preview-builder";
 import { convertMarkdownToWordPressHtml } from "@/lib/wordpress/markdown-to-wordpress-html";
 import {
@@ -67,9 +76,7 @@ import {
   filterWordPressBlogProcessLogEntries,
   filterWordPressBlogProcessLogEntriesByPost,
   sortWordPressBlogProcessLogEntriesForDisplay,
-  WORDPRESS_BLOG_LOG_CATEGORY_LABELS,
   type WordPressBlogLogFilter,
-  type WordPressBlogProcessLogEntry,
 } from "@/lib/social/wordpress-blog-process-log-view";
 import {
   getWordPressBlogPreparationStepLabel,
@@ -159,53 +166,20 @@ const LOG_FILTER_OPTIONS: { key: WordPressBlogLogFilter; label: string }[] = [
   { key: "failed_only", label: "실패만 보기" },
 ];
 
-/** WordPress 게시 준비 단계형 UI의 상태 badge 색상. 새 디자인 시스템을 추가하지 않고 기존 tailwind 팔레트만 사용한다. */
-function stepBadgeClass(status: string): string {
-  if (["완료", "승인됨", "생성됨", "준비됨", "연결됨", "준비 완료", "handoff 완료", "성공"].includes(status)) {
-    return "bg-green-100 text-green-800";
-  }
-  if (["실패", "차단됨", "없음"].includes(status)) {
-    return "bg-red-100 text-red-800";
-  }
-  if (["필요", "승인 필요", "누락", "미확인", "경고", "미준비", "이미지 없이 진행", "확인 필요", "대기중"].includes(status)) {
-    return "bg-amber-100 text-amber-800";
-  }
-  return "bg-zinc-100 text-zinc-600";
-}
-
-function logStatusBadgeClass(status: string): string {
-  if (status === "success") return "bg-green-100 text-green-800";
-  if (status === "failed") return "bg-red-100 text-red-800";
-  return "bg-zinc-100 text-zinc-600";
-}
-
 /**
- * 페이지 하단 "프로세스 로그 / 실행 이력" 섹션의 로그 항목 하나를 렌더링한다.
- * event_name/status/message/created_at과 짧은 details 요약만 기본으로
- * 보여주고, raw JSON은 "상세 JSON 보기"로 따로 접어둔다.
+ * WordPress 게시 준비 단계형 UI의 상태 badge 색상. QA-01에서
+ * `lib/ui/status-badge-class.ts`(describeStatusBadgeClass)로
+ * 공용화했다 — 이 함수는 그 얇은 alias다(21개 호출부를 한 번에
+ * 바꾸는 대신, 공용 로직은 한 곳에만 두고 이름은 유지했다).
  */
-function renderProcessLogEntry(entry: WordPressBlogProcessLogEntry) {
-  return (
-    <li key={entry.id} className="rounded border border-zinc-100 p-1.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-medium text-zinc-700">{entry.eventName}</span>
-        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${logStatusBadgeClass(entry.status)}`}>
-          {entry.status}
-        </span>
-      </div>
-      <p className="mt-0.5 text-zinc-600">{entry.message}</p>
-      <p className="mt-0.5 text-zinc-400">
-        {entry.createdAt} · {WORDPRESS_BLOG_LOG_CATEGORY_LABELS[entry.category]} · {entry.detailsSummary}
-      </p>
-      <details className="mt-0.5">
-        <summary className="cursor-pointer text-zinc-400">상세 JSON 보기</summary>
-        <pre className="mt-0.5 overflow-x-auto rounded bg-zinc-50 p-1 text-[9px] text-zinc-600">
-          {JSON.stringify(entry.rawDetails, null, 2)}
-        </pre>
-      </details>
-    </li>
-  );
+function stepBadgeClass(status: string): string {
+  return describeStatusBadgeClass(status);
 }
+
+// QA-01: 프로세스 로그 항목 렌더링은 components/wordpress/process-log-entry-item.tsx로
+// 옮겼다(browser 테스트에서 실제 페이지 로직과 동일한 컴포넌트를 직접
+// import해 렌더링하기 위함). describeProcessLogEntryStatus/
+// GUARD_EVENT_STATUS_LABEL은 lib/social/wordpress-blog-process-log-view.ts로 옮겼다.
 
 export default async function ArticleBlogPage({
   params,
@@ -2507,6 +2481,16 @@ export default async function ArticleBlogPage({
                               <p className="mt-1 text-[11px] text-indigo-700">
                                 policyRiskScore: {summary.policyRiskScore ?? "해당 없음"}
                               </p>
+                              {/* QA-01-FIX1: 이 guard 자체의 blocked 사유(위 readiness.blockers와는
+                                  별도 시스템)를 raw count/필드명 없이 자연어로 보여준다.
+                                  QA-01: browser 테스트에서 재사용할 수 있도록
+                                  components/wordpress/publish-guard-issue-list.tsx로 분리했다. */}
+                              <PublishGuardIssueList
+                                issues={describePublishGuardIssues(
+                                  (post.platformPublishGuardSummary as { checklist?: PlatformPublishGuardChecklistItem[] } | null)
+                                    ?.checklist
+                                )}
+                              />
                               <form action={runPlatformPublishingGuardAction} className="mt-2">
                                 <input type="hidden" name="articleId" value={article.id} />
                                 <input type="hidden" name="socialPostId" value={post.id} />
@@ -2795,11 +2779,19 @@ export default async function ArticleBlogPage({
                         <p className="mt-1 text-[11px] text-zinc-400">표시할 로그가 없습니다.</p>
                       ) : (
                         <>
-                          <ul className="mt-1 space-y-1 text-[11px]">{visible.map((entry) => renderProcessLogEntry(entry))}</ul>
+                          <ul className="mt-1 space-y-1 text-[11px]">
+                            {visible.map((entry) => (
+                              <ProcessLogEntryItem key={entry.id} entry={entry} />
+                            ))}
+                          </ul>
                           {rest.length > 0 && (
                             <details className="mt-1">
                               <summary className="cursor-pointer text-[11px] text-indigo-600">더 보기 ({rest.length}개)</summary>
-                              <ul className="mt-1 space-y-1 text-[11px]">{rest.map((entry) => renderProcessLogEntry(entry))}</ul>
+                              <ul className="mt-1 space-y-1 text-[11px]">
+                                {rest.map((entry) => (
+                                  <ProcessLogEntryItem key={entry.id} entry={entry} />
+                                ))}
+                              </ul>
                             </details>
                           )}
                         </>
