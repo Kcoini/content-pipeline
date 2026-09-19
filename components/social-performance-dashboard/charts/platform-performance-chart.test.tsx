@@ -21,4 +21,16 @@ describe("PlatformPerformanceChart", () => {
     expect(html).toContain("72.3");
     expect(html).toContain("measured 3");
   });
+
+  it("Phase UX-03C: platform 라벨은 공통 describePlatformBadge를 거쳐 한국어로 표시한다(페이지 전용 영문 매핑을 다시 만들지 않는다)", () => {
+    const html = renderToStaticMarkup(
+      <PlatformPerformanceChart
+        data={[
+          { platform: "naver_blog", averagePerformanceScore: 50, totalViews: 0, totalClicks: 0, totalEngagement: 0, measuredCount: 0 },
+        ]}
+      />
+    );
+    expect(html).toContain("네이버 블로그");
+    expect(html).not.toContain("Naver Blog");
+  });
 });

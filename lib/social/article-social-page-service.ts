@@ -19,6 +19,14 @@ export interface ArticleSocialPageData {
   posts: SocialPost[];
   pagination: PaginationInfo;
   targetPage: number | null;
+  /**
+   * Phase UX-04B: 현재 page로 잘려나가기 전, 필터링만 끝난 전체 목록.
+   * "플랫폼별 글 검토" 요약 카드가 페이지 전체(전체 개수/확인 필요
+   * 개수 등)를 정확히 계산하려면 페이지네이션된 posts만으로는
+   * 부족하다 — posts/pagination/targetPage의 기존 의미는 그대로
+   * 두고 이 필드만 추가했다.
+   */
+  allPosts: SocialPost[];
 }
 
 export interface ArticleSocialPageOptions {
@@ -49,5 +57,5 @@ export async function buildArticleSocialPageData(articleId: string, options: Art
     ? findItemPage(filteredPosts, (post) => post.id === options.targetSocialPostId, perPage)
     : null;
 
-  return { article: article ?? null, posts, pagination, targetPage };
+  return { article: article ?? null, posts, pagination, targetPage, allPosts: filteredPosts };
 }

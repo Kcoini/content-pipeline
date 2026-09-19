@@ -14,8 +14,17 @@ describe("LowPerformanceChart", () => {
     const html = renderToStaticMarkup(
       <LowPerformanceChart data={{ low: 2, needsReview: 1, notMeasured: 3, average: 4, good: 5, excellent: 1 }} />
     );
-    expect(html).toContain("excellent");
-    expect(html).toContain("needs_review");
+    expect(html).toContain("매우 좋음");
+    expect(html).toContain("검토 필요");
     expect(html).toContain("총 16개");
+  });
+
+  it("Phase UX-03C: 범례는 raw performance_status enum을 그대로 노출하지 않고 describeStatusValue로 번역한다", () => {
+    const html = renderToStaticMarkup(
+      <LowPerformanceChart data={{ low: 2, needsReview: 1, notMeasured: 3, average: 4, good: 5, excellent: 1 }} />
+    );
+    expect(html).not.toContain("excellent");
+    expect(html).not.toContain("needs_review");
+    expect(html).not.toContain("not_measured");
   });
 });

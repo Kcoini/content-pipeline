@@ -489,13 +489,45 @@ export default async function ArticleDetailPage({
 
         <ArticleWorkflowNavigation articleId={article.id} active="overview" />
 
-        <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
-          이 페이지는 기사 원본과 출처, 생성된 콘텐츠의 전체 현황을 보여줍니다. 블로그/SNS·커뮤니티/Rewrite/성과 작업은 위 메뉴의 하위 페이지에서 관리하세요.
-          <br />
-          현재 페이지의 본문은 원본 article입니다. WordPress 블로그형 글로
-          게시하려면 Blog 탭에서 wordpress_blog 글을 생성한 뒤 WordPress
-          Draft를 생성하세요.
-        </div>
+        {/* Phase UX-03C: 이 route는 보조 route다 — 실제 WordPress/SNS
+            작업은 항상 하위 관리 화면에서 한다. "현재 상태 / 다음 작업 /
+            보조 화면"만으로 이해 가능하게 하고, 이 페이지 자체를 다시
+            주요 workflow 화면으로 만들지 않는다. */}
+        <section className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-700">현재 상태</h2>
+          <p className="mt-1 text-xs text-zinc-600">
+            {isDraft
+              ? "아직 초안 상태입니다 — 플랫폼별 글이 생성되지 않았습니다."
+              : existingSocialPosts.length === 0
+                ? "승인된 원고입니다 — 아직 플랫폼별 글을 생성하지 않았습니다."
+                : existingSocialPosts.some((post) => post.approvalStatus === "approved")
+                  ? "플랫폼별 글이 승인되어 게시 준비가 가능합니다."
+                  : "플랫폼별 글이 생성되어 검토가 필요합니다."}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium text-zinc-500">다음 작업</span>
+            <Link
+              href={`/articles/${article.id}/blog`}
+              className="rounded bg-zinc-900 px-3 py-1.5 font-semibold text-white hover:bg-zinc-700"
+            >
+              WordPress 블로그 글 관리
+            </Link>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium text-zinc-500">보조</span>
+            <Link
+              href={`/articles/${article.id}/social`}
+              className="rounded border border-zinc-300 bg-white px-2 py-1 font-medium text-zinc-600 hover:bg-zinc-100"
+            >
+              SNS 글 관리
+            </Link>
+          </div>
+          <p className="mt-3 text-[11px] text-zinc-400">
+            이 페이지의 본문은 원본 article입니다. 실제 WordPress 블로그형 글이나 SNS 글은 여기서 만들지 않고
+            위 화면에서 생성/관리합니다. 원본 article을 그대로 WordPress로 보내는 보조 경로는 아래 관리자 기능
+            접힘 안에 남아 있습니다.
+          </p>
+        </section>
 
         {error && (
           <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -743,18 +775,26 @@ export default async function ArticleDetailPage({
 
         {/*
           이 article은 원본 콘텐츠다 — WordPress 블로그형 글이 아니다.
-          아래 "고급 기능" 섹션은 article 본문을 그대로 WordPress로 보내는
+          아래 "관리자 기능" 섹션은 article 본문을 그대로 WordPress로 보내는
           보조 경로일 뿐이며, 메인 WordPress 게시 흐름은 항상
           /articles/[id]/blog에서 platform=wordpress_blog로 생성한
           블로그 글이다. 이 섹션 내부의 개별 기능(Metadata/SEO plugin/
           featured image/connection test/draft/public publish)은 Phase 2
           때 만들어진 기존 동작을 그대로 유지하며, 여기서는 접이식으로
           묶고 안내 문구만 추가한다.
+
+          Phase UX-03C: 이 블록은 내부에 공개 게시용 "⚠ 관리자 전용"
+          이중 접힘(아래쪽 별도 <details>, 2000줄 이상 규모)을 포함한
+          기존 구조를 그대로 유지한다 — 공통 AdvancedDetails 컴포넌트로
+          치환하지 않았다. 이렇게 깊게 중첩된 기존 JSX를 컴포넌트 교체로
+          다시 감싸면 얻는 이득(문구 일관성)보다 구조를 깨뜨릴 위험이 커서,
+          제목 문구만 AdvancedDetails 관례("관리자 기능")에 맞춰 통일하고
+          마크업은 그대로 두기로 결정했다.
         */}
         <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-1 shadow-sm">
           <details>
             <summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-semibold text-amber-800">
-              고급 기능: 원본 article WordPress 전송
+              관리자 기능: 원본 article WordPress 전송
             </summary>
             <div className="border-t border-amber-200 px-3 pb-3 pt-3">
               <WordPressPublishingPanel
@@ -864,6 +904,16 @@ export default async function ArticleDetailPage({
               </p>
 
               <div className="mt-4 flex flex-col gap-4">
+        {/* Phase UX-07 (H5): 관리자 접힘 내부를 성격별로 4개 카테고리
+            accordion으로 묶었다 — "관리자 기능"을 펼쳐도 14개 섹션이
+            한꺼번에 쏟아지지 않게 한다. 내부 섹션 자체는 옮기지 않고
+            그대로 두었다(business logic/기존 accordion 유지, 새
+            카테고리 accordion 1단만 추가 — accordion 중첩 과다 방지). */}
+        <details className="rounded border border-amber-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-700">
+            SEO 연동
+          </summary>
+          <div className="flex flex-col gap-4 border-t border-amber-100 px-3 pb-3 pt-3">
         {/* Phase 2-3: WordPress Metadata (카테고리/태그/SEO) */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
@@ -1110,7 +1160,14 @@ export default async function ArticleDetailPage({
             </>
           )}
         </section>
+          </div>
+        </details>
 
+        <details className="rounded border border-amber-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-700">
+            대표 이미지
+          </summary>
+          <div className="flex flex-col gap-4 border-t border-amber-100 px-3 pb-3 pt-3">
         {/* Phase 2-5: Featured Image Preparation */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
@@ -1289,6 +1346,8 @@ export default async function ArticleDetailPage({
             </>
           )}
         </section>
+          </div>
+        </details>
 
         {/*
           Phase 4-7: WordPress 게시 준비 요약 카드. 아래 이어지는 대표
@@ -1363,6 +1422,11 @@ export default async function ArticleDetailPage({
           </div>
         </section>
 
+        <details className="rounded border border-amber-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-700">
+            WordPress 연결 · 반영 실행 (실행/진단 정보)
+          </summary>
+          <div className="flex flex-col gap-4 border-t border-amber-100 px-3 pb-3 pt-3">
         {/* Featured Image Workflow Step 1: Source Setup */}
         <section id="featured-image-source" className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
@@ -2366,7 +2430,14 @@ export default async function ArticleDetailPage({
             </form>
           </div>
         </section>
+          </div>
+        </details>
 
+        <details className="rounded border border-amber-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-700">
+            게시 안전 설정
+          </summary>
+          <div className="flex flex-col gap-4 border-t border-amber-100 px-3 pb-3 pt-3">
         {/* Phase 2-15: Publish Quality Gate */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
@@ -2602,6 +2673,8 @@ export default async function ArticleDetailPage({
             );
           })()}
         </section>
+          </div>
+        </details>
 
         {/*
           Phase UX-02A (C1): 이 기능은 실제로 WordPress 글을 외부에

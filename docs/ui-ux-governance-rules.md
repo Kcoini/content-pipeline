@@ -1054,3 +1054,411 @@ SNS/커뮤니티 글처럼 대체로 짧은 콘텐츠는 목록 카드에서 본
    화면에 연속으로 두 번 나오지 않게 한다.
 
 실제 적용 사례: `docs/ux/ux-02b-wordpress-blog-cleanup.md` 참고.
+
+## 공통 UX 기반 컴포넌트 — 새로 만들기 전에 먼저 확인한다 (Phase UX-03A)
+
+다음 공통 컴포넌트가 이미 존재한다. 비슷한 UI가 필요하면 페이지에
+새로 구현하지 말고 이 컴포넌트를 먼저 확인한다(신설 필요 여부는
+`docs/ux/ux-03a-common-ux-foundation.md`의 조사 근거를 먼저 본다).
+
+- **`components/common/advanced-details.tsx` (`AdvancedDetails`)** — Level
+  2/3 정보(내부 상태값/raw status/ID/로그)를 기본 접힘으로 보여주는
+  공통 `<details>` 래퍼. `title`(기본 "상세 상태 보기")/`defaultOpen`
+  (기본 false)/`className`/`testId`를 받는다. "raw"/"internal"/"debug"
+  같은 개발자 용어를 title에 쓰지 않는다. API key/token/password,
+  전체 raw body/prompt 원문은 이 컴포넌트 안에도 넣지 않는다.
+- **`components/review/auto-review-summary-card.tsx`
+  (`AutoReviewSummaryCard`)** — `lib/social/social-post-auto-review.ts`의
+  `summarizeAutoReview()` 결과(`AutoReviewSummary`)를 받아 톤 색상 박스 +
+  통과/확인 필요/수정 필요/차단 카운트 + 승인 가능 안내 + issue 목록을
+  렌더링한다. 페이지마다 다른 문구/액션은 `contextNote`/
+  `renderIssueActions`/`extraBanner`/`footer` slot으로 넘긴다 — 고정
+  레이아웃으로 강제하지 않는다.
+- **`components/review/human-review-panel.tsx` (`HumanReviewPanel`)** —
+  "사람이 실제로 판단해야 하는 항목"만 보여준다(`HumanReviewItem[]`).
+  이 컴포넌트 자신은 어떤 항목이 auto_fixable인지 판단하지 않는다 —
+  호출 측이 `lib/social/review-issue-fixability.ts`의
+  `summarizeReviewIssues()`로 분류한 뒤 `userConfirmationRequired` +
+  `blocking`만 넘긴다(`autoFixable`은 별도 안내로 이미 다룬다). 항목이
+  0개면 "확인할 사항 없음"만 compact하게 보여주고, severity는 항상
+  한국어 배지("참고"/"확인 필요"/"승인 불가")로 표시한다 — raw
+  fixability enum을 그대로 노출하지 않는다.
+- **`components/social/inline-post-body-editor.tsx`
+  (`InlinePostBodyEditor`)** — 카드/화면 안에서 페이지 이동 없이 본문
+  하나(단일 문자열)를 편집하는 UI(`SocialPostBodyPanel`이 내부에서
+  재사용). Server Action form(`<form action={saveAction}>`) 기반이며
+  저장 방식(저장만/저장+검토/저장+승인)은 버튼의 `name="saveMode"`
+  value로 구분한다 — client-side `value`/`onChange` 콜백으로 강제
+  통합하지 않는다. **X/Threads처럼 배열 기반 콘텐츠(threadItems)는
+  `mode="thread"`(discriminated union prop)로 지원한다(Phase
+  UX-03B2)** — 항목마다 별도 `<textarea name="threadItemText">`를
+  렌더링하고 `FormData.getAll("threadItemText")`로 순서를 그대로
+  보존한다. 여러 항목을 하나의 textarea로 억지로 합치지 않는다. 기존
+  단일 문자열 사용처(`mode` 생략 시 기본값)의 동작/계약은 그대로
+  유지한다.
+
+**상태 라벨 semantic 원칙(Phase UX-03A에서 검증)**: `article.status`의
+`"reviewed"`는 "승인됨"이 맞다(마스터 승인 게이트, `lib/harness/approval-gate.ts`가
+강제) — `wpMetadataStatus` 등 하위 항목의 `"reviewed"`("검토 완료",
+비강제 참고용 플래그)와 의도적으로 다른 라벨을 쓴다. 같은 raw 값이
+필드마다 다른 의미면, 공용 `describeStatusValue`를 억지로 통일하지
+말고 그 필드 전용 헬퍼(`describeArticleStatus`처럼)를 따로 둔다 —
+근거는 `docs/ux/ux-03a-common-ux-foundation.md`의 semantic audit 참고.
+
+실제 적용 사례: `docs/ux/ux-03a-common-ux-foundation.md` 참고.
+
+## 현재 상태 + 다음 작업 공통 표시 원칙 (Phase UX-03B1)
+
+사용자가 어떤 화면에 들어가더라도 기본적으로 "지금 이 글은 어떤
+상태인가?"와 "지금 내가 해야 할 다음 작업은 무엇인가?"에 즉시 답할 수
+있어야 한다. 이를 위해 다음 원칙을 지킨다.
+
+- **기본 화면에는 현재 상태와 다음 작업을 명확히 표시한다.** 가능하면
+  `components/workflow/workflow-status-card.tsx`(`WorkflowStatusCard`)와
+  `components/workflow/next-action-panel.tsx`(`NextActionPanel`)를
+  재사용한다 — 상태 계산 로직은 새로 만들지 않고, 기존 helper
+  (`getWordPressPublishPrepState`/`getSocialPostCardActionState`/
+  `getPostApprovalNextActions` 등)의 결과를 `lib/ui/next-action-view-model.ts`/
+  `lib/ui/workflow-status-view-model.ts`의 어댑터로 변환해서 넘긴다.
+- **primary action은 원칙적으로 화면/카드당 하나다.** 여러 helper의
+  결과를 조합할 때도(예: autoFix action처럼 helper가 모르는 화면 전용
+  action을 끼워 넣을 때) 최종적으로 하나의 `NextActionViewModel`에 담아
+  primary가 항상 하나만 강조되게 한다.
+- **사용자에게 다음 행동을 요구하는 문구("다음 작업", "확인이
+  필요합니다" 등)에는 반드시 실제 action(버튼/링크)이 함께 있어야
+  한다.** 문구만 있고 action이 없는 dead-end를 만들지 않는다 —
+  `NextActionPanel`은 primary/secondary가 모두 없을 때 자동으로
+  "다음 작업을 자동으로 결정하지 못했습니다" + 안전한 fallback
+  action(또는 "추가로 필요한 작업이 없습니다")을 보여준다.
+- **완료된 action은 반복 표시하지 않는다.** 품질검사가 이미
+  통과했으면 품질검사 버튼을 다시 primary로 보여주지 않고, 승인이
+  완료됐으면 승인 버튼을, Draft가 이미 있으면 새 Draft 생성 버튼
+  대신 "Draft 보기"/"Draft 업데이트"를 보여준다 — 기존 helper들이
+  이미 이 규칙을 구현하고 있으므로 새로 만들지 않는다.
+- **Related links(`RelatedPostLinks` 등)는 primary workflow와 시각적으로
+  분리한다.** `NextActionPanel`/`WorkflowStatusCard`보다 강조되면 안
+  되고, 화살표를 이어붙여 단계 진행처럼 보이는 표현은 쓰지 않는다.
+- **긴 작업이 진행 중이면 NextActionPanel에 새 실행 버튼을 또 보여주지
+  않는다.** `NextActionPanel`의 `progressContent` prop으로
+  `JobProgressCard` 등을 대신 보여줄 수 있다 — 동일 작업의 중복 실행을
+  막는다.
+
+실제 적용 사례: `docs/ux/ux-03b1-workflow-next-action.md` 참고.
+
+## 동일 기능 상호작용 일관성 + "승인" 용어 원칙 (Phase UX-03B2)
+
+같은 기능(예: 본문 수정)은 플랫폼/카드가 달라도 항상 같은 방식으로
+동작해야 한다. "다른 카드는 인라인 편집인데 이 카드만 상세 페이지로
+이동한다" 같은 예외를 만들지 않는다.
+
+1. **같은 라벨은 항상 같은 동작을 의미한다.** `[본문 수정]` 버튼은
+   플랫폼과 관계없이 항상 카드 안에서 열리는 인라인 편집을 뜻한다 —
+   페이지 이동으로 대체하지 않는다. 배열 기반 콘텐츠(X thread 등)라도
+   예외를 두지 말고, 인라인 편집기 쪽을 확장해서 맞춘다(위
+   `InlinePostBodyEditor`의 `mode="thread"` 참고).
+2. **페이지/탭 이동을 뜻하는 버튼에는 "상세 보기"류 표현을 쓰고,
+   "수정"이라는 단어를 페이지 이동에 쓰지 않는다.** "수정"은 항상
+   그 자리에서 바로 편집 가능한 UI를 의미해야 한다.
+3. **"승인"이라는 단어는 실제로 되돌릴 수 없는/최종 게이트 역할을
+   하는 action에만 쓴다.** 같은 화면 안에 "제안을 선택/채택하는
+   단계", "다시 검토해 달라고 요청하는 단계", "최종적으로 확정하는
+   단계"처럼 성격이 다른 여러 action이 있으면, 라벨을 기계적으로
+   통일하지 말고 각 action이 실제로 하는 일(DB에 어떤 필드가
+   바뀌는지, 되돌리기 어려운 게이트인지)을 먼저 확인한 뒤 가장 정확한
+   동사를 고른다(선택/적용/요청/승인 등). 상태 표시 라벨도 같은
+   원칙을 따른다 — 같은 raw 값(`"approved"` 등)이 여러 필드에서 쓰이며
+   의미가 다르면, 공용 `describeStatusValue`를 억지로 통일하지 말고
+   그 필드 전용 헬퍼(`describeRewriteSuggestionStatus`처럼)를 따로
+   둔다. 실제 사례: `app/articles/[id]/rewrite/page.tsx`의 "개선 제안
+   승인"/"재승인 요청"/"재승인 승인하기" → "개선안 선택"/"재검토
+   요청"/"최종 승인" 재정리(`lib/social/rewrite-version-user-facing-status.ts`).
+   **주의: state machine/DB 필드/action 함수명은 이 재정리로 바꾸지
+   않는다 — 사용자에게 보이는 라벨만 바꾼다.**
+4. **한 화면에는 "지금 눌러야 할 action"을 계산하는 판단 로직이
+   하나만 있어야 한다.** 여러 helper가 화면 여러 곳에서 각자
+   "primary action"을 따로 계산하면(예: 페이지 상단 요약 카드와
+   페이지 하단 워크플로 패널이 서로 다른 기준으로 "이게 지금 눌러야
+   할 버튼"이라고 주장하는 것), 사용자에게는 primary action이 두 개
+   있는 것처럼 보인다. 이런 helper를 발견하면: (a) 정말 순수하게
+   "어느 섹션으로 스크롤/이동할지"만 알려주는 navigation 전용이면
+   유지하되 버튼 스타일을 secondary(테두리)로 낮춰 진짜 primary
+   action과 시각적으로 경쟁하지 않게 한다. (b) 같은 작업의 실행 여부를
+   별도 기준으로 다시 계산한다면, 그 helper를 삭제하거나 business
+   logic을 합치지 말고 `NextActionViewModel` 등 공통 adapter를 거쳐
+   같은 결과를 쓰도록 바꾼다. 실제 사례:
+   `lib/social/social-post-auto-review.ts`의
+   `getSocialPostWorkspacePrimaryAction`은 `/social-posts/[id]`
+   상단 "지금 상태 요약" 카드에서 "빠른 이동"(다음에 어느 섹션을
+   보면 되는지) 용도로만 쓰고, 버튼 스타일을 secondary로 낮췄다 —
+   실제 승인 action(강조 버튼)은 최종 승인 패널의
+   `approveSocialPostAction` 폼 하나뿐이다.
+5. **네비게이션 action(다른 화면/섹션으로 이동)과 워크플로 action(실제
+   상태를 바꾸는 실행)은 시각적으로 분리한다.** 같은 버튼 스타일
+   (강조색)을 공유하지 않는다 — 네비게이션은 옅은 테두리/배경의
+   secondary 스타일을 쓰고, 실제 실행 버튼만 강조(primary) 스타일을
+   쓴다.
+
+실제 적용 사례: `docs/ux/ux-03b2-interaction-consistency.md` 참고.
+
+## PlatformBadge/platform label 공통화 + 모든 상태 전환 버튼은 disabled 로직을 갖춰야 한다 (Phase UX-03C)
+
+1. **"platform"이라는 이름의 값이 여러 개 있을 수 있다 — 개념이 다르면
+   라벨 맵도 구분하되, 계산 진입점은 하나로 합친다.** 이 프로젝트에는
+   콘텐츠 플랫폼(`SocialPlatform`: wordpress_blog/x/threads/...)과 트렌드
+   검색 출처(naver/daum/mock)라는 서로 다른 두 "platform" 개념이 있었다.
+   두 개를 억지로 하나의 enum으로 합치지 않되, "platform 문자열 → 사용자
+   라벨/배지 스타일" 계산은 `lib/ui/platform-badge.ts` 하나에 모으고
+   `components/common/platform-badge.tsx`(`PlatformBadge`)가 그 결과만
+   렌더링한다. 페이지마다 별도 `PlatformBadge` 컴포넌트나 색상 `switch`를
+   다시 만들지 않는다. 콘텐츠 플랫폼 라벨의 기존 source of truth
+   (`lib/social/platform-generation-recommendations.ts`의 `PLATFORM_LABELS`)는
+   그대로 재사용하고, 이 새 파일이 다시 정의하지 않는다.
+2. **raw 문자열을 배지 텍스트로 그대로 렌더링하는 것은 금지한다(관용적
+   배지라는 이유로도 예외를 두지 않는다).** `app/trends/page.tsx`/
+   `app/themes/[themeId]/page.tsx`의 옛 `PlatformBadge`가 `{platform}`을
+   그대로 렌더링해 "naver"/"daum"/"mock"이 화면에 그대로 보이던 것이
+   실제 사례 — "관용적이라 괜찮다"고 판단하지 말고 항상 라벨 변환을
+   거친다.
+3. **상태에 따라 disabled/이유가 바뀌어야 하는 버튼은, 페이지의 다른
+   버튼들과 마찬가지로 반드시 그 로직을 갖춰야 한다 — "이 버튼만
+   예외"를 만들지 않는다.** `/articles/[id]/rewrite`의 "개선안 선택"
+   버튼이 페이지의 다른 모든 버튼(재검토 요청/최종 승인/재내보내기
+   등)과 달리 disabled 로직이 아예 없어서, 이미 선택/적용된 제안에도
+   계속 클릭 가능한 상태로 남아 있던 실제 버그가 발견됐다. 새 action
+   버튼을 추가할 때는 그 화면에 이미 있는 `describe*DisabledReason`류
+   헬퍼 패턴을 확인하고 빠짐없이 따라간다.
+4. **오류/실패 메시지도 disabled 이유 문구와 동일한 raw 필드명 금지
+   원칙을 적용한다.** `field_name='value'(actual)` 형태의 raw 필드명은
+   버튼 disabled 이유뿐 아니라, 서비스 레이어가 반환하는 실패
+   메시지(화면의 `{error}` 배너 등)에도 나타날 수 있다 — 버튼 쪽만
+   점검하고 서비스 레이어의 오류 문자열은 놓치기 쉬우므로, 새 기능을
+   감사할 때는 disabled 조건뿐 아니라 그 조건이 실패할 때 실제로
+   반환되는 오류 문자열까지 함께 확인한다.
+
+실제 적용 사례: `docs/ux/ux-03c-route-adoption-platform-labels.md` 참고.
+
+## AI가 처리할 수 있는 검토/수정을 사용자 작업으로 전가하지 않는다 (Phase UX-04A)
+
+자동 검토(quality gate)가 발견한 문제 중에는 AI/시스템이 사람에게 묻지
+않고 안전하게 처리할 수 있는 것(auto_fixable)과, 사실/출처/민감한
+판단이 필요해 사람이 직접 확인해야 하는 것(user_confirmation_required,
+blocking)이 섞여 있다. 이 둘을 UI에서 구분 없이 나열하면, 사람이
+확인하지 않아도 되는 문제까지 "내가 해결해야 할 일"처럼 보여 검토
+부담이 실제보다 커 보인다.
+
+1. **AI가 안전하게 해결 가능한 문제(auto_fixable)를 사용자 작업으로
+   전가하지 않는다.** 기본 화면의 "수정 필요" 목록에 auto_fixable
+   issue를 나열하지 않는다 — 이미 자동으로 정리됐거나(구현된
+   sanitizer가 있는 경우) 정리 대상으로 분류된 문제이지, 사람이 지금
+   당장 판단할 문제가 아니다. 실제 사례:
+   `lib/social/social-post-auto-review.ts`의 `summarizeUserFacingReview()`가
+   `classifyReviewIssues()`(`review-issue-fixability.ts`)로 auto_fixable
+   issue를 걸러낸다.
+2. **사용자에게는 사람 판단이 필요한 사항만 기본 표시한다.**
+   `HumanReviewPanel`은 `user_confirmation_required`/`blocking`으로
+   분류된 항목만 받는다 — 호출 측이 반드시 이 분류를 거쳐서 넘긴다
+   (auto_fixable을 실수로 섞어 넣지 않는다).
+3. **자동 검토 결과는 raw 카운트가 아니라 사용자 상태 중심으로
+   표시한다.** "통과 7 · 확인 필요 1 · 수정 필요 2 · 차단 0" 같은
+   세부 카운트를 기본 화면에 항상 노출하지 않는다 — "자동 검토 완료 /
+   확인할 사항 N건"처럼 사람이 실제로 해야 할 일의 개수 하나로
+   요약한다. `AutoReviewSummaryCard`의 `userFacingSummary` prop이 이
+   패턴을 구현한다.
+4. **세부 issue count/전체 목록은 기본 UI보다 상세 정보(AdvancedDetails)에
+   우선 배치한다.** 삭제하지 않는다 — "자동 검토 상세" 접힘 안에서는
+   여전히 전체 목록(auto_fixable 포함)과 raw 카운트를 확인할 수 있어야
+   한다.
+5. **자동 검토/자동 수정은 최종 승인을 대체하지 않는다.** 자동 검토가
+   전부 통과하고 자동 수정까지 완료돼도 `approval_status`를 자동으로
+   `approved`로 바꾸지 않는다 — 승인 버튼은 항상 사람이 직접 눌러야
+   한다(섹션 "검토는 자동 검토 + 사람은 편집자 원칙"의 연장).
+6. **직접 수정 후에는 검토/안전 자동수정/재검토를 가능한 한 연속
+   실행한다.** 사용자가 본문을 저장하면, 자동 검토 → (남은 문제가
+   전부 auto_fixable이면) 자동 수정 → 재검토까지 한 번에 이어지게
+   한다 — "저장 → 검토 버튼 클릭 → 수정 버튼 클릭 → 재검토 클릭"을
+   사람이 세 번 반복하게 만들지 않는다. 이 흐름은 이미
+   `lib/social/social-draft-generation-service.ts`(글 생성 직후,
+   Phase 4-28)와 `runAutoFixAndRecheck()`(수동 재시도 경로)로
+   구현되어 있다 — 새 오케스트레이션을 만들기 전에 먼저 기존 흐름이
+   해당 화면에도 이미 연결되어 있는지 확인한다.
+7. **이미 자동 실행되는 검토/수정 단계의 버튼을 기본 성공 흐름에서
+   primary로 계속 보여주지 않는다.** 글 생성 직후 자동 검토가 이미
+   끝났다면 `[자동 검토 실행]`을 기본 primary action으로 다시 보여줄
+   필요가 없고, auto_fixable 문제가 자동 처리됐다면
+   `[자동 수정 후 재검토]`도 마찬가지다. 이 버튼들은 검토 실패/사용자의
+   본문 수정/명시적 재시도 같은 **실제로 필요한 상황에서만** 다시
+   나타나야 한다(대부분의 기존 구현이 `qualityStatus`/checklist를
+   매 렌더마다 다시 계산해서 이미 이 원칙을 만족하고 있었다 — 새
+   조건을 만들기 전에 기존 계산이 이미 맞는지 먼저 확인한다).
+
+실제 적용 사례: `docs/ux/ux-04a-human-review-simplification.md` 참고.
+
+## 여러 생성 글을 한 번에 다뤄야 하는 화면의 원칙 (Phase UX-04B)
+
+기사 하나에서 여러 플랫폼 글이 한꺼번에 생성되는 화면(현재는
+`app/articles/[id]/social/page.tsx`)에 적용한다. 카드가 여러 개인
+화면을 만들거나 고칠 때는 다음을 따른다.
+
+1. **여러 생성 글은 문제 있는 항목을 우선 표시한다.** 차단(blocked) >
+   확인 필요(needs_confirmation) > 검토 실패(failed) > 검토 중
+   (checking) > 문제 없음(ready) 순으로 정렬한다 — 이미 승인된 글은
+   항상 가장 마지막이다. 정렬 기준은 새로 계산하지 않고 이미 있는
+   `summarizeUserFacingReview()`(UX-04A) 결과를 그대로 재사용한다
+   (`lib/ui/multi-platform-review-summary.ts`의
+   `getMultiPlatformReviewSortKey`).
+2. **문제가 없는 글을 반복 확인하도록 강요하지 않는다.** 전체
+   상태를 한눈에 보여주는 요약 카드("전체 N개 / 확인 필요 N개 /
+   확인할 사항 없음 N개")를 화면 상단에 두고, 개별 카드를 하나씩
+   열어보지 않아도 전체 그림을 파악할 수 있게 한다
+   (`MultiPlatformReviewSummaryCard`). 본문 확인/복사/수정 같은 기존
+   기능 자체는 삭제하지 않는다 — 기본 노출 순서/강조만 바꾼다.
+3. **bulk approval(일괄 승인)은 사용자의 명시적 action으로만
+   실행한다.** 자동으로 여러 글을 한꺼번에 승인하는 경로를 만들지
+   않는다 — 반드시 사람이 버튼을 누르고, 확인 대화상자
+   (`ConfirmSubmitButton` 등 기존 컴포넌트 재사용)를 거쳐야 한다.
+4. **bulk approval은 기존 개별 승인 validation을 절대 우회하지
+   않는다.** `UPDATE ... WHERE id IN (...)` 같은 일괄 update로 검증을
+   건너뛰지 않는다 — 대상마다 기존 단일 승인 함수(guard 포함)를 그대로
+   호출한다(`bulkApproveSocialPosts`가 `approveSocialPost`를 루프
+   호출하는 방식 참고). 일부가 실패해도 나머지는 계속 진행하는 부분
+   성공을 지원한다.
+5. **bulk approval과 bulk publish(외부 게시)를 분리한다.** 일괄
+   승인은 `approval_status`만 바꾸고, 어떤 경우에도 외부 플랫폼 API를
+   자동 호출하지 않는다 — 게시 준비는 사용자가 다음 화면에서 별도로
+   진행한다.
+6. **blocked/confirmation-required 글은 bulk approval 대상에서
+   제외한다.** 일괄 승인 가능 목록은 "검토 완료 + 확인할 사항 없음 +
+   아직 미승인" 조건을 모두 만족하는 글만 포함하고, 제외된 글이 있으면
+   그 이유를 자연어로 안내한다(예: "1개는 확인이 필요해 제외됩니다").
+
+실제 적용 사례: `docs/ux/ux-04b-multi-platform-review.md` 참고.
+
+## 승인·게시 준비·게시 완료는 서로 다른 단계다 (Phase UX-05A)
+
+"검토 → 승인 → 게시 준비 → 게시"는 4개의 분리된 단계다. 화면 문구/
+상태 계산에서 이 경계를 흐리지 않는다.
+
+1. **승인 완료와 게시 완료는 별개다.** `approval_status === "approved"`가
+   곧 게시가 끝났다는 뜻이 아니다 — 승인은 "다음 단계(게시 준비)로
+   넘어가도 된다"는 사람의 판단일 뿐이다.
+2. **게시 준비 완료는 외부 게시 완료가 아니다.** `PublishPreparationState`의
+   `"ready"`(게시 준비 완료)는 "사용자가 다음 게시 action을 실행할 수
+   있음"을 뜻하지 "이미 게시됨"을 뜻하지 않는다 — 실제 게시가 끝난
+   상태는 반드시 `"completed"`로 별도 표시한다(실제 신호:
+   `publishStatus === "published"` 또는 `manualPostStatus === "posted"`
+   등 이미 저장된 값만 사용 — 새로 추정하지 않는다).
+3. **외부 게시에는 항상 명시적 사용자 action이 필요하다.** 승인 완료,
+   bulk approval, 페이지 렌더링/새로고침만으로 외부 게시(또는 게시
+   준비를 넘어선 그 무엇)가 자동 실행되면 안 된다 — 실제 direct
+   publish capability가 있는 플랫폼이 생기더라도 마찬가지다.
+4. **게시 capability가 없거나 아직 구현되지 않은 플랫폼은 항상
+   copy/export fallback을 제공한다.** 존재하지 않는 게시 기능을
+   있는 것처럼 버튼으로 만들지 않는다 — 예: 이 프로젝트에는 2026-09-18
+   기준 어떤 플랫폼에도 실제 "API 즉시 게시"가 구현되어 있지 않으므로,
+   naver_cafe/x/threads/instagram의 primary action은 항상 "본문 복사"
+   여야 한다("게시하기"라는 라벨은 실제로 그 capability가 구현된
+   뒤에만 쓴다). 새 capability가 실제로 추가되면 그때
+   `getPublishCapability`(`lib/ui/publish-preparation-view-model.ts`)에
+   반영한다.
+5. **게시 설정 부족을 기술 용어 대신 사용자 행동으로 안내한다.** "API
+   readiness"는 "게시 설정 상태"로, "dry-run"/"feature flag"/"provider"
+   같은 용어는 실제 의미에 맞는 한국어 문장으로 바꾼다.
+6. **page load/승인/bulk approval은 외부 publish를 유발하지 않는다.**
+   이 원칙은 화면 렌더링 시점에 발생하는 부수효과에도 적용된다 —
+   Server Component가 데이터를 조회하는 것과, 사용자가 버튼을 눌러
+   action을 실행하는 것을 절대 섞지 않는다.
+
+실제 적용 사례: `docs/ux/ux-05a-publish-preparation.md` 참고.
+
+## 게시 실행·완료 UX 원칙 (Phase UX-05B)
+
+UX-05A의 "승인/게시 준비/게시 완료 분리" 원칙을 실제 게시 실행
+단계까지 이어간다.
+
+1. **UI는 실제 구현된 capability만 약속한다.** 2026-09-18 기준
+   이 프로젝트에는 어떤 플랫폼에도 "즉시 API 게시"가 구현되어 있지
+   않다 — `[네이버에 게시하기]`/`[X에 게시하기]`처럼 존재하지 않는
+   기능을 약속하는 라벨을 만들지 않는다. 실제로 존재하는 capability는
+   `draft`(WordPress Draft 생성/업데이트/보기)/`manual`(본문 복사 +
+   수동 export)/`copy`(본문 복사) 3가지뿐이다
+   (`lib/ui/publish-preparation-view-model.ts`의 `getPublishCapability`가
+   source of truth).
+2. **본문 복사는 실제 게시 완료가 아니다.** `CopyPostBodyButton` 같은
+   클립보드 복사 action은 client-side로만 처리하고, 성공했다고 해서
+   `manual_post_status`/`publish_status`를 자동으로 바꾸지 않는다.
+   복사 성공 메시지 뒤에는 "외부 플랫폼에서 게시한 뒤 게시 완료로
+   표시할 수 있습니다" 같은 안내만 덧붙인다(local UI 상태로 충분 —
+   "복사했다"는 사실 자체를 DB에 영구 저장할 필요는 없다).
+3. **수동 게시 완료는 사용자의 명시적 확인으로만 기록한다.** "게시
+   완료로 표시" 버튼은 "AI가 게시를 수행했다"는 뜻이 아니라 "사용자가
+   외부 플랫폼에서 직접 게시를 완료했다고 확인했다"는 뜻이다 — 버튼
+   라벨/안내 문구에서 이 차이를 분명히 한다(`[게시 완료]`/`[게시
+   성공]`/`[자동 게시 완료]`처럼 시스템이 뭔가 했다는 인상을 주는
+   표현은 쓰지 않는다).
+4. **WordPress Draft 완료를 공개 게시 완료로 표현하지 않는다.**
+   "Draft 생성됨"과 "공개 게시됨"은 사용자 문구에서 항상 구분한다 —
+   전체 요약에서도 사실과 다른 "게시 완료"라는 표현 대신 "게시 작업
+   완료"처럼 capability에 맞는 표현을 쓴다.
+5. **완료된 게시 작업의 action을 반복 노출하지 않는다.** 이미
+   `publishStatus === "published"`이거나 `manualPostStatus === "posted"`인
+   post는 다시 "본문 복사"/"게시 완료로 표시"를 primary로 보여주지
+   않고, "게시글 보기"(URL이 있으면) 위주로 compact하게 표시한다.
+6. **시스템 본문 수정이 외부 게시물 자동 수정으로 오해되지 않게
+   한다.** 이미 게시 완료로 표시된 post는 인라인 편집 버튼을
+   비활성화하고 "본문 수정은 외부 게시물에 자동 반영되지 않습니다"
+   같은 안내로 대체한다. 이 프로젝트는 이미 저장소 레벨에서
+   `publishStatus === "published"`인 post의 수정 자체를 차단하고,
+   승인된 post를 수정하면 `quality_status`/`approval_status`/
+   `publish_status`를 자동으로 초기화하는 안전장치를 갖고 있다
+   (`lib/repositories/social-posts-repository.ts`의
+   `saveSocialPostRevision`) — 새 정책을 만들기 전에 이미 있는 이
+   안전장치를 먼저 확인한다.
+
+실제 적용 사례: `docs/ux/ux-05b-publish-execution-completion.md` 참고.
+
+## UX Governance 최종 원칙 (Phase UX-07, 이 프로젝트 UX 개선의 종료 기준)
+
+UX-01부터 UX-07까지 이어진 전체 UX 개선 프로젝트를 마치며, 앞으로
+새 기능을 추가할 때도 지켜야 하는 핵심 원칙을 최종 고정한다. 위
+섹션들의 세부 규칙은 모두 아래 16개 원칙에서 파생된 것이다 — 새 화면을
+설계할 때 세부 규칙이 애매하면 이 16개 원칙으로 되돌아가 판단한다.
+
+1. 일반 사용자 화면은 현재 상태 → 본문/결과 → 사람이 확인할 사항 →
+   다음 작업 순서를 기본으로 한다.
+2. primary action은 화면/섹션당 원칙적으로 하나다.
+3. AI가 처리 가능한 문제는 AI가 먼저 처리하고, 사람에게는 판단이
+   필요한 것만 남긴다.
+4. 사람 판단이 필요한 문제만 전면에 표시한다(자동 통과 항목을 다시
+   확인시키지 않는다).
+5. 기술 정보는 기본적으로 숨긴다(`AdvancedDetails`/카테고리 accordion
+   등 접힘 영역 안에서만).
+6. 동일한 의미의 동작에는 항상 동일한 라벨을 쓴다.
+7. 승인(approval)과 게시(publish)는 서로 다른 상태다 — 혼동시키지
+   않는다.
+8. 복사(clipboard copy)는 게시가 아니다.
+9. WordPress Draft는 공개 게시가 아니다.
+10. UI는 실제로 존재하는 capability만 사용자에게 약속한다(동작하지
+    않는 버튼을 만들지 않는다).
+11. 완료된 action은 반복해서 다시 보여주지 않는다.
+12. workflow action(상태를 바꾸는 버튼)과 navigation(화면 이동)은
+    항상 구분한다 — 라벨로도 구분되게 한다(예: 본문 수정=inline
+    editor, 상세 보기=이동).
+13. 사용자에게 행동을 요구할 때는 항상 실제로 누를 수 있는 action을
+    함께 제공한다(dead-end 금지).
+14. raw enum/DB 필드명/env 변수 이름을 사용자 화면에 그대로 노출하지
+    않는다.
+15. 오래 걸리는 action에는 진행 상태(실행 중/결과 요약/다음 행동)를
+    보여준다.
+16. 외부 공개 게시처럼 되돌리기 어려운 action에는 항상 명시적인
+    사용자 클릭이 필요하다 — 자동/일괄 처리 대상에 포함하지 않는다.
+
+**UX 프로젝트 종료 판정(UX-07 기준)**: Critical open 0, High open 0,
+핵심 Journey blocker 0, dead-end 0, 위험한 publish/approval 오해 0
+— 이 5가지가 모두 충족되면 "UX 개선 프로젝트 완료"로 판정한다. Medium/
+Low는 accepted(의도적 유지)/deferred(향후 QA·기능 단계)로 남을 수
+있다. 자세한 최종 숫자와 판정 근거는
+[`docs/ux/ux-final-report.md`](./ux/ux-final-report.md) 참고.
+
+새 기능 추가 시 이 원칙이 다시 깨지지 않도록
+[`docs/ux/ux-regression-checklist.md`](./ux/ux-regression-checklist.md)를
+커밋 전에 확인한다.

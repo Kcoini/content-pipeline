@@ -136,7 +136,12 @@ describe("자동 검토 결과 섹션 (정적 소스 검사, Phase 3-25/3-26)", 
   it("summarizeAutoReview로 통과/확인 필요/수정 필요/차단 리포트를 계산한다(DB에 새로 쓰지 않는다)", () => {
     expect(pageSource).toContain('from "@/lib/social/social-post-auto-review"');
     expect(pageSource).toContain("summarizeAutoReview(checklist");
-    expect(pageSource).toContain("describeApprovalReadiness(review)");
+  });
+
+  it("Phase UX-03A: 공통 AutoReviewSummaryCard로 리포트를 렌더링한다(승인 가능 안내 문구 계산은 컴포넌트가 담당)", () => {
+    expect(pageSource).toContain('from "@/components/review/auto-review-summary-card"');
+    expect(pageSource).toContain("<AutoReviewSummaryCard");
+    expect(pageSource).toContain("review={review}");
   });
 
   it("아직 자동 검토를 실행하지 않았으면 raw quality_status 대신 안내 문구를 보여준다", () => {
@@ -161,7 +166,7 @@ describe("Phase 3-26: 단일 글 상세 검토·수정·승인 화면", () => {
     expect(pageSource).toContain('role="tab"');
     expect(pageSource).toContain("aria-selected={tab === value}");
     expect(pageSource).toContain("게시용 미리보기");
-    expect(pageSource).toContain('"수정하기"');
+    expect(pageSource).toContain('"글 정보 편집"');
     expect(pageSource).toContain("내부 원문 보기");
   });
 
@@ -250,6 +255,30 @@ describe("Phase 3-26: 단일 글 상세 검토·수정·승인 화면", () => {
   });
 });
 
+describe("Phase UX-03B2: getSocialPostWorkspacePrimaryAction은 navigation 전용 shortcut이다(두 번째 primary action이 아니다)", () => {
+  it("상단 요약 카드의 dt는 '빠른 이동'으로 표시하고, business logic은 바꾸지 않는다(getSocialPostWorkspacePrimaryAction 호출부 그대로 유지)", () => {
+    expect(pageSource).toContain("빠른 이동");
+    expect(pageSource).toContain("getSocialPostWorkspacePrimaryAction(p.qualityStatus, p.approvalStatus, review)");
+  });
+
+  it("상단 요약 카드의 버튼 3종 모두 secondary(테두리) 스타일이고, primary(bg-zinc-900) 스타일을 쓰지 않는다", () => {
+    const summaryCardStart = pageSource.indexOf("지금 상태 요약");
+    const summaryCardSource = pageSource.slice(summaryCardStart, pageSource.indexOf("</section>", summaryCardStart));
+    expect(summaryCardSource).not.toContain("bg-zinc-900");
+    expect(summaryCardSource).toContain("border border-zinc-300 bg-zinc-50");
+  });
+
+  it("approve/publish_prep 케이스는 별도 액션을 실행하지 않고 항상 같은 #final-approval-panel로만 이동한다(같은 화면의 진짜 승인 로직은 gate.canApprove 하나뿐)", () => {
+    expect(pageSource).toContain('href={`${buildTabHref(p.id, tab, returnTo)}#final-approval-panel`}');
+  });
+
+  it("진짜 primary action(강조 버튼)은 최종 승인 패널의 approveSocialPostAction 폼 하나뿐이다", () => {
+    const finalPanelSource = pageSource.slice(pageSource.indexOf('id="final-approval-panel"'));
+    expect(finalPanelSource).toContain("bg-zinc-900");
+    expect(finalPanelSource).toContain("<form action={approveSocialPostAction}");
+  });
+});
+
 describe("social post detail page — 글 유형별 검토 기준 표시 + 불일치 감지 (정적 소스 검사, Phase 4-5)", () => {
   it("자동 검토 결과에 글 유형과 적용된 검토 기준을 항상 먼저 보여준다", () => {
     expect(pageSource).toContain("getPlatformReviewCriteria");
@@ -305,11 +334,12 @@ describe("Phase 4-29: 승인 완료 카드 — 문구/다음 작업 버튼 정�
     expect(pageSource).not.toContain("이미 승인된 글입니다. 아래에서 다음 작업을 진행하세요.");
   });
 
-  it("approved면 approvalNextActions.message를 보여주고, primary/secondary 버튼을 카드 안에 바로 렌더링한다", () => {
+  it("Phase UX-03B1: approved면 approvalNextActions를 공통 NextActionViewModel로 바꿔 NextActionPanel로 렌더링한다(message/primary/secondary는 컴포넌트가 담당)", () => {
     expect(pageSource).toContain('p.approvalStatus === "approved" && approvalNextActions');
-    expect(pageSource).toContain("{approvalNextActions.message}");
-    expect(pageSource).toContain("renderNextAction(approvalNextActions.primaryAction, primaryClass)");
-    expect(pageSource).toContain("approvalNextActions.secondaryActions.map");
+    expect(pageSource).toContain('from "@/lib/ui/next-action-view-model"');
+    expect(pageSource).toContain("fromPostApprovalNextActions(approvalNextActions)");
+    expect(pageSource).toContain("<NextActionPanel");
+    expect(pageSource).toContain("renderNextAction(action, kind ===");
   });
 
   it("wordpress_blog는 Draft 존재 여부/게시 준비 상태를 실제로 조회해서(buildWordPressBlogPublishPreparationSummary) 다음 작업을 계산한다", () => {
@@ -332,5 +362,49 @@ describe("Phase 4-29: 승인 완료 카드 — 문구/다음 작업 버튼 정�
     const elseBranchStart = pageSource.indexOf(") : (", approvedBranchStart);
     const approvedBranch = pageSource.slice(approvedBranchStart, elseBranchStart);
     expect(approvedBranch).not.toContain("action={approveSocialPostAction}");
+  });
+});
+
+describe("Phase UX-03A: 최종 승인 전 HumanReviewPanel로 '확인이 필요한 사항'을 모아 보여준다", () => {
+  it("HumanReviewPanel을 import하고, 승인 전(approved 아님)에만 렌더링한다", () => {
+    expect(pageSource).toContain('from "@/components/review/human-review-panel"');
+    expect(pageSource).toContain('{p.approvalStatus !== "approved" && <HumanReviewPanel');
+  });
+
+  it("Phase UX-04A: humanReviewItems는 summarizeUserFacingReview의 visibleIssues(auto_fixable 제외)를 그대로 쓴다(별도 필터 로직을 다시 만들지 않는다)", () => {
+    expect(pageSource).toContain("const userFacingReview = summarizeUserFacingReview(p.qualityStatus, review, checklist");
+    expect(pageSource).toContain("userFacingReview.visibleIssues.map((issue) => ({");
+  });
+});
+
+describe("Phase UX-04A: 자동 검토 기본 화면 단순화 (AI가 처리할 수 있는 문제는 사용자 작업으로 전가하지 않는다)", () => {
+  it("AutoReviewSummaryCard에 userFacingSummary를 넘겨 기본 화면을 단순화한다", () => {
+    expect(pageSource).toContain('from "@/lib/social/social-post-auto-review"');
+    expect(pageSource).toContain("summarizeUserFacingReview");
+    expect(pageSource).toContain("userFacingSummary={userFacingReview}");
+  });
+
+  it("'지금 상태 요약' 카드는 raw 통과/확인 필요/수정 필요/차단 개수 4줄을 더 이상 직접 조합하지 않는다", () => {
+    expect(pageSource).not.toMatch(/통과 \$\{review\.counts\.passed\}/);
+  });
+
+  it("최종 승인 패널도 raw '확인 필요 / 수정 필요 / 차단' 개수 대신 '확인할 사항' 하나로 요약한다", () => {
+    expect(pageSource).not.toContain('<dt className="font-medium text-zinc-600">확인 필요 / 수정 필요 / 차단</dt>');
+    expect(pageSource).toContain('<dt className="font-medium text-zinc-600">확인할 사항</dt>');
+  });
+
+  it("승인은 review 계산 결과로 자동 실행되지 않고, 항상 approveSocialPostAction form 제출이 필요하다", () => {
+    expect(pageSource).not.toMatch(/approveSocialPostAction\(/);
+    expect(pageSource).toContain("<form action={approveSocialPostAction}>");
+  });
+
+  it("humanReviewItems 각 항목은 본문 수정 화면으로 이동하는 액션을 갖는다(raw enum이 아니라 axisLabel/message 기반 라벨)", () => {
+    const start = pageSource.indexOf("const humanReviewItems");
+    const end = pageSource.indexOf("const gate = getApprovalGateStatus");
+    const block = pageSource.slice(start, end);
+    expect(block).toContain("issue.axisLabel");
+    expect(block).toContain("issue.message");
+    expect(block).toContain('actionLabel: "글 정보 편집"');
+    expect(block).toContain('actionHref: `${buildTabHref(p.id, "edit", returnTo)}#edit-panel`');
   });
 });

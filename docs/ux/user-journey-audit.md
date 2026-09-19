@@ -4,6 +4,16 @@
 - 조사 방법: 코드 구조(route 이동, API 호출, 파이프라인 서비스) 기준 5개 대표 여정 추적. 클릭 수는 코드 기준 예상치.
 - 이 문서는 조사 전용이며 코드 변경은 없다.
 
+> **업데이트 (2026-09-19, Phase UX-06)**: 여기 예상치로 추적했던
+> Journey들을 실제 서비스 함수를 체이닝하는 자동 테스트
+> (`lib/journeys/*.test.ts`)로 검증했다 — 전부 통과, 성공 계약 확인.
+> 자세한 내용은 [`docs/ux/ux-06-user-journey-validation.md`](./ux-06-user-journey-validation.md) 참고.
+
+> **업데이트 (2026-09-19, Phase UX-07, 프로젝트 종료)**: 이 문서가
+> 감사했던 H5(`/articles/[id]` 관리자 접힘)/H6("수정하기"/"본문 수정"
+> 용어 충돌)가 모두 해결되었다. 최종 상태는
+> [`docs/ux/ux-final-report.md`](./ux-final-report.md) 참고.
+
 ---
 
 ## Journey 1: 테마 선택 → 자료 수집 → 마스터 원고 → WordPress 블로그 → 자동 검토 → 수정 → 승인 → WordPress Draft
@@ -71,15 +81,26 @@ Journey 1과 동일한 초반 경로 + `/articles/[id]/social`(social/page.tsx)�
 
 ## Journey 5: 기존 글 → rewrite → 검토 → 승인 → 게시 준비
 
-**현재 흐름**
-`/articles/[id]/rewrite` — 개선 제안 생성(:148) → 제안 목록에서 승인(:223 "개선 제안 승인") → 재승인 요청(:369) → 재승인 승인하기(:382) → 적용
+> **업데이트 (2026-09-18, Phase UX-03B2/UX-03C)**: "승인" 용어 3종 혼동은
+> 해결되었다. "개선 제안 승인" → "개선안 선택", "재승인 요청" → "재검토
+> 요청", "재승인 승인하기" → "최종 승인"으로 재명명(UX-03B2), UX-03C에서
+> 카드 단위 전수 감사를 완료해 primary action 반복 표시(개선안 선택
+> 버튼에 disabled 로직 누락 발견/수정), raw 상태값 노출(대상 원본 글
+> select의 raw platform key), 내부 상태값 접힘 영역을 `AdvancedDetails`로
+> 통일까지 마쳤다. 자세한 내용은
+> [`docs/ux/ux-03b2-interaction-consistency.md`](./ux-03b2-interaction-consistency.md),
+> [`docs/ux/ux-03c-route-adoption-platform-labels.md`](./ux-03c-route-adoption-platform-labels.md)
+> 참고.
+
+**현재 흐름(재명명 이후)**
+`/articles/[id]/rewrite` — 개선 제안 생성 → 제안 목록에서 "개선안 선택" → 적용 → "재검토 요청" → "최종 승인" → 적용
 
 | 항목 | 값 |
 |---|---|
-| 주요 클릭 수(추정) | 약 5회 (제안 생성 1, 제안 승인 1, 적용 1, 재승인 요청 1, 재승인 승인 1) — 그러나 용어 혼동으로 인한 재확인 왕복이 추가로 발생할 가능성 |
-| 사용자 판단 단계 | 3곳 (제안 승인, 적용 여부, 재승인) |
-| **핵심 문제** | 한 화면에 "개선 제안 승인"(:223) / "재승인 요청"(:369) / "재승인 승인하기"(:382)라는 **세 가지 다른 의미의 "승인" 용어**가 공존해 사용자가 각 버튼이 무엇을 확정하는지 혼동하기 쉬움 |
-| 추천 단순화 흐름 | 용어를 목적이 드러나도록 재명명 검토: "개선 제안 승인" → "제안 채택", "재승인 요청" → "변경 재검토 요청", "재승인 승인하기" → "재검토 확정" (실제 문구는 UX-05에서 확정) |
+| 주요 클릭 수(추정) | 약 5회 (제안 생성 1, 개선안 선택 1, 적용 1, 재검토 요청 1, 최종 승인 1) |
+| 사용자 판단 단계 | 3곳 (개선안 선택, 적용 여부, 최종 승인) |
+| 이전 핵심 문제(해결됨) | 한 화면에 "개선 제안 승인" / "재승인 요청" / "재승인 승인하기"라는 세 가지 다른 의미의 "승인" 용어가 공존해 혼동을 유발했음 |
+| 적용된 재명명 | "개선 제안 승인" → "개선안 선택", "재승인 요청" → "재검토 요청", "재승인 승인하기" → "최종 승인" (state machine/DB 필드는 변경하지 않음) |
 
 ---
 
@@ -92,11 +113,11 @@ Journey 1과 동일한 초반 경로 + `/articles/[id]/social`(social/page.tsx)�
 | 리뷰 이슈 fixability 판정 | `lib/social/review-issue-fixability.ts:98` `classifyReviewIssue` | **safe_to_automate (이미 구현됨)** |
 | status 한국어 변환 | 페이지마다 `STATUS_LABEL` 등을 개별 정의(`themes/[themeId]/page.tsx:29`, `dashboard/automation-safety/page.tsx:8` 등) — 공통 헬퍼(`describeStatusField`/`describeStatusValue`)는 있으나 미통합 | safe_to_automate (헬퍼 존재, 적용 확대 필요) |
 | 완료된 작업 버튼 숨김 | `post-approval-next-actions.ts`가 wordpress_blog 계열엔 적용됨, 다른 화면은 부분 적용 | needs_user_confirmation (전면 검토 필요) |
-| markdown/HTML 잔여물 정리 | 코드 내 명시적 cleanup 서비스 미발견 | safe_to_automate (신규 자동화 후보) |
+| markdown/HTML 잔여물 정리 | ✅ 해결 (UX-05A, UX-05B) — x/threads/instagram에 `platform_markup_residue` quality-gate 검사 + `plain-text-markup-residue-sanitizer.ts` 자동 정리기 신설. naver_cafe도 UX-05B에서 unescaped `**bold**` 검사를 추가해 비대칭을 해소했다(기존 `stripBoldMarkers` 자동 수정기 재사용) | safe_to_automate (구현 완료) |
 | SEO metadata 준비 | `app/articles/[id]/page.tsx:1002` 버튼 존재, provider는 수동 선택(:1009) | needs_user_confirmation (provider 선택은 사용자 판단 필요) |
 | WordPress 자동 초안 생성 | `blog/page.tsx:1193` `prepState.primaryAction` | needs_user_confirmation (게시 관련 행위, 의도적 수동 유지가 적절) |
-| 자동화 안전 점검 재실행 | `app/dashboard/automation-safety/page.tsx:101-119` 버튼 4개가 모두 동일 액션 호출 | must_remain_manual이나 **UI 중복 정리 필요** (기능 1개에 버튼 4개) |
-| 실제 공개 게시(public publish) | `lib/publish/wordpress-public-publish-service.ts`, `articles/[id]/page.tsx:2591` | must_remain_manual (승인 필요 영역, 올바름 — 단 라벨의 "테스트" 표현은 수정 필요, `full-ux-audit.md` C1 참조) |
+| 자동화 안전 점검 재실행 | ✅ 해결 (UX-04B) — 최신 코드로 재확인해 4개 버튼이 실제로 동일 action임을 확인, 1개로 통합 | must_remain_manual(올바름) |
+| 실제 공개 게시(public publish) | `lib/publish/wordpress-public-publish-service.ts`, `articles/[id]/page.tsx` | must_remain_manual (승인 필요 영역, 올바름 — 라벨의 "테스트" 표현 문제는 UX-02A에서 해결됨, `full-ux-audit.md` C1 참조) |
 | 원고 문단 정리/리드문 보강 | 별도 자동화 서비스 미발견 | needs_user_confirmation 또는 safe_to_automate 후보 (신규 기능, 이번 Phase 범위 밖) |
 
 ---
@@ -104,5 +125,11 @@ Journey 1과 동일한 초반 경로 + `/articles/[id]/social`(social/page.tsx)�
 ## Journey 공통 관찰
 
 - 모든 Journey에서 "테마 선택 → 자료 수집" 구간은 `/dashboard` ↔ `/themes/[themeId]` 간 왕복이 필수이며, 이 왕복이 모든 여정의 공통 병목이다.
-- 플랫폼 수가 늘어날수록(Journey 3) 반복 판단 부담이 선형으로 증가하는데, 일괄 처리 UI가 없다.
-- "승인"이라는 단어가 프로젝트 전체에서 최소 4가지 다른 맥락(기사 승인, 소셜포스트 승인, rewrite 제안 승인, rewrite 재승인)에 쓰이고 있어 전역적인 용어 정리가 필요하다 (UX-05에서 다룰 것).
+- ✅ 해결 (UX-04B) — ~~플랫폼 수가 늘어날수록(Journey 3) 반복 판단 부담이 선형으로 증가하는데, 일괄 처리 UI가 없다~~. `app/articles/[id]/social/page.tsx`에 `MultiPlatformReviewSummaryCard` + 문제 우선 정렬 + 일괄 승인을 도입했다. 자세한 내용은 [`docs/ux/ux-04b-multi-platform-review.md`](./ux-04b-multi-platform-review.md) 참고.
+- ✅ 해결 (UX-03B2) — ~~"승인"이라는 단어가 프로젝트 전체에서 최소 4가지 다른 맥락(기사 승인, 소셜포스트 승인, rewrite 제안 승인, rewrite 재승인)에 쓰이고 있어 전역적인 용어 정리가 필요하다~~. rewrite 쪽 3종 혼동은 UX-03B2에서 정리했다(개선안 선택/재검토 요청/최종 승인). 기사 승인(`article.status`)과 소셜포스트 승인(`approval_status`)은 서로 다른 게이트를 가리키는 것이 이미 의도된 설계임을 UX-03A semantic audit에서 확인했다(각 필드 전용 라벨 헬퍼로 구분).
+- **업데이트 (2026-09-18, Phase UX-04A)**: 자동 검토→자동 수정→재검토가
+  글 생성 직후 이미 자동 실행되고 있음을 재확인했고(Phase 4-28에서
+  이미 구현), 이 사실이 사용자 화면에도 명확히 드러나도록
+  `AutoReviewSummaryCard`/`HumanReviewPanel`이 auto_fixable 문제를
+  기본 화면에서 숨기고 사람 판단이 필요한 항목만 보여주게 정리했다.
+  자세한 내용은 [`docs/ux/ux-04a-human-review-simplification.md`](./ux-04a-human-review-simplification.md) 참고.

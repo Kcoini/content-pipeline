@@ -134,6 +134,92 @@ export async function saveSocialPostBodyAndProcess(
     { socialPostId, platform: existing.platform, saveMode, bodyLength: trimmed.length }
   );
 
+  return continueAfterSave(existing, editResult, saveMode, approvedBy);
+}
+
+/**
+ * Phase UX-03B2: X처럼 threadItems 배열로 구성된 콘텐츠를 저장한다.
+ * getSocialPostEditableField가 null을 반환하는(=단일 문자열 필드가 없는)
+ * 플랫폼 중, 실제로 thread를 지원하는 플랫폼에서만 쓴다. 저장 이후
+ * (자동 검토/승인) 흐름은 saveSocialPostBodyAndProcess와 완전히
+ * 동일하다(continueAfterSave를 공유) — 승인 로직/자동 검토 계약을
+ * 새로 만들지 않는다.
+ *
+ * 빈 항목(공백만 있는 텍스트)은 저장 전에 제거하고 순서를 다시 매긴다
+ * ("빈 item 방지") — 전부 비어 있으면 저장 자체를 막는다("전체 thread가
+ * 비는 저장 방지").
+ */
+export async function saveSocialPostThreadAndProcess(
+  socialPostId: string,
+  threadItemTexts: string[],
+  saveMode: SocialPostBodySaveMode,
+  approvedBy: string
+): Promise<SaveSocialPostBodyResult> {
+  const existing = await getSocialPostById(socialPostId);
+  if (!existing) {
+    return { success: false, message: `social post를 찾을 수 없습니다: ${socialPostId}`, stage: "saved" };
+  }
+
+  if (!PLATFORM_WRITING_CONFIGS[existing.platform].supportsThreads) {
+    return {
+      success: false,
+      message: "이 플랫폼은 thread 편집을 지원하지 않습니다 — 상세 페이지의 편집 화면을 사용하세요.",
+      stage: "saved",
+    };
+  }
+
+  const trimmedItems = threadItemTexts
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .map((text, index) => ({ order: index + 1, text }));
+
+  if (trimmedItems.length === 0) {
+    return { success: false, message: "본문이 비어 있어 저장할 수 없습니다.", stage: "saved" };
+  }
+
+  await logInlineEditEvent("social_post_body_save_started", "info", "본문 저장을 시작합니다.", existing.articleId, {
+    socialPostId,
+    platform: existing.platform,
+    saveMode,
+    threadItemCount: trimmedItems.length,
+  });
+
+  const editResult = await editSocialPostContent(socialPostId, { threadItems: trimmedItems, editedBy: approvedBy });
+
+  if (!editResult.success || !editResult.socialPost) {
+    await logInlineEditEvent("social_post_body_save_failed", "failed", editResult.message, existing.articleId, {
+      socialPostId,
+      platform: existing.platform,
+      saveMode,
+    });
+    return { success: false, message: editResult.message, stage: "saved" };
+  }
+
+  await logInlineEditEvent(
+    "social_post_body_save_completed",
+    "success",
+    "본문 저장을 완료했습니다.",
+    existing.articleId,
+    { socialPostId, platform: existing.platform, saveMode, threadItemCount: trimmedItems.length }
+  );
+
+  return continueAfterSave(existing, editResult, saveMode, approvedBy);
+}
+
+/**
+ * 본문 저장(단일 필드든 threadItems든) 이후의 공통 흐름 — saveMode에 따라
+ * 저장만 하기/자동 검토까지/승인까지 진행한다. 두 저장 함수(단일
+ * 필드/thread)가 이 함수를 공유해 승인/자동 검토 계약이 어긋나지
+ * 않게 한다.
+ */
+async function continueAfterSave(
+  existing: SocialPost,
+  editResult: { success: boolean; message: string; socialPost?: SocialPost },
+  saveMode: SocialPostBodySaveMode,
+  approvedBy: string
+): Promise<SaveSocialPostBodyResult> {
+  const socialPostId = existing.id;
+
   if (saveMode === "save_only") {
     return {
       success: true,

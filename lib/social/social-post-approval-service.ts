@@ -271,4 +271,56 @@ export async function revokeApproval(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase UX-04B: 여러 post를 한 번에 승인하는 일괄 승인. 새 validation을
+// 만들지 않는다 — 위 approveSocialPost()를 대상 post마다 그대로
+// 호출해서, 단일 승인과 완전히 동일한 guard(checkApprovable)가 각
+// post에 개별 적용되게 한다. UPDATE ... WHERE id IN (...) 같은 validation
+// 우회 쿼리는 쓰지 않는다.
+// ---------------------------------------------------------------------------
+
+export interface BulkApprovalFailure {
+  socialPostId: string;
+  message: string;
+}
+
+export interface BulkApprovalResult {
+  successCount: number;
+  failureCount: number;
+  approvedSocialPosts: SocialPost[];
+  failures: BulkApprovalFailure[];
+}
+
+/**
+ * socialPostIds를 순서대로 approveSocialPost()에 넘겨 하나씩 승인한다.
+ * 일부가 실패해도(예: 그 사이 다른 요청으로 상태가 바뀐 경우) 나머지는
+ * 계속 진행한다(부분 성공을 지원한다) — 승인 가능한 것까지는 승인하고,
+ * 실패한 대상과 사유를 그대로 돌려준다. 외부 플랫폼 게시는 이 함수
+ * 안에서 절대 호출하지 않는다(approval_status만 바꾼다).
+ */
+export async function bulkApproveSocialPosts(
+  socialPostIds: readonly string[],
+  approvedBy: string,
+  notes?: string
+): Promise<BulkApprovalResult> {
+  const approvedSocialPosts: SocialPost[] = [];
+  const failures: BulkApprovalFailure[] = [];
+
+  for (const socialPostId of socialPostIds) {
+    const result = await approveSocialPost(socialPostId, approvedBy, notes);
+    if (result.success && result.socialPost) {
+      approvedSocialPosts.push(result.socialPost);
+    } else {
+      failures.push({ socialPostId, message: result.message });
+    }
+  }
+
+  return {
+    successCount: approvedSocialPosts.length,
+    failureCount: failures.length,
+    approvedSocialPosts,
+    failures,
+  };
+}
+
 export { SocialPostNotFoundError };

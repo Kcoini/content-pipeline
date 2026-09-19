@@ -27,11 +27,8 @@ describe("automation safety review dashboard page (정적 소스 검사, Phase 3
     expect(pageSource).not.toContain("process.env");
   });
 
-  it("Safety Review 실행 등 점검용 버튼을 제공한다", () => {
-    expect(pageSource).toContain("Safety Review 실행");
-    expect(pageSource).toContain("최근 로그 보안 점검");
-    expect(pageSource).toContain("게시 workflow 점검");
-    expect(pageSource).toContain("feature flag 점검");
+  it("점검 실행 버튼을 제공한다", () => {
+    expect(pageSource).toContain("안전 점검 다시 실행");
   });
 
   it("actions.ts는 데이터를 변경하지 않고 페이지만 재검증한다", () => {
@@ -53,5 +50,24 @@ describe("automation safety review dashboard page 한국어 제목 (정적 소�
   it("카테고리 라벨이 한국어다", () => {
     expect(pageSource).toContain('feature_flags: "기능 플래그"');
     expect(pageSource).not.toContain('feature_flags: "Feature Flags"');
+  });
+});
+
+describe("점검 실행 버튼 중복 제거 (정적 소스 검사, Phase UX-04B)", () => {
+  it("rerunAutomationSafetyReview 폼은 하나만 렌더링한다(예전에는 동일 action을 호출하는 버튼이 4개였다)", () => {
+    const matches = pageSource.match(/action=\{rerunAutomationSafetyReview\}/g) ?? [];
+    expect(matches.length).toBe(1);
+  });
+
+  it("예전에 있던 중복 버튼 라벨(Safety Review 실행/최근 로그 보안 점검/게시 workflow 점검/feature flag 점검)은 더 이상 없다", () => {
+    expect(pageSource).not.toContain("Safety Review 실행");
+    expect(pageSource).not.toContain("최근 로그 보안 점검");
+    expect(pageSource).not.toContain("게시 workflow 점검");
+    expect(pageSource).not.toContain("feature flag 점검");
+  });
+
+  it("카테고리별 상태 정보는 읽기 전용 섹션으로 계속 표시된다(정보 삭제 없음)", () => {
+    expect(pageSource).toContain("카테고리별 상태");
+    expect(pageSource).toContain("result.categoryResults.map");
   });
 });

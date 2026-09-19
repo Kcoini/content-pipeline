@@ -39,3 +39,15 @@ describe("Phase 4-26: 대시보드 재작성 테이블에도 본문 확인/수�
     expect(pageSource).toContain("returnTo={returnTo}");
   });
 });
+
+describe("Phase UX-03C: dashboard/rewrite 용어를 detail page(/articles/[id]/rewrite)와 통일한다", () => {
+  it("테이블 헤더가 옛 '재승인' 단독 표현 대신 '재검토/최종 승인'을 쓴다", () => {
+    expect(pageSource).not.toContain(">재승인/재내보내기<");
+    expect(pageSource).toContain("재검토/최종 승인 · 재내보내기");
+  });
+
+  it("rewrite_reapproval_status 필터 라벨도 공용 describeStatusField를 거치므로 이 값이 바뀌면 이 페이지에도 자동 반영된다(페이지 자체에서 중복 하드코딩하지 않는다)", () => {
+    expect(pageSource).toContain('describeStatusField("rewrite_reapproval_status")');
+    expect(pageSource).not.toMatch(/>재승인 상태</);
+  });
+});

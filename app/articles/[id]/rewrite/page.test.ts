@@ -62,16 +62,21 @@ describe("article rewrite page 사용자 친화적 표시 (정적 소스 검사,
     expect(pageSource).toContain("TONE_STYLE_CONFIGS[s.toneStyle].label");
   });
 
-  it("suggestion_status/application_status 같은 raw 상태값을 그대로 노출하지 않고 describeStatusValue로 변환한다", () => {
+  it("suggestion_status/application_status 같은 raw 상태값을 그대로 노출하지 않고 라벨 헬퍼로 변환한다", () => {
     expect(pageSource).toContain('import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels"');
     expect(pageSource).not.toMatch(/suggestion_status: \{s\.suggestionStatus\}/);
     expect(pageSource).not.toMatch(/재승인: \{v\.rewriteReapprovalStatus\}/);
-    expect(pageSource).toContain("describeStatusValue(s.suggestionStatus)");
+    // Phase UX-03B2: suggestionStatus의 raw "approved"는 공용
+    // describeStatusValue("승인 완료")가 아니라 전용 헬퍼
+    // describeRewriteSuggestionStatus("선택됨")를 쓴다 — rewriteReapprovalStatus의
+    // "approved"(최종 승인)와 같은 raw 값이 다른 의미로 혼동되지 않게 하기 위함이다.
+    expect(pageSource).toContain("describeRewriteSuggestionStatus(s.suggestionStatus)");
     expect(pageSource).toContain("describeStatusValue(v.rewriteReapprovalStatus)");
   });
 
-  it("재작성 버전 카드는 raw 상태값 상세를 '내부 상태값 보기' 접힘 안에 둔다", () => {
-    const detailsIndex = pageSource.indexOf("내부 상태값 보기 (관리자용, 기본 접힘)");
+  it("재작성 버전 카드는 raw 상태값 상세를 공통 AdvancedDetails 접힘 안에 둔다(Phase UX-03C: 페이지 전용 <details> 대신 공통 컴포넌트로 통일)", () => {
+    expect(pageSource).toContain('from "@/components/common/advanced-details"');
+    const detailsIndex = pageSource.indexOf('<AdvancedDetails title="상세 상태 보기"');
     expect(detailsIndex).toBeGreaterThan(0);
     const versionComparisonIndex = pageSource.indexOf("versionComparisonStatus", detailsIndex);
     const reapprovalStatusFieldIndex = pageSource.indexOf('describeStatusField("rewriteReapprovalStatus")', detailsIndex);
@@ -92,8 +97,8 @@ describe("article rewrite page 사용자 친화적 표시 (정적 소스 검사,
     expect(pageSource).toContain("describeCompareDisabledReason");
     // hover title
     expect(pageSource).toContain("title={requestReapprovalDisabledReason ?? undefined}");
-    // 항상 보이는 helper text 목록
-    expect(pageSource).toContain("재승인 요청: {requestReapprovalDisabledReason}");
+    // 항상 보이는 helper text 목록(Phase UX-03B2: "재검토 요청"으로 용어 변경)
+    expect(pageSource).toContain("재검토 요청: {requestReapprovalDisabledReason}");
   });
 
   it("각 카드의 주요 버튼 하나만 강조되도록 getRewriteSuggestionNextAction/getRewriteVersionNextAction을 사용한다", () => {
@@ -153,5 +158,62 @@ describe("Phase 4-25: rewrite 버전 카드에도 공통 본문 확인 컴포넌
 
   it("본문이 없으면 안내 문구를 보여준다(SocialPostBodyPanel을 렌더링하지 않는다)", () => {
     expect(pageSource).toContain("게시용 본문이 아직 없습니다");
+  });
+});
+
+describe("Phase UX-03B2: rewrite '승인' 용어를 실제 의미에 맞게 구분한다", () => {
+  it("개선 제안 선택(suggestion_status)은 '승인'이 아니라 '선택'으로 표시한다", () => {
+    expect(pageSource).toContain("개선안 선택");
+    expect(pageSource).not.toContain("개선 제안 승인");
+  });
+
+  it("재검토 요청(rewrite_reapproval_status: not_requested→pending_review)은 '재승인 요청'이 아니라 '재검토 요청'으로 표시한다", () => {
+    expect(pageSource).toContain("재검토 요청");
+    expect(pageSource).not.toContain("재승인 요청");
+  });
+
+  it("실질적 최종 게이트(rewrite_reapproval_status: pending_review→approved)만 '최종 승인'으로 명확히 구분한다", () => {
+    expect(pageSource).toContain("최종 승인");
+    expect(pageSource).not.toContain("재승인 승인하기");
+  });
+
+  it("한 화면에서 서로 다른 의미의 action을 모두 '승인'이라고 부르지 않는다(개선안 선택/재검토 요청/최종 승인 3개 용어로 구분)", () => {
+    const approveSuggestionIdx = pageSource.indexOf("개선안 선택");
+    const requestReapprovalIdx = pageSource.indexOf("재검토 요청");
+    const finalApprovalIdx = pageSource.indexOf("최종 승인");
+    expect(approveSuggestionIdx).toBeGreaterThan(-1);
+    expect(requestReapprovalIdx).toBeGreaterThan(-1);
+    expect(finalApprovalIdx).toBeGreaterThan(-1);
+  });
+
+  it("완료된 단계의 primary action은 반복되지 않는다(disabled 사유 helper가 상태별로 이미 처리 — describeRequestReapprovalDisabledReason/describeApproveReapprovalDisabledReason)", () => {
+    expect(pageSource).toContain("disabled={requestReapprovalDisabledReason !== null}");
+    expect(pageSource).toContain("disabled={approveReapprovalDisabledReason !== null}");
+  });
+
+  it("state transition(action이 실제로 바꾸는 DB 필드)은 그대로 유지된다 — action 함수명은 바꾸지 않는다", () => {
+    expect(pageSource).toContain("approveRewriteSuggestionAction");
+    expect(pageSource).toContain("requestRewriteReapprovalAction");
+    expect(pageSource).toContain("approveRewriteReapprovalAction");
+  });
+
+  it("raw suggestion_status/rewrite_reapproval_status 값(approved/pending_review/not_requested)이 사용자 문구에 그대로 노출되지 않는다", () => {
+    expect(pageSource).not.toMatch(/>approved</);
+    expect(pageSource).not.toMatch(/>pending_review</);
+    expect(pageSource).not.toMatch(/>not_requested</);
+  });
+});
+
+describe("Phase UX-03C: rewrite 카드 단위 재검토", () => {
+  it("개선 제안 생성 폼의 원본 글 select 옵션도 raw platform key가 아니라 PLATFORM_LABELS를 쓴다", () => {
+    expect(pageSource).not.toContain("{p.platform} ·");
+    expect(pageSource).toContain("{PLATFORM_LABELS[p.platform]} ·");
+  });
+
+  it("'개선안 선택' 버튼도 다른 버튼들과 동일하게 완료/반려/적용된 뒤에는 disabled + 이유 표시로 반복 표시를 막는다", () => {
+    expect(pageSource).toContain("describeSelectSuggestionDisabledReason");
+    expect(pageSource).toContain("disabled={selectDisabledReason !== null}");
+    expect(pageSource).toContain("title={selectDisabledReason ?? undefined}");
+    expect(pageSource).toContain("{selectDisabledReason && <p");
   });
 });

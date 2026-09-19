@@ -18,6 +18,7 @@ import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType } from "@/lib/repositories/log-repository";
 import {
   saveSocialPostBodyAndProcess,
+  saveSocialPostThreadAndProcess,
   type SocialPostBodySaveMode,
 } from "@/lib/social/social-post-inline-edit-service";
 import {
@@ -98,6 +99,7 @@ import {
   approveSocialPost as approveSocialPostService,
   rejectSocialPost as rejectSocialPostService,
   revokeApproval as revokeSocialPostApprovalService,
+  bulkApproveSocialPosts as bulkApproveSocialPostsService,
 } from "@/lib/social/social-post-approval-service";
 import { generateManualExport } from "@/lib/social/social-manual-export-service";
 import { recordSocialPostCopied } from "@/lib/social/social-copy-tracking-service";
@@ -2209,6 +2211,47 @@ export async function saveSocialPostInlineEditAction(formData: FormData): Promis
 }
 
 /**
+ * Phase UX-03B2: X처럼 threadItems 배열로 구성된 콘텐츠를 카드 안에서
+ * 바로 수정한다 — saveSocialPostInlineEditAction과 동일한 saveMode
+ * 계약(저장만 하기/저장 후 자동 검토/저장 후 승인)을 그대로 따른다.
+ * 여러 textarea(name="threadItemText")를 FormData.getAll로 받아 순서
+ * 그대로 저장한다.
+ */
+export async function saveSocialPostThreadInlineEditAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostId = String(formData.get("socialPostId") ?? "");
+  const threadItemTexts = formData.getAll("threadItemText").map((value) => String(value));
+  const saveModeRaw = String(formData.get("saveMode") ?? "save_only");
+  const saveMode: SocialPostBodySaveMode =
+    saveModeRaw === "save_and_review" || saveModeRaw === "save_review_and_approve" ? saveModeRaw : "save_only";
+
+  let message: string;
+  let isError: boolean;
+  let socialPost: SocialPost | undefined;
+
+  try {
+    const result = await saveSocialPostThreadAndProcess(socialPostId, threadItemTexts, saveMode, APPROVED_BY);
+    message =
+      result.qualityIssues && result.qualityIssues.length > 0
+        ? `${result.message}\n${result.qualityIssues.slice(0, 3).join(" / ")}`
+        : result.message;
+    isError = !result.success;
+    socialPost = result.socialPost;
+  } catch (error) {
+    message = describeUnexpectedError(
+      error instanceof Error ? error.message : String(error),
+      "본문 저장 중 알 수 없는 오류가 발생했습니다."
+    ).userMessage;
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+  revalidatePath(`/social-posts/${socialPostId}`);
+
+  redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
+}
+
+/**
  * Phase 4-15: SNS/커뮤니티 글 카드의 inline 편집/복사처럼 페이지 이동이
  * 없어야 하는 순수 클라이언트 상호작용을 위한 로그 전용 action이다.
  * redirect()를 호출하지 않는다 — 클라이언트 컴포넌트에서 폼 제출이
@@ -2295,6 +2338,43 @@ export async function approveSocialPostAction(formData: FormData): Promise<void>
   revalidateArticleWorkflowPaths(articleId);
 
   redirectToSafeTarget(formData, socialPostFallbackUrl(articleId, socialPost), message, isError);
+}
+
+/**
+ * Phase UX-04B: 여러 social post를 한 번에 승인한다. 새 validation을
+ * 만들지 않는다 — bulkApproveSocialPosts()가 대상 post마다
+ * approveSocialPost()(단일 승인과 동일한 checkApprovable guard)를
+ * 그대로 호출하므로, 일괄 승인이라고 해서 검사를 우회하지 않는다.
+ * 외부 플랫폼 게시는 이 action에서도 호출하지 않는다(approval_status만
+ * 바뀐다 — 게시 준비는 사용자가 다음 화면에서 별도로 진행한다).
+ */
+export async function bulkApproveSocialPostsAction(formData: FormData): Promise<void> {
+  const articleId = String(formData.get("articleId") ?? "");
+  const socialPostIds = formData.getAll("socialPostId").map((value) => String(value));
+
+  let message: string;
+  let isError: boolean;
+
+  try {
+    const result = await bulkApproveSocialPostsService(socialPostIds, APPROVED_BY);
+    if (result.failureCount === 0) {
+      message = `${result.successCount}개 글 승인 완료`;
+      isError = false;
+    } else if (result.successCount === 0) {
+      message = `승인에 실패했습니다(${result.failureCount}건). 각 글 상태를 확인하세요.`;
+      isError = true;
+    } else {
+      message = `${result.successCount}개 승인 완료 · ${result.failureCount}개는 상태가 변경되어 승인하지 못했습니다.`;
+      isError = false;
+    }
+  } catch (error) {
+    message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    isError = true;
+  }
+
+  revalidateArticleWorkflowPaths(articleId);
+
+  redirectToSafeTarget(formData, buildArticleSocialUrl(articleId), message, isError);
 }
 
 /** social post를 반려한다 (반려 사유 필수). */

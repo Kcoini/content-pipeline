@@ -7,6 +7,7 @@
 import { getRewriteVersionForReapproval, updateRewriteReexportStatus, updateRewriteRepublishWorkflowStatus } from "@/lib/repositories/social-posts-repository";
 import { buildManualExportPayload } from "./social-export-builder";
 import { validateManualExportPayload } from "./social-export-validator";
+import { describeStatusValue } from "./status-labels";
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
 import type { SocialPost } from "./social-platform-types";
@@ -51,12 +52,14 @@ function baseDetails(post: SocialPost, extra?: Record<string, unknown>): Record<
 
 /** rewrite version이 재export 가능한 상태인지 확인한다. 가능하면 null. */
 function checkReexportable(post: SocialPost): string | null {
-  if (!post.isRewriteVersion) return "is_rewrite_version=false인 social post는 재export할 수 없습니다.";
-  if (post.rewriteReapprovalStatus !== "approved") return `rewrite_reapproval_status가 'approved'가 아니어서(${post.rewriteReapprovalStatus}) 재export할 수 없습니다.`;
-  if (post.approvalStatus !== "approved") return `approval_status가 'approved'가 아니어서(${post.approvalStatus}) 재export할 수 없습니다.`;
-  if (post.qualityStatus !== "ready") return `quality_status가 'ready'가 아니어서(${post.qualityStatus}) 재export할 수 없습니다.`;
-  if (post.publishStatus === "published") return "이미 게시된 social post는 재export할 필요가 없습니다.";
-  if (post.manualPostStatus === "posted") return "이미 수동 게시 기록이 있는 social post는 재export할 필요가 없습니다.";
+  if (!post.isRewriteVersion) return "재작성 버전이 아닌 social post는 재내보내기할 수 없습니다.";
+  if (post.rewriteReapprovalStatus !== "approved") {
+    return `최종 승인이 완료되어야 재내보내기를 할 수 있습니다(현재: ${describeStatusValue(post.rewriteReapprovalStatus)}).`;
+  }
+  if (post.approvalStatus !== "approved") return `승인이 완료되어야 재내보내기를 할 수 있습니다(현재: ${describeStatusValue(post.approvalStatus)}).`;
+  if (post.qualityStatus !== "ready") return `품질검사가 준비되어야 재내보내기를 할 수 있습니다(현재: ${describeStatusValue(post.qualityStatus)}).`;
+  if (post.publishStatus === "published") return "이미 게시된 social post는 재내보내기할 필요가 없습니다.";
+  if (post.manualPostStatus === "posted") return "이미 수동 게시 기록이 있는 social post는 재내보내기할 필요가 없습니다.";
   return null;
 }
 
@@ -84,12 +87,12 @@ export async function prepareRewriteReexport(socialPostId: string, exportedBy?: 
     await logReexportEvent(
       "social_rewrite_reexport_prepare_completed",
       "success",
-      `social post(${socialPostId})의 재export 준비를 완료했습니다.`,
+      `social post(${socialPostId})의 재내보내기 준비를 완료했습니다.`,
       post.articleId,
       baseDetails(post, { notes: notes ? "provided" : "none" })
     );
 
-    return { success: true, message: "재export 준비를 완료했습니다.", socialPost: updated };
+    return { success: true, message: "재내보내기 준비를 완료했습니다.", socialPost: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     await logReexportEvent("social_rewrite_reexport_failed", "failed", message, post.articleId, baseDetails(post));
@@ -123,7 +126,7 @@ export async function generateRewriteReexportPayload(
     const validation = validateManualExportPayload(post, exportPayload);
 
     if (validation.blocked || !validation.valid) {
-      const reason = validation.errors.join(" / ") || "재export payload 검증에 실패했습니다.";
+      const reason = validation.errors.join(" / ") || "재내보내기 데이터 검증에 실패했습니다.";
       await updateRewriteReexportStatus(socialPostId, {
         rewriteReexportStatus: validation.blocked ? "blocked" : "failed",
         error: reason,
@@ -159,7 +162,7 @@ export async function generateRewriteReexportPayload(
       })
     );
 
-    return { success: true, message: "재export payload를 생성했습니다.", socialPost: updated };
+    return { success: true, message: "재내보내기를 만들었습니다.", socialPost: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     await logReexportEvent("social_rewrite_reexport_failed", "failed", message, post.articleId, baseDetails(post));

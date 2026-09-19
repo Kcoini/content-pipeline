@@ -55,7 +55,7 @@ describe("WordPressPublishingPanel (정적 소스 검사)", () => {
   });
 
   it("Phase UX-02B (C4): WordPress Post/Media ID, Media URL, raw publish guard/연결 상태, 마지막 업데이트 시각은 '상세 상태 보기' 접힘 안에만 있다", () => {
-    const detailsIdx = componentSource.indexOf('<details className="mt-2">');
+    const detailsIdx = componentSource.indexOf("<AdvancedDetails>");
     expect(detailsIdx).toBeGreaterThan(-1);
     const beforeDetails = componentSource.slice(0, detailsIdx);
     const afterDetails = componentSource.slice(detailsIdx);
@@ -71,7 +71,13 @@ describe("WordPressPublishingPanel (정적 소스 검사)", () => {
     expect(afterDetails).toContain("Media URL");
     expect(afterDetails).toContain("마지막 업데이트 시각");
     expect(afterDetails).toContain("게시 준비 상태");
-    expect(afterDetails).toContain("상세 상태 보기");
+    // "상세 상태 보기" 문구는 이제 AdvancedDetails의 기본 title(공통 컴포넌트 쪽)에서 나온다.
+  });
+
+  it("Phase UX-03A: '상세 상태 보기' 접힘은 공통 AdvancedDetails를 재사용한다(개별 <details> 마크업 직접 구현 대신)", () => {
+    expect(componentSource).toContain('from "@/components/common/advanced-details"');
+    expect(componentSource).toContain("<AdvancedDetails>");
+    expect(componentSource).not.toContain("상세 상태 보기</summary>");
   });
 
   it("Phase UX-02B (섹션 K): isPrimaryWorkflow=true(wordpress_blog)일 때는 children이 쓰는 'WordPress 게시 준비' 제목과 겹치지 않는 다른 제목을 쓴다", () => {

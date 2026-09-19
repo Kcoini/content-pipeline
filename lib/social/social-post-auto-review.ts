@@ -18,6 +18,7 @@
 
 import type { SocialPostQualityChecklistItem } from "./social-platform-types";
 import { describeStatusValue } from "./status-labels";
+import { classifyReviewIssues } from "./review-issue-fixability";
 
 export type AutoReviewOverallStatus = "passed" | "needs_check" | "needs_fix" | "blocked";
 
@@ -83,6 +84,8 @@ const AXIS_BY_KEY: Record<string, AutoReviewAxis> = {
   opinion_column_viewpoint_present: "structure",
   opinion_column_fact_opinion_distinction: "tone",
   opinion_column_counterargument_present: "structure",
+  // Phase UX-05A: x/threads/instagram markdown/HTML 잔여물 — naver_cafe_no_markdown_escape와 같은 축.
+  platform_markup_residue: "platform_fit",
 };
 
 function resolveAxis(key: string): AutoReviewAxis {
@@ -280,6 +283,97 @@ export function getApprovalGateStatus(input: ApprovalGateInput): ApprovalGateSta
     return { canApprove: false, reason: "차단되었거나 수정이 필요한 항목이 있어 승인할 수 없습니다." };
   }
   return { canApprove: true, reason: null };
+}
+
+// ---------------------------------------------------------------------------
+// Phase UX-04A: "AI가 처리할 수 있는 문제 vs 사람이 판단해야 하는 문제"를
+// 화면에서도 명확히 나누기 위한 단순화된 사용자 상태 모델. 새 검사
+// 엔진이나 raw checklist 구조는 건드리지 않는다 — 이미 있는
+// summarizeAutoReview(축 기반)와 classifyReviewIssues(fixability 기반,
+// review-issue-fixability.ts)를 같은 checklist에 대해 각각 계산한 뒤
+// key로 교차 참조만 한다(두 분류 로직을 합치거나 새로 만들지 않는다).
+// ---------------------------------------------------------------------------
+
+export type UserFacingReviewState = "checking" | "ready" | "needs_confirmation" | "blocked" | "failed";
+
+const USER_FACING_REVIEW_STATE_LABELS: Record<UserFacingReviewState, string> = {
+  checking: "자동 검토 중",
+  ready: "승인 가능",
+  needs_confirmation: "확인 필요",
+  blocked: "문제 해결 필요",
+  failed: "자동 검토 실패",
+};
+
+const USER_FACING_REVIEW_STATE_MESSAGES: Record<UserFacingReviewState, string> = {
+  checking: "게시용 글을 확인하고 있습니다.",
+  ready: "자동 검토가 완료되었고 확인할 사항이 없습니다.",
+  needs_confirmation: "직접 확인해야 할 내용이 있습니다.",
+  blocked: "게시 전에 해결해야 할 문제가 있습니다.",
+  failed: "자동 검토 실행이 실패했습니다. 다시 검토해 주세요.",
+};
+
+export interface UserFacingReviewSummary {
+  state: UserFacingReviewState;
+  /** 상태 라벨(예: "승인 가능", "확인 필요") — WorkflowStatusCard title 등에 쓴다. */
+  stateLabel: string;
+  /** 상태 설명 한 문장 — WorkflowStatusCard message 등에 쓴다. */
+  stateMessage: string;
+  /** "자동 검토 완료" 같은 카드 헤드라인(기존 review.overallLabel 재사용). */
+  headline: string;
+  /** 사람이 실제로 확인해야 하는 issue 개수(auto_fixable은 제외한 개수). */
+  confirmationCount: number;
+  /** auto_fixable로 분류되어 기본 화면에서 숨긴 issue 개수(참고용 — "자동으로 정리 가능/정리됨" 안내에 쓴다). */
+  hiddenAutoFixableCount: number;
+  /** review.issues 중 auto_fixable을 제외한 목록 — 기본 화면에 보여줄 이슈는 이 목록만 쓴다. */
+  visibleIssues: AutoReviewIssue[];
+}
+
+/**
+ * qualityStatus + AutoReviewSummary + 원본 checklist로부터 "사용자가
+ * 봐야 하는 단순한 상태"를 계산한다. auto_fixable(fixability 기준)로
+ * 분류된 issue는 사람이 확인할 항목이 아니므로 confirmationCount/
+ * visibleIssues에서 제외한다 — 이미 자동 수정 파이프라인
+ * (post-auto-fix-service.ts)이 처리했거나, 처리 대상이지만 아직
+ * 구현된 자동 수정기가 없어도 "사람이 판단할 문제"는 아니기 때문이다
+ * (governance: auto_fixable 문제를 사용자 작업으로 전가하지 않는다).
+ */
+export function summarizeUserFacingReview(
+  qualityStatus: string,
+  review: AutoReviewSummary,
+  checklist: readonly Pick<SocialPostQualityChecklistItem, "key" | "status" | "message">[] | null | undefined
+): UserFacingReviewSummary {
+  const classified = classifyReviewIssues((checklist ?? []) as SocialPostQualityChecklistItem[]);
+  const autoFixableKeys = new Set(classified.filter((i) => i.status !== "pass" && i.fixability === "auto_fixable").map((i) => i.key));
+
+  const visibleIssues = review.issues.filter((issue) => !autoFixableKeys.has(issue.key));
+  const hiddenAutoFixableCount = review.issues.length - visibleIssues.length;
+  const confirmationCount = visibleIssues.length;
+
+  let state: UserFacingReviewState;
+  if (qualityStatus === "failed") {
+    state = "failed";
+  } else if (qualityStatus === "not_checked") {
+    state = "checking";
+  } else if (review.overallStatus === "blocked") {
+    // blocked 항목은 classifyReviewIssue에서도 항상 fixability="blocking"으로
+    // 고정되어 auto_fixable 필터에 걸러지지 않는다 — visibleIssues에
+    // 반드시 남아 있다.
+    state = "blocked";
+  } else if (confirmationCount > 0) {
+    state = "needs_confirmation";
+  } else {
+    state = "ready";
+  }
+
+  return {
+    state,
+    stateLabel: USER_FACING_REVIEW_STATE_LABELS[state],
+    stateMessage: USER_FACING_REVIEW_STATE_MESSAGES[state],
+    headline: review.overallLabel,
+    confirmationCount,
+    hiddenAutoFixableCount,
+    visibleIssues,
+  };
 }
 
 export type SocialPostWorkspaceActionKind = "run_review" | "view_body" | "edit" | "approve" | "publish_prep";

@@ -56,6 +56,20 @@ Next.js + TypeScript + Supabase + GitHub 기반의 블로그/홈페이지용 기
 - WordPress 게시 관련 UI에서는 Draft/SEO/대표 이미지/게시 준비/공개 게시를 구분한다.
 - public publish는 명시 승인 없이는 추가하지 않는다.
 
+## UX Rules (Phase UX-07 최종 고정, 요약)
+- Prefer existing common UX components over new ones.
+- One primary workflow action per section.
+- Never expose raw enums, DB field names, env vars in user-facing text.
+- Hide technical details behind AdvancedDetails/카테고리 accordion.
+- AI-fixable issues should not become user tasks.
+- Approval, publish preparation, and actual publishing are separate states.
+- Copying is not publishing. WordPress Draft is not public publishing.
+- Same label must mean same behavior (본문 수정=inline editor, 상세
+  편집=본문 외 필드, 상세 보기=navigation).
+- Preserve human approval before external effects — never automate
+  irreversible actions.
+- 커밋 전에 `docs/ux/ux-regression-checklist.md`로 점검한다.
+
 ## 작업 시 주의사항
 - 출처가 3개 미만이면 기사 생성을 시작하지 않는다
   (`contracts/source.contract.yaml`의 `min-source-count` 규칙).

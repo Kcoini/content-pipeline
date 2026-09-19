@@ -33,14 +33,44 @@ describe("article overview page (정적 소스 검사)", () => {
   });
 });
 
-describe("article/blog 역할 분리 (정적 소스 검사)", () => {
-  it("원본 article과 WordPress 블로그형 글이 다르다는 안내 문구를 표시한다", () => {
-    expect(pageSource).toContain("현재 페이지의 본문은 원본 article입니다");
-    expect(pageSource).toContain("wordpress_blog 글을 생성한 뒤 WordPress");
+describe("Phase UX-03C: 보조 route를 '현재 상태 / 다음 작업 / 보조 화면'만으로 이해 가능하게 만든다", () => {
+  it("현재 상태 카드가 있고, 상태 문구가 하드코딩된 raw enum이 아니라 기존 계산값(isDraft/existingSocialPosts)에서 나온다", () => {
+    expect(pageSource).toContain("<h2 className=\"text-sm font-semibold text-zinc-700\">현재 상태</h2>");
+    expect(pageSource).toContain("아직 초안 상태입니다");
+    expect(pageSource).toContain("플랫폼별 글이 승인되어 게시 준비가 가능합니다.");
   });
 
-  it("article 직접 WordPress 전송 기능은 접이식 '고급 기능' 섹션으로 표시된다", () => {
-    expect(pageSource).toContain("고급 기능: 원본 article WordPress 전송");
+  it("다음 작업은 primary 스타일 버튼 하나로 /articles/[id]/blog를 가리킨다", () => {
+    const nextActionIndex = pageSource.indexOf("다음 작업");
+    const blogLinkIndex = pageSource.indexOf("WordPress 블로그 글 관리");
+    expect(nextActionIndex).toBeGreaterThan(-1);
+    expect(blogLinkIndex).toBeGreaterThan(nextActionIndex);
+    expect(pageSource).toContain("href={`/articles/${article.id}/blog`}");
+    expect(pageSource).toContain("bg-zinc-900 px-3 py-1.5 font-semibold text-white");
+  });
+
+  it("보조 화면(SNS 글 관리)은 secondary 스타일로 별도 표시되어 다음 작업 버튼과 경쟁하지 않는다", () => {
+    const nextActionButtonIndex = pageSource.indexOf("WordPress 블로그 글 관리");
+    const secondaryIndex = pageSource.indexOf("SNS 글 관리");
+    expect(secondaryIndex).toBeGreaterThan(nextActionButtonIndex);
+    expect(pageSource).toContain("href={`/articles/${article.id}/social`}");
+  });
+
+  it("이 route를 다시 주요 workflow 화면으로 만들지 않는다 — 관리자 기능 접힘은 여전히 기본 닫힘(<details>, open 속성 없음)이다", () => {
+    expect(pageSource).not.toMatch(/<details\s+open>/);
+  });
+});
+
+describe("article/blog 역할 분리 (정적 소스 검사)", () => {
+  it("원본 article과 WordPress 블로그형 글이 다르다는 안내 문구를 표시한다", () => {
+    // Phase UX-03C: 이 안내 문구는 상단 "현재 상태" 카드의 보조 설명으로
+    // 이동했다 — 문구 자체는 유지, 위치만 바뀌었다.
+    expect(pageSource).toContain("이 페이지의 본문은 원본 article입니다");
+    expect(pageSource).toContain("WordPress 블로그형 글이나 SNS 글은 여기서 만들지 않고");
+  });
+
+  it("article 직접 WordPress 전송 기능은 접이식 '관리자 기능' 섹션으로 표시된다 (Phase UX-03C: '고급 기능' → AdvancedDetails 명명 관례에 맞춰 '관리자 기능'으로 통일)", () => {
+    expect(pageSource).toContain("관리자 기능: 원본 article WordPress 전송");
     expect(pageSource).toContain("<details>");
     expect(pageSource).toContain("원본 article을 그대로 WordPress Draft로 전송할 때");
     expect(pageSource).toContain("WordPress 게시");
@@ -64,7 +94,7 @@ describe("공통 WordPressPublishingPanel 사용 (article targetType, 정적 소
   });
 
   it("공통 패널이 고급 기능(<details>) 안, 개별 sub-section들보다 먼저 나온다", () => {
-    const detailsIndex = pageSource.indexOf("고급 기능: 원본 article WordPress 전송");
+    const detailsIndex = pageSource.indexOf("관리자 기능: 원본 article WordPress 전송");
     const panelIndex = pageSource.indexOf("<WordPressPublishingPanel");
     const wpMetadataSectionIndex = pageSource.indexOf("WordPress Metadata</h2>");
     expect(panelIndex).toBeGreaterThan(detailsIndex);
@@ -488,10 +518,10 @@ describe("Phase UX-02A (C1): '테스트' 라벨의 실제 공개 게시 UI 제�
   });
 
   it("publishApprovedArticleToWordPressAction(실제 공개 게시)은 별도의 관리자 전용 접힘(<details>) 안에서만 호출된다", () => {
-    // "고급 기능: 원본 article WordPress 전송" 접힘 하나만으로는 부족하다 —
+    // "관리자 기능: 원본 article WordPress 전송" 접힘 하나만으로는 부족하다 —
     // 실제 공개 게시는 그 안에서 한 번 더 접힘(관리자 전용 경고)으로 격리되어야
-    // 사용자가 "고급 기능"을 여는 것만으로 바로 실제 공개 게시 버튼을 보지 못한다.
-    const outerDetailsIndex = pageSource.indexOf("고급 기능: 원본 article WordPress 전송");
+    // 사용자가 "관리자 기능"을 여는 것만으로 바로 실제 공개 게시 버튼을 보지 못한다.
+    const outerDetailsIndex = pageSource.indexOf("관리자 기능: 원본 article WordPress 전송");
     const adminOnlyDetailsIndex = pageSource.indexOf("관리자 전용: WordPress 실제 공개 게시");
     const publishActionFormIndex = pageSource.indexOf("<form action={publishApprovedArticleToWordPressAction}");
 

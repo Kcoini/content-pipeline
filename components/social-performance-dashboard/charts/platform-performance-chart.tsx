@@ -6,15 +6,7 @@
 import type { PlatformPerformanceChartData } from "@/lib/social/social-performance-chart-types";
 import { formatChartNumber, formatScore, normalizeChartValue } from "@/lib/social/chart-formatting";
 import { ChartEmptyState } from "./chart-empty-state";
-
-const PLATFORM_LABELS: Record<string, string> = {
-  wordpress_blog: "WordPress",
-  naver_blog: "Naver Blog",
-  naver_cafe: "Naver Cafe",
-  x: "X",
-  threads: "Threads",
-  instagram: "Instagram",
-};
+import { describePlatformBadge } from "@/lib/ui/platform-badge";
 
 export function PlatformPerformanceChart({ data }: { data: PlatformPerformanceChartData[] }) {
   if (data.length === 0) {
@@ -27,7 +19,7 @@ export function PlatformPerformanceChart({ data }: { data: PlatformPerformanceCh
     <div className="flex flex-col gap-2">
       {data.map((row) => (
         <div key={row.platform} className="flex items-center gap-2 text-xs">
-          <span className="w-24 shrink-0 text-zinc-600">{PLATFORM_LABELS[row.platform] ?? row.platform}</span>
+          <span className="w-24 shrink-0 text-zinc-600">{describePlatformBadge(row.platform)}</span>
           <div className="h-4 flex-1 rounded bg-zinc-100">
             <div
               className="h-4 rounded bg-indigo-500"

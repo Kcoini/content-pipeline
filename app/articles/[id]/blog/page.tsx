@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { buildArticleBlogPageData } from "@/lib/social/article-blog-page-service";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
+import { AdvancedDetails } from "@/components/common/advanced-details";
+import { WorkflowStatusCard } from "@/components/workflow/workflow-status-card";
+import { NextActionPanel } from "@/components/workflow/next-action-panel";
+import { fromWordPressPublishPrepStateToWorkflowStatus } from "@/lib/ui/workflow-status-view-model";
+import { fromWordPressPublishPrepState, type NextActionViewModelAction } from "@/lib/ui/next-action-view-model";
 import { ContentProgressSteps } from "@/components/articles/content-progress-steps";
 import { getUserFacingStatus, getNextRecommendedAction } from "@/lib/social/social-post-user-facing-status";
 import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-badge";
@@ -30,7 +35,8 @@ import { describeStatusValue, describeArticleStatus, describeStatusField } from 
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import { getSocialPostEditableField } from "@/lib/social/social-post-inline-edit-service";
 import { getSocialPostCardActionState, type SocialPostCardAction } from "@/lib/social/social-post-card-action-state";
-import { describeAutoReviewNotRunYet } from "@/lib/social/social-post-auto-review";
+import { describeAutoReviewNotRunYet, summarizeAutoReview, summarizeUserFacingReview } from "@/lib/social/social-post-auto-review";
+import { AutoReviewSummaryCard } from "@/components/review/auto-review-summary-card";
 import { SocialPostBodyPanel } from "@/components/social/social-post-body-panel";
 import { RelatedPostLinks } from "@/components/navigation/related-post-links";
 import { shouldShowPerformanceLink } from "@/lib/social/performance-link-visibility";
@@ -47,10 +53,7 @@ import {
   getWordPressBlogWorkflowStatusSummary,
   getWordPressBlogNextRecommendedAction,
 } from "@/lib/social/wordpress-blog-workflow-steps";
-import {
-  getWordPressPublishPrepState,
-  type WordPressPublishPrepAction,
-} from "@/lib/social/wordpress-blog-publish-prep-state";
+import { getWordPressPublishPrepState } from "@/lib/social/wordpress-blog-publish-prep-state";
 import { buildWordPressBlogPostPreview } from "@/lib/social/wordpress-blog-post-preview-builder";
 import { convertMarkdownToWordPressHtml } from "@/lib/wordpress/markdown-to-wordpress-html";
 import {
@@ -152,7 +155,7 @@ const LOG_FILTER_OPTIONS: { key: WordPressBlogLogFilter; label: string }[] = [
   { key: "seo", label: "SEO" },
   { key: "image", label: "대표 이미지" },
   { key: "publish_guard", label: "게시 준비" },
-  { key: "handoff", label: "Handoff" },
+  { key: "handoff", label: "수동 게시 준비" },
   { key: "failed_only", label: "실패만 보기" },
 ];
 
@@ -217,7 +220,7 @@ export default async function ArticleBlogPage({
     section?: string;
     /** wordpress_blog 카드 내부 탭(글 내용/미리보기/품질승인/WordPress 반영/대표 이미지/체크리스트). */
     tab?: string;
-    /** 페이지 하단 "프로세스 로그 / 실행 이력" 섹션 필터(전체/WordPress/SEO/대표 이미지/게시 준비/Handoff/실패만). */
+    /** 페이지 하단 "프로세스 로그 / 실행 이력" 섹션 필터(전체/WordPress/SEO/대표 이미지/게시 준비/수동 게시 준비/실패만). */
     logFilter?: string;
     returnTo?: string;
     page?: string;
@@ -641,16 +644,28 @@ export default async function ArticleBlogPage({
                             </p>
                           );
                         }
+                        // Phase UX-05B: 이미 게시 완료로 표시된 글은
+                        // repository 단(saveSocialPostRevision)에서 이미
+                        // 수정을 막는다 — 버튼을 미리 감추고 이유를
+                        // 안내한다(guard 자체는 바꾸지 않는다).
+                        const isPublished = post.publishStatus === "published";
                         return (
-                          <SocialPostBodyPanel
-                            articleId={article.id}
-                            socialPostId={post.id}
-                            returnTo={selfReturnTo}
-                            displayBody={displayBody}
-                            editable={getSocialPostEditableField(post.platform) !== null}
-                            saveAction={saveSocialPostInlineEditAction}
-                            platform={post.platform}
-                          />
+                          <>
+                            <SocialPostBodyPanel
+                              articleId={article.id}
+                              socialPostId={post.id}
+                              returnTo={selfReturnTo}
+                              displayBody={displayBody}
+                              editable={!isPublished && getSocialPostEditableField(post.platform) !== null}
+                              saveAction={saveSocialPostInlineEditAction}
+                              platform={post.platform}
+                            />
+                            {isPublished && (
+                              <p className="mt-1 text-[11px] text-zinc-500">
+                                이미 게시 완료로 표시된 글입니다. 본문 수정은 외부 게시물에 자동 반영되지 않습니다.
+                              </p>
+                            )}
+                          </>
                         );
                       })()}
                     {/* Phase 3-22: raw 상태값 나열 대신 사용자 친화적 한 줄 요약 +
@@ -659,13 +674,15 @@ export default async function ArticleBlogPage({
                     <p className="mt-1 text-xs text-zinc-600">
                       {getUserFacingStatus(post)} · 다음 작업: <span className="font-medium">{getNextRecommendedAction(post).label}</span>
                     </p>
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-[11px] text-zinc-400">상세 상태 보기 (관리자용, 기본 접힘)</summary>
-                      <p className="mt-1 text-[11px] text-zinc-400">
-                        quality: {post.qualityStatus} · approval: {post.approvalStatus} · publish: {post.publishStatus} · export: {post.exportStatus} ·
-                        manual_post: {post.manualPostStatus}
+                    <AdvancedDetails title="상세 상태 보기 (관리자용, 기본 접힘)" className="mt-1">
+                      <p className="text-[11px] text-zinc-400">
+                        {describeStatusField("quality_status")}: {describeStatusValue(post.qualityStatus)} ·{" "}
+                        {describeStatusField("approval_status")}: {describeStatusValue(post.approvalStatus)} ·{" "}
+                        {describeStatusField("publish_status")}: {describeStatusValue(post.publishStatus)} ·{" "}
+                        {describeStatusField("export_status")}: {describeStatusValue(post.exportStatus)} ·{" "}
+                        {describeStatusField("manual_post_status")}: {describeStatusValue(post.manualPostStatus)}
                       </p>
-                    </details>
+                    </AdvancedDetails>
                     <p className="mt-1 text-[11px] text-zinc-400">
                       API 게시 준비: <ApiReadinessBadge status={checkPlatformApiReadiness(post.platform).status} />{" "}
                       <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className="text-indigo-700 hover:underline">
@@ -963,7 +980,7 @@ export default async function ArticleBlogPage({
                         // prepState가 알지 못하는 조건이라(post가 아니라 article 값) 여기서
                         // 추가로 합친다 — 하나라도 막혀 있으면 반영 버튼을 primary로 보여주지 않는다.
                         const canReflectNow = prepState.canReflectToWordPress && isArticleApprovedForWordPress;
-                        const renderPrepActionButton = (action: WordPressPublishPrepAction, variant: "primary" | "secondary") => {
+                        const renderPrepActionButton = (action: NextActionViewModelAction, variant: "primary" | "secondary") => {
                           const primaryClass =
                             "w-full rounded bg-indigo-800 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50";
                           const secondaryClass =
@@ -1168,16 +1185,11 @@ export default async function ArticleBlogPage({
                                 겹쳤다)을 하나로 합쳤다 — 기능은 모두 아래 primary/secondary 버튼과
                                 "고급 작업 보기" 접힘 영역 안에 그대로 남아 있다(삭제 없음). */}
                             <div className="rounded border border-indigo-300 bg-indigo-50 p-3">
-                              <p className="text-[11px] font-semibold text-indigo-900">WordPress 게시 준비</p>
-                              <p className="mt-1 text-[11px] text-indigo-900">
-                                현재 상태: <span className="font-medium">{prepState.statusLabel}</span>
-                              </p>
-                              {prepState.completedItems.length > 0 && (
-                                <p className="mt-1.5 text-[10px] text-emerald-700">완료됨: {prepState.completedItems.join(" · ")}</p>
-                              )}
-                              {prepState.remainingItems.length > 0 && (
-                                <p className="mt-1 text-[10px] text-amber-700">남은 작업: {prepState.remainingItems.join(" · ")}</p>
-                              )}
+                              {/* Phase UX-03B1: 공통 WorkflowStatusCard/NextActionPanel로
+                                  "현재 상태"와 "다음 작업"을 표준화한다 — business
+                                  logic(getWordPressPublishPrepState)은 그대로 재사용하고
+                                  표현만 공통 컴포넌트에 연결한다. */}
+                              <WorkflowStatusCard viewModel={fromWordPressPublishPrepStateToWorkflowStatus(prepState)} />
                               {/* Phase 2-23: 원본 article이 아직 승인되지 않았으면(post 자체의
                                   approval_status와는 별개 조건) 먼저 안내한다 — "실패 단계:
                                   WordPress Draft"로 실행 후에야 알게 되던 문제를 고친다. */}
@@ -1190,14 +1202,10 @@ export default async function ArticleBlogPage({
                                   에서 &quot;승인하기&quot;를 눌러 기사를 승인하세요.
                                 </p>
                               )}
-                              <div className="mt-2">{renderPrepActionButton(prepState.primaryAction, "primary")}</div>
-                              {prepState.secondaryActions.length > 0 && (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {prepState.secondaryActions.map((action, i) => (
-                                    <span key={`${action.actionType}-${i}`}>{renderPrepActionButton(action, "secondary")}</span>
-                                  ))}
-                                </div>
-                              )}
+                              <NextActionPanel
+                                viewModel={{ ...fromWordPressPublishPrepState(prepState), message: undefined }}
+                                renderAction={renderPrepActionButton}
+                              />
                               <p className="mt-2 text-[10px] text-zinc-500">
                                 WordPress에는 Draft 생성/업데이트까지만 반영합니다. 공개 게시는 하지 않습니다.
                               </p>
@@ -1340,17 +1348,28 @@ export default async function ArticleBlogPage({
                             {(() => {
                               const displayBody = getSocialPostDisplayBody(post);
                               if (!displayBody) return null;
+                              // Phase UX-05B: 이미 게시 완료로 표시된 글은
+                              // repository 단에서 수정을 막는다 — 버튼을
+                              // 미리 감춘다(guard 자체는 바꾸지 않는다).
+                              const isPublished = post.publishStatus === "published";
                               return (
-                                <SocialPostBodyPanel
-                                  articleId={article.id}
-                                  socialPostId={post.id}
-                                  returnTo={selfReturnTo}
-                                  displayBody={displayBody}
-                                  editable={getSocialPostEditableField(post.platform) !== null}
-                                  saveAction={saveSocialPostInlineEditAction}
-                                  platform={post.platform}
-                                  hideBodyWhenNotEditing
-                                />
+                                <>
+                                  <SocialPostBodyPanel
+                                    articleId={article.id}
+                                    socialPostId={post.id}
+                                    returnTo={selfReturnTo}
+                                    displayBody={displayBody}
+                                    editable={!isPublished && getSocialPostEditableField(post.platform) !== null}
+                                    saveAction={saveSocialPostInlineEditAction}
+                                    platform={post.platform}
+                                    hideBodyWhenNotEditing
+                                  />
+                                  {isPublished && (
+                                    <p className="mt-1 text-[11px] text-zinc-500">
+                                      이미 게시 완료로 표시된 글입니다. 본문 수정은 외부 게시물에 자동 반영되지 않습니다.
+                                    </p>
+                                  )}
+                                </>
                               );
                             })()}
 
@@ -1618,9 +1637,8 @@ export default async function ArticleBlogPage({
                                 WordPress 반영 탭. 일반 사용자는 상단의 한국어 상태 요약만 보면 되고,
                                 필요할 때만 펼쳐서 원본 status 문자열을 확인한다. */}
                             {activeTab === "wordpress" && (
-                              <details className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
-                                <summary className="cursor-pointer text-[10px] font-medium text-zinc-500">내부 상태값 보기</summary>
-                                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-zinc-600 sm:grid-cols-3">
+                              <AdvancedDetails title="내부 상태값 보기" className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-zinc-600 sm:grid-cols-3">
                                   <div>
                                     <dt className="font-medium text-zinc-700">{describeStatusField("quality_status")}</dt>
                                     <dd>{describeStatusValue(post.qualityStatus)}</dd>
@@ -1646,7 +1664,7 @@ export default async function ArticleBlogPage({
                                     <dd>{post.updatedAt}</dd>
                                   </div>
                                 </dl>
-                              </details>
+                              </AdvancedDetails>
                             )}
 
                             {/* Step 1. 품질검사 (버튼은 카드 상단의 공통 '품질검사' 버튼을 그대로 사용 — 중복 배치하지 않음) + Step 2. 승인. quality 탭. */}
@@ -1672,6 +1690,55 @@ export default async function ArticleBlogPage({
                                       <dd>{post.lastQualityCheckedAt ?? "-"}</dd>
                                     </div>
                                   </dl>
+                                  {/* Phase UX-04A: wordpress_blog는 지금까지 자동 검토 checklist
+                                      항목을 이 탭 어디에도 보여주지 않았다(score/실행 시간만
+                                      노출) — "확인할 사항이 있는지" 자체를 알 방법이 없던
+                                      공백을 메운다. AI가 자동으로 고칠 수 있는 문제
+                                      (auto_fixable)는 여기서도 기본 노출하지 않고
+                                      summarizeUserFacingReview로 걸러낸 뒤, 사람이 실제로
+                                      확인해야 하는 항목만 보여준다. 새 검사 엔진이 아니라
+                                      기존 quality gate checklist를 다시 표시만 한다. */}
+                                  {(() => {
+                                    const wordpressBlogChecklist = Array.isArray(post.qualitySummary?.checklist)
+                                      ? (post.qualitySummary.checklist as unknown as SocialPostQualityChecklistItem[])
+                                      : [];
+                                    if (post.qualityStatus === "not_checked" || wordpressBlogChecklist.length === 0) return null;
+                                    const wordpressBlogReview = summarizeAutoReview(wordpressBlogChecklist);
+                                    const wordpressBlogUserFacingReview = summarizeUserFacingReview(
+                                      post.qualityStatus,
+                                      wordpressBlogReview,
+                                      wordpressBlogChecklist
+                                    );
+                                    const wordpressBlogAutoFixIsPrimary =
+                                      post.qualityStatus === "needs_revision" && hasOnlyImplementedAutoFixableIssues(wordpressBlogChecklist);
+                                    return (
+                                      <AutoReviewSummaryCard
+                                        review={wordpressBlogReview}
+                                        userFacingSummary={wordpressBlogUserFacingReview}
+                                        contextNote={<p className="font-medium text-indigo-900">자동 검토 결과</p>}
+                                        compact
+                                        footer={
+                                          post.qualityStatus === "needs_revision" ? (
+                                            <form action={runPostAutoFixAndRecheckAction} className="mt-1.5">
+                                              <input type="hidden" name="articleId" value={article.id} />
+                                              <input type="hidden" name="socialPostId" value={post.id} />
+                                              <input type="hidden" name="returnTo" value={selfReturnTo} />
+                                              <button
+                                                type="submit"
+                                                className={
+                                                  wordpressBlogAutoFixIsPrimary
+                                                    ? "rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
+                                                    : "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                                                }
+                                              >
+                                                자동 수정 후 재검토
+                                              </button>
+                                            </form>
+                                          ) : undefined
+                                        }
+                                      />
+                                    );
+                                  })()}
                                 </div>
 
                                 {/* Step 2. 승인 (버튼은 카드 상단의 공통 '승인 요청'/'승인' 버튼을 그대로 사용 — 중복 배치하지 않음) */}
@@ -2450,16 +2517,16 @@ export default async function ArticleBlogPage({
                               </form>
                             </div>
 
-                            {/* Step 7. 게시 체크리스트 / Handoff (게시 체크리스트 만들기는 카드 상단의 공통 버튼을 사용 — 중복 배치하지 않음) */}
+                            {/* Step 7. 게시 체크리스트 / 수동 게시 준비 (게시 체크리스트 만들기는 카드 상단의 공통 버튼을 사용 — 중복 배치하지 않음) */}
                             <div className="mt-2 rounded border border-indigo-200 bg-white p-2">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-[11px] font-semibold text-indigo-900">Step 7. 게시 체크리스트 / Handoff</p>
+                                <p className="text-[11px] font-semibold text-indigo-900">Step 7. 게시 체크리스트 / 수동 게시 준비</p>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stepBadgeClass(workflowStatus.checklist)}`}>{workflowStatus.checklist}</span>
                               </div>
                               <p className="mt-1 text-[10px] text-zinc-600">
-                                WordPress 관리자 화면에서 최종 확인하기 위한 체크리스트와 handoff를
-                                준비합니다. 위쪽의 &ldquo;게시 체크리스트 준비&rdquo; 버튼으로 체크리스트를
-                                만들 수 있습니다.
+                                WordPress 관리자 화면에서 최종 확인하기 위한 체크리스트를 만들고,
+                                수동 게시 준비 완료 여부를 표시합니다. 위쪽의 &ldquo;게시 체크리스트
+                                준비&rdquo; 버튼으로 체크리스트를 만들 수 있습니다.
                               </p>
                               {checklistMismatchNotice && (
                                 <p className="mt-1 text-[10px] font-medium text-amber-700">{checklistMismatchNotice}</p>

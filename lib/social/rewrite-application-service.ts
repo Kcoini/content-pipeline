@@ -18,6 +18,7 @@ import {
 } from "@/lib/repositories/social-rewrite-suggestions-repository";
 import { createSocialPostVersion, markSocialPostVersionStatus } from "@/lib/repositories/social-post-versions-repository";
 import { checkForbiddenPatterns } from "./platform-publishing-rules";
+import { describeRewriteSuggestionStatus } from "./rewrite-version-user-facing-status";
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
 import type { SocialPost, ThreadItem, CardItem, ToneStyle } from "./social-platform-types";
@@ -53,13 +54,13 @@ function collectSuggestionText(suggestion: SocialPostRewriteSuggestion): string 
   return [suggestion.suggestedTitle, suggestion.suggestedHook, suggestion.suggestedCta, threadText, cardText].filter(Boolean).join(" ");
 }
 
-/** 적용할 수 없는 이유를 반환한다. 가능하면 null. */
+/** 적용할 수 없는 이유를 반환한다. 가능하면 null. Phase UX-03C: raw suggestion_status 값이 그대로 섞이지 않게 describeRewriteSuggestionStatus로 번역한다. */
 function checkApplicable(suggestion: SocialPostRewriteSuggestion): string | null {
-  if (suggestion.suggestionStatus === "blocked") return "suggestion_status가 blocked여서 적용할 수 없습니다.";
-  if (suggestion.suggestionStatus === "rejected") return "suggestion_status가 rejected여서 적용할 수 없습니다.";
-  if (suggestion.suggestionStatus === "failed") return "suggestion_status가 failed여서 적용할 수 없습니다.";
+  if (suggestion.suggestionStatus === "blocked") return "이 개선안은 진행 불가 상태여서 적용할 수 없습니다.";
+  if (suggestion.suggestionStatus === "rejected") return "반려된 개선안이라 적용할 수 없습니다.";
+  if (suggestion.suggestionStatus === "failed") return "실패한 개선안이라 적용할 수 없습니다.";
   if (suggestion.suggestionStatus !== "approved") {
-    return `suggestion_status가 'approved'가 아니어서(${suggestion.suggestionStatus}) 적용할 수 없습니다.`;
+    return `개선안을 먼저 선택해야 적용할 수 있습니다(현재 상태: ${describeRewriteSuggestionStatus(suggestion.suggestionStatus)}).`;
   }
   if (suggestion.applicationStatus === "applied") return "이미 적용된 제안입니다(중복 적용 불가).";
 

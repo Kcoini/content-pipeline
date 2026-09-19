@@ -9,19 +9,33 @@
 import { useState } from "react";
 import { ExpandableText, needsExpandableCollapse } from "./expandable-text";
 import { PostBodyActionRow } from "./post-body-action-row";
+import { InlinePostBodyEditor } from "./inline-post-body-editor";
 import { logSocialPostInlineEditClientEventAction } from "@/app/articles/[id]/actions";
 import { getDefaultPostBodyViewMode, getPostBodyViewModeLabel } from "@/lib/social/post-body-view-mode";
-import type { SocialPlatform } from "@/lib/social/social-platform-types";
+import { formatThreadItemsForCopy } from "@/lib/social/thread-item-formatter";
+import type { SocialPlatform, ThreadItem } from "@/lib/social/social-platform-types";
 
 export interface SocialPostBodyPanelProps {
   articleId: string;
   socialPostId: string;
   returnTo: string;
-  /** 게시용 본문(getSocialPostDisplayBody 결과). 표시/복사/textarea 초기값에 모두 이 값을 그대로 쓴다. */
+  /** 게시용 본문(getSocialPostDisplayBody 결과). 표시/복사/textarea 초기값에 모두 이 값을 그대로 쓴다. threadItems가 있으면 미리보기 텍스트로만 쓰이고, 복사/편집은 threadItems 기준으로 동작한다. */
   displayBody: string;
-  /** false면(x처럼 threadItems 배열 기반 플랫폼) 편집 버튼을 보여주지 않는다 — 상세 페이지에서만 수정 가능. */
+  /** false면 편집 버튼을 보여주지 않는다 — 상세 페이지에서만 수정 가능. threadItems+saveThreadAction이 있으면(X 등) 이 값과 무관하게 항상 편집 가능하다. */
   editable: boolean;
   saveAction: (formData: FormData) => Promise<void>;
+  /**
+   * Phase UX-03B2: X처럼 threadItems 배열로 구성된 콘텐츠를 카드 안에서
+   * 바로 편집하려면 이 값과 saveThreadAction을 함께 넘긴다 — 이 값이
+   * 있으면(길이 무관, 빈 배열이 아니면) [본문 수정]이 항상 mode="thread"
+   * InlinePostBodyEditor를 연다(상세 페이지 이동 없이). 본문 복사도
+   * displayBody가 아니라 이 배열을 순서대로 이어붙인 텍스트를 쓴다.
+   */
+  threadItems?: ThreadItem[];
+  /** threadItems가 있을 때 저장을 처리하는 server action(saveSocialPostThreadInlineEditAction). */
+  saveThreadAction?: (formData: FormData) => Promise<void>;
+  /** thread item별 권장 글자 수 제한(예: X의 280자) — 새 제한을 만들지 않고 호출 측이 기존 PLATFORM_WRITING_CONFIGS 값을 그대로 전달한다. */
+  threadItemMaxLength?: number;
   /**
    * true면 (편집 중이 아닐 때) 본문 미리보기(ExpandableText)를 표시하지
    * 않고 [본문 수정]/[본문 복사] 버튼만 보여준다. wordpress_blog 카드처럼
@@ -46,9 +60,18 @@ export function SocialPostBodyPanel({
   displayBody,
   editable,
   saveAction,
+  threadItems,
+  saveThreadAction,
+  threadItemMaxLength,
   hideBodyWhenNotEditing = false,
   platform,
 }: SocialPostBodyPanelProps) {
+  // Phase UX-03B2: threadItems+saveThreadAction이 함께 있으면 이 카드는
+  // "thread 편집 가능" 상태다 — X도 다른 플랫폼과 동일하게 [본문 수정]이
+  // 같은 카드 안 inline editor를 연다(상세 페이지로 보내지 않는다).
+  const isThreadMode = threadItems !== undefined && saveThreadAction !== undefined;
+  const effectiveEditable = isThreadMode ? true : editable;
+  const copyText = isThreadMode ? formatThreadItemsForCopy(threadItems) : displayBody;
   const [editing, setEditing] = useState(false);
   // Phase 4-27: 펼침 상태를 이 컴포넌트가 소유하고 ExpandableText를
   // controlled로 넘긴다 — [전체 보기]/[본문 접기] 버튼을 PostBodyActionRow
@@ -76,56 +99,33 @@ export function SocialPostBodyPanel({
   const bodyLabel = viewMode ? getPostBodyViewModeLabel(viewMode) : "게시용 본문";
   const isCopyMode = viewMode === "copy";
 
+  if (editing && isThreadMode && threadItems && saveThreadAction) {
+    return (
+      <InlinePostBodyEditor
+        mode="thread"
+        articleId={articleId}
+        socialPostId={socialPostId}
+        returnTo={returnTo}
+        items={threadItems.slice().sort((a, b) => a.order - b.order).map((item) => ({ text: item.text }))}
+        maxLengthPerItem={threadItemMaxLength}
+        title={`${bodyLabel} 수정`}
+        saveAction={saveThreadAction}
+        onCancel={cancelEditor}
+      />
+    );
+  }
+
   if (editing) {
     return (
-      <div className="mt-2 rounded border border-indigo-300 bg-white p-2">
-        <p className="text-[11px] font-semibold text-indigo-900">{bodyLabel} 수정</p>
-        <form action={saveAction}>
-          <input type="hidden" name="articleId" value={articleId} />
-          <input type="hidden" name="socialPostId" value={socialPostId} />
-          <input type="hidden" name="returnTo" value={returnTo} />
-          <textarea
-            name="body"
-            defaultValue={displayBody}
-            rows={10}
-            className="mt-1 w-full rounded border border-zinc-300 p-2 text-[12px] text-zinc-800"
-            style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.7 }}
-          />
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-            <button
-              type="submit"
-              name="saveMode"
-              value="save_review_and_approve"
-              className="rounded bg-indigo-600 px-2 py-1 font-medium text-white hover:bg-indigo-500"
-            >
-              저장 후 승인
-            </button>
-            <button
-              type="submit"
-              name="saveMode"
-              value="save_and_review"
-              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              저장 후 자동 검토
-            </button>
-            <button
-              type="submit"
-              name="saveMode"
-              value="save_only"
-              className="rounded border border-zinc-300 bg-zinc-50 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              저장만 하기
-            </button>
-            <button
-              type="button"
-              onClick={cancelEditor}
-              className="rounded border border-zinc-300 bg-white px-2 py-1 font-medium text-zinc-500 hover:bg-zinc-100"
-            >
-              취소
-            </button>
-          </div>
-        </form>
-      </div>
+      <InlinePostBodyEditor
+        articleId={articleId}
+        socialPostId={socialPostId}
+        returnTo={returnTo}
+        value={displayBody}
+        title={`${bodyLabel} 수정`}
+        saveAction={saveAction}
+        onCancel={cancelEditor}
+      />
     );
   }
 
@@ -156,11 +156,11 @@ export function SocialPostBodyPanel({
       <PostBodyActionRow
         articleId={articleId}
         socialPostId={socialPostId}
-        copyText={displayBody}
+        copyText={copyText}
         showExpandToggle={showExpandToggle}
         expanded={expanded}
         onToggleExpand={() => setExpanded((prev) => !prev)}
-        editable={editable}
+        editable={effectiveEditable}
         onEdit={openEditor}
       />
     </div>

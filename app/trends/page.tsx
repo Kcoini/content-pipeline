@@ -26,21 +26,9 @@ import {
 } from "./actions";
 import type { TrendCandidate, ThemeCluster } from "@/lib/types/domain";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
+import { PlatformBadge } from "@/components/common/platform-badge";
 
 export const dynamic = "force-dynamic";
-
-function PlatformBadge({ platform }: { platform: string }) {
-  const colorMap: Record<string, string> = {
-    naver: "bg-green-100 text-green-700",
-    daum: "bg-blue-100 text-blue-700",
-    mock: "bg-zinc-100 text-zinc-600",
-  };
-  return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colorMap[platform] ?? "bg-zinc-100 text-zinc-600"}`}>
-      {platform}
-    </span>
-  );
-}
 
 /** Phase 1-24: raw enum(new_theme 등)을 그대로 노출하지 않고 배지 색상 + 한국어 라벨만 표시한다. */
 const CLASSIFICATION_BADGE_CLASSES: Record<ThemeCandidateClassification, string> = {
@@ -741,7 +729,7 @@ export default async function TrendsPage({
         {/* 모드 + API key 상태 표시 */}
         <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3">
           <span className={`rounded px-2 py-0.5 text-xs font-semibold ${mockMode ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
-            {mockMode ? "Mock 모드" : "Real API 모드"}
+            {mockMode ? "테스트 데이터 모드" : "실제 API 연동 모드"}
           </span>
           {!mockMode && (
             <>

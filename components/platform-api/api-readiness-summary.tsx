@@ -23,12 +23,12 @@ export function ApiReadinessSummary({
       <div className="flex flex-wrap items-center gap-2">
         <ApiReadinessBadge status={readiness.status} />
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">{getPlatformApiModeLabel(capability.currentMode)}</span>
-        {readiness.dryRunOnly && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">dry-run only</span>}
+        {readiness.dryRunOnly && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">연결 확인만 가능</span>}
       </div>
 
       <dl className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
         <div>
-          <dt className="font-medium text-zinc-600">feature flag</dt>
+          <dt className="font-medium text-zinc-600">게시 기능 활성화 여부</dt>
           <dd className="text-zinc-500">{readiness.publishEnabled ? "활성화" : "비활성화"} ({capability.publishEnabledFlagName})</dd>
         </div>
         <div>
@@ -43,7 +43,7 @@ export function ApiReadinessSummary({
         {eligibility && (
           <>
             <div>
-              <dt className="font-medium text-zinc-600">dry-run 가능</dt>
+              <dt className="font-medium text-zinc-600">연결 확인 가능</dt>
               <dd className={eligibility.eligibleForDryRun ? "font-medium text-green-700" : "text-zinc-500"}>
                 {eligibility.eligibleForDryRun ? "예" : "아니오"}
               </dd>
@@ -60,7 +60,7 @@ export function ApiReadinessSummary({
 
       {(eligibility?.blockers.length ?? readiness.blockers.length) > 0 && (
         <div className="mt-2">
-          <p className="font-medium text-red-700">blockers</p>
+          <p className="font-medium text-red-700">차단 사유</p>
           <ul className="mt-1 list-inside list-disc text-red-600">
             {(eligibility?.blockers ?? readiness.blockers).map((b, i) => (
               <li key={i}>{b}</li>
@@ -71,7 +71,7 @@ export function ApiReadinessSummary({
 
       {(eligibility?.warnings.length ?? readiness.warnings.length) > 0 && (
         <div className="mt-2">
-          <p className="font-medium text-amber-700">warnings</p>
+          <p className="font-medium text-amber-700">확인 필요 사항</p>
           <ul className="mt-1 list-inside list-disc text-amber-700">
             {(eligibility?.warnings ?? readiness.warnings).map((w, i) => (
               <li key={i}>{w}</li>

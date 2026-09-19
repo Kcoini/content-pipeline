@@ -20,6 +20,7 @@ import {
   type CollectionResultStatus,
 } from "@/components/sources/related-url-collection-result-card";
 import type { ArticleUrlCandidate } from "@/lib/types/domain";
+import { PlatformBadge } from "@/components/common/platform-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -32,19 +33,6 @@ const STATUS_LABEL: Record<string, string> = {
   dismissed: "제외됨",
   imported: "등록됨",
 };
-
-function PlatformBadge({ platform }: { platform: string }) {
-  const map: Record<string, string> = {
-    naver: "bg-green-100 text-green-700",
-    daum: "bg-blue-100 text-blue-700",
-    mock: "bg-zinc-100 text-zinc-600",
-  };
-  return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${map[platform] ?? "bg-zinc-100 text-zinc-600"}`}>
-      {platform}
-    </span>
-  );
-}
 
 function CandidateCard({ candidate }: { candidate: ArticleUrlCandidate }) {
   const isImported = candidate.status === "imported";
@@ -171,7 +159,8 @@ export default async function ThemePage({
 
         {isMockMode && (
           <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
-            <strong>Mock 모드</strong> — ARTICLE_SEARCH_ENABLED=false. 실제 API 대신 mock 후보를 생성합니다.
+            <strong>테스트 데이터 모드</strong> — 실제 검색 API 연결이 설정되지 않아, 실제 API 대신 테스트용
+            후보를 생성합니다.
           </div>
         )}
 

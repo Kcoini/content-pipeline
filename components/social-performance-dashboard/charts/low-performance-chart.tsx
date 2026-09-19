@@ -4,14 +4,17 @@
 import type { LowPerformanceChartData } from "@/lib/social/social-performance-chart-types";
 import { formatChartNumber, normalizeChartValue } from "@/lib/social/chart-formatting";
 import { ChartEmptyState } from "./chart-empty-state";
+import { describeStatusValue } from "@/lib/social/status-labels";
 
-const BARS: { key: keyof LowPerformanceChartData; label: string; className: string }[] = [
-  { key: "excellent", label: "excellent", className: "bg-green-600" },
-  { key: "good", label: "good", className: "bg-green-400" },
-  { key: "average", label: "average", className: "bg-zinc-400" },
-  { key: "needsReview", label: "needs_review", className: "bg-red-500" },
-  { key: "low", label: "low", className: "bg-amber-500" },
-  { key: "notMeasured", label: "not_measured", className: "bg-zinc-300" },
+// Phase UX-03C: 범례가 raw performance_status enum(excellent/good/...)을
+// 그대로 노출하던 문제를 수정 — 공통 describeStatusValue로 번역한다.
+const BARS: { key: keyof LowPerformanceChartData; rawStatus: string; className: string }[] = [
+  { key: "excellent", rawStatus: "excellent", className: "bg-green-600" },
+  { key: "good", rawStatus: "good", className: "bg-green-400" },
+  { key: "average", rawStatus: "average", className: "bg-zinc-400" },
+  { key: "needsReview", rawStatus: "needs_review", className: "bg-red-500" },
+  { key: "low", rawStatus: "low", className: "bg-amber-500" },
+  { key: "notMeasured", rawStatus: "not_measured", className: "bg-zinc-300" },
 ];
 
 export function LowPerformanceChart({ data }: { data: LowPerformanceChartData }) {
@@ -29,7 +32,7 @@ export function LowPerformanceChart({ data }: { data: LowPerformanceChartData })
         const value = data[bar.key];
         return (
           <div key={bar.key} className="flex items-center gap-2 text-xs">
-            <span className="w-24 shrink-0 text-zinc-600">{bar.label}</span>
+            <span className="w-24 shrink-0 text-zinc-600">{describeStatusValue(bar.rawStatus)}</span>
             <div className="h-4 flex-1 rounded bg-zinc-100">
               <div className={`h-4 rounded ${bar.className}`} style={{ width: `${normalizeChartValue(value, max)}%` }} />
             </div>

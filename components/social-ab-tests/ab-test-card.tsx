@@ -29,6 +29,21 @@ const TEST_STATUS_STYLES: Record<string, string> = {
   failed: "bg-red-100 text-red-700",
 };
 
+// Phase UX-04B(H3): raw testStatus enum을 배지/버튼에 그대로 노출하지
+// 않는다 — 실제 의미(각 상태 전환 action이 무엇을 하는지, 아래 form들
+// 참고)에 맞는 한국어 라벨로 바꾼다.
+const TEST_STATUS_LABELS: Record<string, string> = {
+  draft: "초안",
+  ready: "준비 완료",
+  running: "진행 중",
+  paused: "일시정지",
+  completed: "완료",
+  inconclusive: "결론 없음",
+  cancelled: "취소됨",
+  blocked: "차단됨",
+  failed: "실패",
+};
+
 export function AbTestCard({
   articleId,
   entry,
@@ -49,7 +64,7 @@ export function AbTestCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TEST_STATUS_STYLES[abTest.testStatus] ?? "bg-zinc-100 text-zinc-600"}`}>
-          {abTest.testStatus}
+          {TEST_STATUS_LABELS[abTest.testStatus] ?? abTest.testStatus}
         </span>
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{abTest.testType}</span>
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-600">{abTest.platform}</span>
@@ -78,7 +93,7 @@ export function AbTestCard({
             disabled={abTest.testStatus !== "draft"}
             className="rounded border border-blue-300 bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            ready로 변경
+            테스트 준비 완료로 표시
           </button>
         </form>
         <form action={startAbTestAction}>
@@ -90,7 +105,7 @@ export function AbTestCard({
             disabled={abTest.testStatus !== "ready" && abTest.testStatus !== "paused"}
             className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            running 시작
+            테스트 시작
           </button>
         </form>
         <form action={pauseAbTestAction}>

@@ -172,12 +172,14 @@ describe("prepareRewriteReexport", () => {
     expect(updateRewriteReexportStatus).toHaveBeenCalledWith("social-post-2", expect.objectContaining({ rewriteReexportStatus: "ready" }));
   });
 
-  it("rewrite_reapproval_status가 approved가 아니면 준비할 수 없다", async () => {
+  it("rewrite_reapproval_status가 approved가 아니면 준비할 수 없다(Phase UX-03C: 실패 메시지에 raw 필드명이 섞이지 않는다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ rewriteReapprovalStatus: "pending_review" }));
 
     const result = await prepareRewriteReexport("social-post-2");
 
     expect(result.success).toBe(false);
+    expect(result.message).not.toContain("rewrite_reapproval_status");
+    expect(result.message).toContain("최종 승인");
   });
 });
 
@@ -210,12 +212,13 @@ describe("generateRewriteReexportPayload", () => {
     expect(result.success).toBe(false);
   });
 
-  it("quality_status가 ready가 아니면 재export할 수 없다", async () => {
+  it("quality_status가 ready가 아니면 재export할 수 없다(Phase UX-03C: 실패 메시지에 raw 필드명이 섞이지 않는다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ qualityStatus: "needs_revision" }));
 
     const result = await generateRewriteReexportPayload("social-post-2");
 
     expect(result.success).toBe(false);
+    expect(result.message).not.toContain("quality_status");
   });
 });
 

@@ -174,7 +174,7 @@ export default async function RewriteDashboardPage({
                     <th className="pr-3 py-1">버전</th>
                     <th className="pr-3 py-1">원본/이전 버전</th>
                     <th className="pr-3 py-1">버전 비교</th>
-                    <th className="pr-3 py-1">재승인/재내보내기</th>
+                    <th className="pr-3 py-1">재검토/최종 승인 · 재내보내기</th>
                     <th className="pr-3 py-1">성과 비교</th>
                     <th className="pr-3 py-1">점수</th>
                     <th className="pr-3 py-1">안내</th>

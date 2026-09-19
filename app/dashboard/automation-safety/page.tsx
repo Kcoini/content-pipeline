@@ -92,6 +92,14 @@ export default async function AutomationSafetyPage() {
           <p className="flex-1 text-sm text-zinc-600">{result.summary}</p>
         </section>
 
+        {/* Phase UX-04B: 이전에는 점검 실행 버튼이 4개(전체 점검/로그
+            보안/게시 workflow/feature flag 명목) 있었지만, actions.ts의
+            rerunAutomationSafetyReview()는 인자를 받지 않고 항상 페이지
+            전체를 재검증할 뿐이라 4개 버튼이 실제로는 완전히 동일한
+            동작이었다(구분되는 파라미터 없음) — 실질 기능 1개에 버튼
+            4개가 중복 노출되던 문제. 버튼 1개로 정리하고, 카테고리별
+            결과는 아래 "카테고리별 상태" 섹션에서 읽기 전용으로 계속
+            확인할 수 있다(정보 삭제 없음). */}
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">점검 실행</h2>
           <p className="mt-1 text-xs text-zinc-500">
@@ -100,22 +108,7 @@ export default async function AutomationSafetyPage() {
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={rerunAutomationSafetyReview}>
               <button type="submit" className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">
-                Safety Review 실행
-              </button>
-            </form>
-            <form action={rerunAutomationSafetyReview}>
-              <button type="submit" className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100">
-                최근 로그 보안 점검
-              </button>
-            </form>
-            <form action={rerunAutomationSafetyReview}>
-              <button type="submit" className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100">
-                게시 workflow 점검
-              </button>
-            </form>
-            <form action={rerunAutomationSafetyReview}>
-              <button type="submit" className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100">
-                feature flag 점검
+                안전 점검 다시 실행
               </button>
             </form>
           </div>

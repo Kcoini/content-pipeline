@@ -168,4 +168,86 @@ describe("runAutoFixAndRecheck", () => {
       expect(JSON.stringify(call[0])).not.toContain("리드문");
     }
   });
+
+  describe("Phase UX-05A: x/threads/instagram markdown/HTML 잔여물 자동 정리", () => {
+    it("X: thread item의 markdown 잔여물을 자동 정리해서 threadItems로 저장한다(postBody는 건드리지 않는다)", async () => {
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "x",
+          postBody: null,
+          threadItems: [
+            { order: 1, text: "## 오늘의 발표" },
+            { order: 2, text: "정상적인 두 번째 글" },
+          ],
+          cardItems: [],
+          qualitySummary: { checklist: [makeChecklistItem({ key: "platform_markup_residue" })] },
+        })
+      );
+
+      await runAutoFixAndRecheck("post-1");
+
+      expect(editSocialPostContent).toHaveBeenCalledWith(
+        "post-1",
+        expect.objectContaining({ editedBy: "system:auto_fix" })
+      );
+      const call = editSocialPostContent.mock.calls[0][1];
+      expect(call.threadItems[0].text).toBe("오늘의 발표");
+      expect(call.threadItems[1].text).toBe("정상적인 두 번째 글");
+      expect(call.postBody).toBeUndefined();
+    });
+
+    it("Threads: postBody의 markdown 잔여물을 자동 정리한다", async () => {
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "threads",
+          postBody: "\\*\\*중요 발표\\*\\*가 있었습니다.",
+          threadItems: [],
+          cardItems: [],
+          qualitySummary: { checklist: [makeChecklistItem({ key: "platform_markup_residue" })] },
+        })
+      );
+
+      const result = await runAutoFixAndRecheck("post-1");
+
+      const savedBody = editSocialPostContent.mock.calls[0][1].postBody;
+      expect(savedBody).toBe("중요 발표가 있었습니다.");
+      expect(result.changesApplied.length).toBeGreaterThan(0);
+    });
+
+    it("Instagram: caption과 card_items의 markdown/HTML 잔여물을 함께 자동 정리한다", async () => {
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "instagram",
+          postBody: null,
+          caption: "<p>오늘의 이야기</p>",
+          threadItems: [],
+          cardItems: [{ order: 1, heading: "## 핵심 요약", body: "정상 본문" }],
+          qualitySummary: { checklist: [makeChecklistItem({ key: "platform_markup_residue" })] },
+        })
+      );
+
+      await runAutoFixAndRecheck("post-1");
+
+      const call = editSocialPostContent.mock.calls[0][1];
+      expect(call.caption).toBe("오늘의 이야기");
+      expect(call.cardItems[0].heading).toBe("핵심 요약");
+      expect(call.cardItems[0].body).toBe("정상 본문");
+    });
+
+    it("naver_cafe의 기존 자동 수정 경로는 이 변경으로 영향받지 않는다(회귀 확인)", async () => {
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "naver_cafe",
+          postBody: "\\## 제목\n\n내용",
+          qualitySummary: { checklist: [makeChecklistItem({ key: "naver_cafe_no_markdown_escape" })] },
+        })
+      );
+
+      await runAutoFixAndRecheck("post-1");
+
+      const savedBody = editSocialPostContent.mock.calls[0][1].postBody;
+      expect(savedBody).not.toContain("\\##");
+      expect(savedBody).toContain("내용");
+    });
+  });
 });

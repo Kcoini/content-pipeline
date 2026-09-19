@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { buildArticleRewritePageData } from "@/lib/social/article-rewrite-page-service";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
 import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-badge";
+import { AdvancedDetails } from "@/components/common/advanced-details";
 import { DeepLinkNotice, getHighlightClassName, buildAnchorId } from "@/components/navigation/deep-link-highlight";
 import {
   buildArticleRewriteUrl,
@@ -43,6 +44,8 @@ import {
   describePrepareReexportDisabledReason,
   describeGenerateReexportDisabledReason,
   describeCompareDisabledReason,
+  describeRewriteSuggestionStatus,
+  describeSelectSuggestionDisabledReason,
 } from "@/lib/social/rewrite-version-user-facing-status";
 
 export const dynamic = "force-dynamic";
@@ -119,7 +122,10 @@ export default async function ArticleRewritePage({
         <ArticleWorkflowNavigation articleId={id} active="rewrite" returnTo={returnTo} />
 
         <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
-          재작성 관리 페이지입니다. 개선 제안, 개선 버전, 비교, 재승인, 재내보내기 흐름을 관리합니다. 이 페이지에서도 자동 게시는 하지 않습니다.
+          재작성 관리 페이지입니다. 순서: 개선안 선택 → 개선안 적용(재작성 버전 생성) → 원본과 비교 →
+          재검토 요청 → 최종 승인 → 재내보내기 준비. &ldquo;선택&rdquo;/&ldquo;재검토 요청&rdquo;은 다음
+          단계로 넘어가기 위한 중간 확인이고, 실제로 게시 가능 여부를 확정하는 것은
+          &ldquo;최종 승인&rdquo; 하나뿐입니다. 이 페이지에서도 자동 게시는 하지 않습니다.
           특정 글이나 비교 결과로 이동하면 해당 카드가 강조 표시됩니다.
         </div>
 
@@ -154,7 +160,7 @@ export default async function ArticleRewritePage({
               <select name="socialPostId" className="mt-1 rounded border border-zinc-300 px-2 py-1" required>
                 {originalPosts.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.platform} · {p.postTitle || p.caption || p.id}
+                    {PLATFORM_LABELS[p.platform]} · {p.postTitle || p.caption || p.id}
                   </option>
                 ))}
               </select>
@@ -182,8 +188,9 @@ export default async function ArticleRewritePage({
                   s.applicationStatus === "applied"
                     ? "이미 적용된 제안입니다."
                     : s.suggestionStatus !== "approved"
-                      ? "이 제안을 먼저 승인해야 적용할 수 있습니다."
+                      ? "이 개선안을 먼저 선택해야 적용할 수 있습니다."
                       : null;
+                const selectDisabledReason = describeSelectSuggestionDisabledReason(s.suggestionStatus);
                 return (
                   <li
                     key={s.id}
@@ -199,7 +206,7 @@ export default async function ArticleRewritePage({
                         작업만 먼저 보여주고, 원문 상태값은 "내부 상태값 보기"
                         접힘 안에 둔다. */}
                     <p className="mt-1 text-xs text-zinc-600">
-                      {describeStatusValue(s.suggestionStatus)} · 적용: {describeStatusValue(s.applicationStatus)}
+                      {describeRewriteSuggestionStatus(s.suggestionStatus)} · 적용: {describeStatusValue(s.applicationStatus)}
                       {s.appliedSocialPostId && (
                         <>
                           {" "}
@@ -219,8 +226,13 @@ export default async function ArticleRewritePage({
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="suggestionId" value={s.id} />
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <button type="submit" className={nextAction.kind === "approve_suggestion" ? primaryClass : secondaryClass}>
-                          개선 제안 승인
+                        <button
+                          type="submit"
+                          disabled={selectDisabledReason !== null}
+                          title={selectDisabledReason ?? undefined}
+                          className={`${nextAction.kind === "approve_suggestion" ? primaryClass : secondaryClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          개선안 선택
                         </button>
                       </form>
                       <form action={rejectRewriteSuggestionAction} className="flex items-center gap-1">
@@ -249,6 +261,7 @@ export default async function ArticleRewritePage({
                       {/* Phase 3-24: disabled 버튼에는 반드시 이유를 표시한다(hover title뿐 아니라 항상 보이는 텍스트로도). */}
                       {applyDisabledReason && <span className="text-[11px] text-zinc-400">{applyDisabledReason}</span>}
                     </div>
+                    {selectDisabledReason && <p className="mt-1 text-[11px] text-zinc-400">개선안 선택: {selectDisabledReason}</p>}
                     {/* Phase 4-20: 화살표를 이어붙여 primary 버튼보다 위에 있던
                         원본 글 관련 이동 링크를 "관련 화면 보기" 접힘으로 빼고,
                         위치도 primary/secondary action 아래로 옮긴다. */}
@@ -366,7 +379,7 @@ export default async function ArticleRewritePage({
                           title={requestReapprovalDisabledReason ?? undefined}
                           className={`${nextAction.kind === "request_reapproval" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
-                          재승인 요청
+                          재검토 요청
                         </button>
                       </form>
                       <form action={approveRewriteReapprovalAction}>
@@ -379,7 +392,7 @@ export default async function ArticleRewritePage({
                           title={approveReapprovalDisabledReason ?? undefined}
                           className={`${nextAction.kind === "approve_reapproval" ? primaryClass : secondaryClass} ${disabledClass}`}
                         >
-                          재승인 승인하기
+                          최종 승인
                         </button>
                       </form>
                       <form action={prepareRewriteReexportAction}>
@@ -422,8 +435,8 @@ export default async function ArticleRewritePage({
                     {(requestReapprovalDisabledReason || approveReapprovalDisabledReason || prepareReexportDisabledReason || generateReexportDisabledReason || compareDisabledReason) && (
                       <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-zinc-400">
                         {compareDisabledReason && <li>원본과 비교: {compareDisabledReason}</li>}
-                        {requestReapprovalDisabledReason && <li>재승인 요청: {requestReapprovalDisabledReason}</li>}
-                        {approveReapprovalDisabledReason && <li>재승인 승인하기: {approveReapprovalDisabledReason}</li>}
+                        {requestReapprovalDisabledReason && <li>재검토 요청: {requestReapprovalDisabledReason}</li>}
+                        {approveReapprovalDisabledReason && <li>최종 승인: {approveReapprovalDisabledReason}</li>}
                         {prepareReexportDisabledReason && <li>재내보내기 준비: {prepareReexportDisabledReason}</li>}
                         {generateReexportDisabledReason && <li>재내보내기 만들기: {generateReexportDisabledReason}</li>}
                       </ul>
@@ -456,8 +469,7 @@ export default async function ArticleRewritePage({
                       ]}
                     />
 
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-[11px] text-zinc-400">내부 상태값 보기 (관리자용, 기본 접힘)</summary>
+                    <AdvancedDetails title="상세 상태 보기" className="mt-2">
                       <p className="mt-1 text-[11px] text-zinc-400">
                         {describeStatusField("versionNumber")}: {v.versionNumber} · {describeStatusField("rootSocialPostId")}:{" "}
                         {v.rootSocialPostId ?? "-"} · {describeStatusField("parentSocialPostId")}: {v.parentSocialPostId ?? "-"}
@@ -485,7 +497,7 @@ export default async function ArticleRewritePage({
                           </button>
                         </form>
                       </div>
-                    </details>
+                    </AdvancedDetails>
                   </li>
                 );
               })}

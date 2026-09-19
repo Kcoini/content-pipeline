@@ -7,6 +7,8 @@ import {
   describePrepareReexportDisabledReason,
   describeGenerateReexportDisabledReason,
   describeCompareDisabledReason,
+  describeRewriteSuggestionStatus,
+  describeSelectSuggestionDisabledReason,
 } from "./rewrite-version-user-facing-status";
 
 describe("getRewriteSuggestionNextAction (Phase 3-24)", () => {
@@ -45,10 +47,10 @@ describe("getRewriteVersionNextAction (Phase 3-24)", () => {
     ).toEqual({ kind: "compare", label: "원본과 비교" });
   });
 
-  it("재승인 요청 전 + 비교 대상 없음 → request_reapproval", () => {
+  it("재승인 요청 전 + 비교 대상 없음 → request_reapproval(Phase UX-03B2: 라벨은 '재검토 요청')", () => {
     expect(
       getRewriteVersionNextAction({ rewriteReapprovalStatus: "not_requested", rewriteReexportStatus: "not_started", hasComparisonTarget: false })
-    ).toEqual({ kind: "request_reapproval", label: "재승인 요청" });
+    ).toEqual({ kind: "request_reapproval", label: "재검토 요청" });
   });
 
   it("재승인 검토 대기 → approve_reapproval", () => {
@@ -85,20 +87,52 @@ describe("disabled 버튼 이유 helper (Phase 3-24)", () => {
     expect(describeRequestReapprovalDisabledReason("approved")).toContain("완료");
   });
 
-  it("재승인 승인: pending_review가 아니면 이유를 반환한다", () => {
+  it("최종 승인: pending_review가 아니면 이유를 반환한다(Phase UX-03B2: 라벨은 '재검토를 요청')", () => {
     expect(describeApproveReapprovalDisabledReason("pending_review")).toBeNull();
-    expect(describeApproveReapprovalDisabledReason("not_requested")).toContain("먼저 재승인을 요청");
+    expect(describeApproveReapprovalDisabledReason("not_requested")).toContain("먼저 재검토를 요청");
   });
 
-  it("재내보내기 준비/생성: approved가 아니면 이유를 반환한다", () => {
+  it("재내보내기 준비/생성: approved가 아니면 이유를 반환한다(Phase UX-03B2: '최종 승인이 완료되어야')", () => {
     expect(describePrepareReexportDisabledReason("approved")).toBeNull();
-    expect(describePrepareReexportDisabledReason("not_requested")).toContain("재승인이 완료되어야");
+    expect(describePrepareReexportDisabledReason("not_requested")).toContain("최종 승인이 완료되어야");
     expect(describeGenerateReexportDisabledReason("approved")).toBeNull();
-    expect(describeGenerateReexportDisabledReason("not_requested")).toContain("재승인이 완료되어야");
+    expect(describeGenerateReexportDisabledReason("not_requested")).toContain("최종 승인이 완료되어야");
   });
 
   it("비교: 비교 대상이 없으면 이유를 반환한다", () => {
     expect(describeCompareDisabledReason(true)).toBeNull();
     expect(describeCompareDisabledReason(false)).toContain("찾을 수 없습니다");
+  });
+});
+
+describe("describeSelectSuggestionDisabledReason (Phase UX-03C)", () => {
+  it("draft/ready/needs_review는 선택 가능하다(disabled 아님)", () => {
+    expect(describeSelectSuggestionDisabledReason("draft")).toBeNull();
+    expect(describeSelectSuggestionDisabledReason("ready")).toBeNull();
+    expect(describeSelectSuggestionDisabledReason("needs_review")).toBeNull();
+  });
+
+  it("이미 선택/적용/반려/진행 불가 상태면 이유를 반환한다(완료된 action 반복 표시 방지)", () => {
+    expect(describeSelectSuggestionDisabledReason("approved")).toContain("이미 선택된");
+    expect(describeSelectSuggestionDisabledReason("applied")).toContain("이미 적용된");
+    expect(describeSelectSuggestionDisabledReason("rejected")).toContain("반려된");
+    expect(describeSelectSuggestionDisabledReason("blocked")).not.toBeNull();
+    expect(describeSelectSuggestionDisabledReason("failed")).not.toBeNull();
+  });
+});
+
+describe("describeRewriteSuggestionStatus (Phase UX-03B2)", () => {
+  it("approved는 '선택됨'으로 번역한다(공용 describeStatusValue의 '승인 완료'와 다르게 — 최종 승인과 혼동 방지)", () => {
+    expect(describeRewriteSuggestionStatus("approved")).toBe("선택됨");
+  });
+
+  it("나머지 값도 raw enum이 아니라 한국어 라벨을 반환한다", () => {
+    expect(describeRewriteSuggestionStatus("draft")).toBe("초안");
+    expect(describeRewriteSuggestionStatus("ready")).toBe("검토 준비됨");
+    expect(describeRewriteSuggestionStatus("needs_review")).toBe("검토 필요");
+    expect(describeRewriteSuggestionStatus("rejected")).toBe("반려됨");
+    expect(describeRewriteSuggestionStatus("applied")).toBe("적용됨");
+    expect(describeRewriteSuggestionStatus("blocked")).toBe("진행 불가");
+    expect(describeRewriteSuggestionStatus("failed")).toBe("실패");
   });
 });

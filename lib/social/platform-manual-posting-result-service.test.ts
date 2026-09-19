@@ -253,6 +253,27 @@ describe("markManualPostingFailed / markManualPostingSkipped", () => {
   });
 });
 
+describe("checkRecordable 사유 문구 (Phase UX-05B: raw DB 필드명 제거)", () => {
+  it("모든 blocked 사유가 raw DB 필드명 없이 자연어 문장이다", async () => {
+    const cases = [
+      { approvalStatus: "pending_review" as const },
+      { qualityStatus: "needs_revision" as const },
+      { platformPublishGuardStatus: "needs_revision" as const },
+      { platformPublishReady: false },
+      { platformPublishDryRunStatus: "not_created" as const },
+      { handoffStatus: "ready" as const },
+    ];
+    for (const overrides of cases) {
+      getSocialPostForManualPosting.mockResolvedValue(makeSocialPost(overrides));
+      const result = await recordManualPostingResult("social-post-1", { manualPostUrl: "https://blog.naver.com/x" });
+      expect(result.success).toBe(false);
+      expect(result.message).not.toMatch(/[a-z_]+_status/);
+      expect(result.message).not.toMatch(/[a-z_]+\s*(===|!==|=)\s*['"a-z_]+/i);
+      expect(result.message).toBeTruthy();
+    }
+  });
+});
+
 describe("보안 요구사항", () => {
   it("logs에 full content/API key/auth token이 저장되지 않는다", async () => {
     getSocialPostForManualPosting.mockResolvedValue(makeSocialPost());

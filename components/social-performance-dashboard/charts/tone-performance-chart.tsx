@@ -4,6 +4,7 @@
 import type { TonePerformanceChartData } from "@/lib/social/social-performance-chart-types";
 import { formatChartNumber, formatScore, normalizeChartValue } from "@/lib/social/chart-formatting";
 import { ChartEmptyState } from "./chart-empty-state";
+import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 
 export function TonePerformanceChart({ data }: { data: TonePerformanceChartData[] }) {
   if (data.length === 0) {
@@ -16,7 +17,7 @@ export function TonePerformanceChart({ data }: { data: TonePerformanceChartData[
     <div className="flex flex-col gap-2">
       {data.map((row) => (
         <div key={row.toneStyle} className="flex items-center gap-2 text-xs">
-          <span className="w-28 shrink-0 text-zinc-600">{row.toneStyle}</span>
+          <span className="w-28 shrink-0 text-zinc-600">{TONE_STYLE_CONFIGS[row.toneStyle].label}</span>
           <div className="h-4 flex-1 rounded bg-zinc-100">
             <div
               className="h-4 rounded bg-purple-500"

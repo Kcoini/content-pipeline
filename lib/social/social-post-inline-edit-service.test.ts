@@ -20,7 +20,9 @@ vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
 }));
 
-const { getSocialPostEditableField, saveSocialPostBodyAndProcess } = await import("./social-post-inline-edit-service");
+const { getSocialPostEditableField, saveSocialPostBodyAndProcess, saveSocialPostThreadAndProcess } = await import(
+  "./social-post-inline-edit-service"
+);
 
 function makePost(overrides: Record<string, unknown> = {}) {
   return {
@@ -159,5 +161,71 @@ describe("saveSocialPostBodyAndProcess", () => {
 
     await saveSocialPostBodyAndProcess("post-1", "새 본문", "save_review_and_approve", "tester");
     expect(callOrder).toEqual(["save", "review", "approve"]);
+  });
+});
+
+describe("saveSocialPostThreadAndProcess (Phase UX-03B2: X thread 편집)", () => {
+  it("thread를 지원하지 않는 플랫폼(naver_cafe)은 차단된다", async () => {
+    const result = await saveSocialPostThreadAndProcess("post-1", ["첫 번째", "두 번째"], "save_only", "tester");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("thread 편집을 지원하지 않습니다");
+    expect(editSocialPostContent).not.toHaveBeenCalled();
+  });
+
+  it("전체 항목이 비어 있으면 저장을 차단한다", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platform: "x" }));
+    const result = await saveSocialPostThreadAndProcess("post-1", ["   ", ""], "save_only", "tester");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("비어 있어");
+    expect(editSocialPostContent).not.toHaveBeenCalled();
+  });
+
+  it("빈 항목은 제거하고 남은 항목만 순서대로 다시 번호를 매겨 저장한다", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platform: "x" }));
+    await saveSocialPostThreadAndProcess("post-1", ["첫 번째", "  ", "세 번째"], "save_only", "tester");
+    expect(editSocialPostContent).toHaveBeenCalledWith("post-1", {
+      threadItems: [
+        { order: 1, text: "첫 번째" },
+        { order: 2, text: "세 번째" },
+      ],
+      editedBy: "tester",
+    });
+  });
+
+  it("save_only는 저장만 하고 자동 검토를 실행하지 않는다(단일 필드 저장과 동일한 정책)", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platform: "x" }));
+    const result = await saveSocialPostThreadAndProcess("post-1", ["첫 번째"], "save_only", "tester");
+    expect(result.success).toBe(true);
+    expect(result.stage).toBe("saved");
+    expect(runSocialPostQualityGateAndSave).not.toHaveBeenCalled();
+    expect(approveSocialPost).not.toHaveBeenCalled();
+  });
+
+  it("save_review_and_approve는 저장 → 검토 → 승인 순서로 처리한다(단일 필드 저장과 동일한 continueAfterSave 공유)", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platform: "x" }));
+    const result = await saveSocialPostThreadAndProcess("post-1", ["첫 번째", "두 번째"], "save_review_and_approve", "tester");
+    expect(runSocialPostQualityGateAndSave).toHaveBeenCalledWith("post-1");
+    expect(approveSocialPost).toHaveBeenCalledWith("post-1", "tester");
+    expect(result.success).toBe(true);
+    expect(result.stage).toBe("approved");
+  });
+
+  it("자동 검토가 실패하면 승인을 호출하지 않는다(단일 필드 저장과 동일한 정책)", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platform: "x" }));
+    runSocialPostQualityGateAndSave.mockResolvedValue({
+      success: true,
+      message: "검토 완료",
+      socialPost: makePost({ platform: "x", qualityStatus: "needs_revision", qualitySummary: { checklist: [{ key: "x", status: "fail", message: "문제 발생", axisLabel: "구조" }] } }),
+    });
+    const result = await saveSocialPostThreadAndProcess("post-1", ["첫 번째"], "save_and_review", "tester");
+    expect(result.success).toBe(false);
+    expect(approveSocialPost).not.toHaveBeenCalled();
+  });
+
+  it("본문(threadItemCount)만 로그에 남기고 원문 텍스트는 남기지 않는다", async () => {
+    getSocialPostById.mockResolvedValue(makePost({ platform: "x" }));
+    await saveSocialPostThreadAndProcess("post-1", ["민감한 내용입니다"], "save_only", "tester");
+    const loggedDetails = logEvent.mock.calls.map((call) => JSON.stringify(call[0]));
+    expect(loggedDetails.some((s) => s.includes("민감한 내용입니다"))).toBe(false);
   });
 });

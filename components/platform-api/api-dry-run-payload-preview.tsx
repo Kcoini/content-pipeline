@@ -9,34 +9,34 @@ export function ApiDryRunPayloadPreview({ payload }: { payload: PlatformApiPubli
   return (
     <div className="rounded border border-indigo-200 bg-indigo-50 p-3 text-xs">
       <p className="font-medium text-indigo-800">
-        API Dry-run Payload ({payload.platform}) — {payload.validation.valid ? "유효함" : "유효하지 않음"}
+        API 게시 전 미리보기 ({payload.platform}) — {payload.validation.valid ? "유효함" : "유효하지 않음"}
       </p>
       <dl className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
         <div>
-          <dt className="font-medium text-zinc-600">title</dt>
+          <dt className="font-medium text-zinc-600">제목</dt>
           <dd className="text-zinc-600">{payload.title || "-"}</dd>
         </div>
         <div>
-          <dt className="font-medium text-zinc-600">hashtags</dt>
+          <dt className="font-medium text-zinc-600">해시태그</dt>
           <dd className="text-zinc-600">{payload.hashtags.length > 0 ? payload.hashtags.map((h) => `#${h}`).join(" ") : "-"}</dd>
         </div>
       </dl>
       {payload.textPreview && (
         <div className="mt-2">
-          <p className="font-medium text-zinc-600">text preview</p>
+          <p className="font-medium text-zinc-600">본문 미리보기</p>
           <p className="mt-1 whitespace-pre-wrap text-zinc-600">{payload.textPreview}</p>
         </div>
       )}
       {payload.captionPreview && (
         <div className="mt-2">
-          <p className="font-medium text-zinc-600">caption preview</p>
+          <p className="font-medium text-zinc-600">캡션 미리보기</p>
           <p className="mt-1 whitespace-pre-wrap text-zinc-600">{payload.captionPreview}</p>
         </div>
       )}
 
       {payload.validation.errors.length > 0 && (
         <div className="mt-2">
-          <p className="font-medium text-red-700">validation errors</p>
+          <p className="font-medium text-red-700">확인 필요 사항</p>
           <ul className="mt-1 list-inside list-disc text-red-600">
             {payload.validation.errors.map((e, i) => (
               <li key={i}>{e}</li>

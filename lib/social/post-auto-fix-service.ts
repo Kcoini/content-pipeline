@@ -16,8 +16,10 @@
 
 import { getSocialPostById } from "@/lib/repositories/social-posts-repository";
 import { editSocialPostContent, runSocialPostQualityGateAndSave } from "./social-post-service";
+import type { EditSocialPostInput } from "./social-post-service";
 import { sanitizeInternalSectionHeadings } from "./internal-section-heading-sanitizer";
 import { sanitizeNaverCafePlainText } from "./naver-cafe-plain-text-sanitizer";
+import { sanitizePlainTextMarkupResidue } from "./plain-text-markup-residue-sanitizer";
 import { classifyReviewIssues, summarizeReviewIssues, type ClassifiedReviewIssue } from "./review-issue-fixability";
 import { logEvent } from "@/lib/harness/logger";
 import type { SocialPost, SocialPostQualityChecklistItem } from "./social-platform-types";
@@ -86,9 +88,17 @@ function computeFinalState(classified: ClassifiedReviewIssue[]): PostAutoFixFina
  * sanitizer가 실제로 뭔가 바꿨을 때만 changesApplied에 사용자 친화적
  * 문장을 추가한다. 사실/수치/기관명/날짜는 전혀 건드리지 않는다 —
  * 소제목/형식만 정리한다.
+ *
+ * Phase UX-05A: x(threadItems)/threads(postBody)/instagram(caption+
+ * cardItems)의 markdown/HTML 잔여물도 여기서 함께 정리한다
+ * (plain-text-markup-residue-sanitizer.ts) — naver_cafe와 같은 원칙
+ * (결정론적 변환, 새 AI 호출 없음)이며, 바뀐 필드만 반환 객체에
+ * 담는다(바뀌지 않은 필드는 아예 넣지 않아 editSocialPostContent가
+ * 불필요하게 덮어쓰지 않게 한다).
  */
-function applyImplementedAutoFixers(post: SocialPost): { body: string | null; changesApplied: string[] } {
+function applyImplementedAutoFixers(post: SocialPost): { edits: Partial<EditSocialPostInput>; changesApplied: string[] } {
   const changesApplied: string[] = [];
+  const edits: Partial<EditSocialPostInput> = {};
   let body = post.postBody;
 
   const headingResult = sanitizeInternalSectionHeadings(body);
@@ -105,7 +115,52 @@ function applyImplementedAutoFixers(post: SocialPost): { body: string | null; ch
     }
   }
 
-  return { body, changesApplied };
+  if (post.platform === "threads") {
+    const sanitizedBody = sanitizePlainTextMarkupResidue(body);
+    if (sanitizedBody !== (body ?? "")) {
+      body = sanitizedBody || null;
+      changesApplied.push("남아 있던 markdown/HTML 잔여물을 정리했습니다.");
+    }
+  }
+
+  if (body !== post.postBody) {
+    edits.postBody = body;
+  }
+
+  if (post.platform === "x" && post.threadItems.length > 0) {
+    const sanitizedItems = post.threadItems.map((item) => ({ ...item, text: sanitizePlainTextMarkupResidue(item.text) }));
+    const threadChanged = sanitizedItems.some((item, i) => item.text !== post.threadItems[i].text);
+    if (threadChanged) {
+      edits.threadItems = sanitizedItems;
+      changesApplied.push("thread item에 남아 있던 markdown/HTML 잔여물을 정리했습니다.");
+    }
+  }
+
+  if (post.platform === "instagram") {
+    if (post.caption) {
+      const sanitizedCaption = sanitizePlainTextMarkupResidue(post.caption);
+      if (sanitizedCaption !== post.caption) {
+        edits.caption = sanitizedCaption || null;
+        changesApplied.push("caption에 남아 있던 markdown/HTML 잔여물을 정리했습니다.");
+      }
+    }
+    if (post.cardItems.length > 0) {
+      const sanitizedCards = post.cardItems.map((item) => ({
+        ...item,
+        heading: sanitizePlainTextMarkupResidue(item.heading),
+        body: sanitizePlainTextMarkupResidue(item.body),
+      }));
+      const cardsChanged = sanitizedCards.some(
+        (item, i) => item.heading !== post.cardItems[i].heading || item.body !== post.cardItems[i].body
+      );
+      if (cardsChanged) {
+        edits.cardItems = sanitizedCards;
+        changesApplied.push("card item에 남아 있던 markdown/HTML 잔여물을 정리했습니다.");
+      }
+    }
+  }
+
+  return { edits, changesApplied };
 }
 
 /**
@@ -174,9 +229,9 @@ export async function runAutoFixAndRecheck(socialPostId: string): Promise<AutoFi
   let latestPost = post;
 
   if (implementedAutoFixIssues.length > 0) {
-    const { body, changesApplied: applied } = applyImplementedAutoFixers(post);
+    const { edits, changesApplied: applied } = applyImplementedAutoFixers(post);
     if (applied.length > 0) {
-      const editResult = await editSocialPostContent(socialPostId, { postBody: body, editedBy: "system:auto_fix" });
+      const editResult = await editSocialPostContent(socialPostId, { ...edits, editedBy: "system:auto_fix" });
       if (!editResult.success || !editResult.socialPost) {
         await logAutoFixEvent("post_auto_fix_failed", "failed", editResult.message, post.articleId, { socialPostId });
         return {

@@ -52,3 +52,24 @@ describe("CopyPostBodyButton 정적 소스 검사", () => {
     expect(componentSource).toContain("copyWithFallback(text)");
   });
 });
+
+describe("CopyPostBodyButton — 복사와 게시 완료 분리 (Phase UX-05B)", () => {
+  it("manualResultAnchorId가 없으면(기존 호출부) 안내 링크를 만들지 않는다 — DB에 아무것도 쓰지 않는다", () => {
+    expect(componentSource).not.toMatch(/manual_post_status|publishStatus\s*=/);
+    expect(componentSource).toContain("manualResultAnchorId?: string");
+  });
+
+  it("복사 성공 + manualResultAnchorId가 있을 때만 '게시 완료로 표시' 안내 링크를 보여준다(서버 상태를 바꾸지 않는 순수 client state)", () => {
+    expect(componentSource).toContain("setShowManualResultHint(succeeded && Boolean(manualResultAnchorId))");
+    expect(componentSource).toContain("게시 완료로 표시");
+    expect(componentSource).toContain(`href={`);
+    expect(componentSource).toContain("manualResultAnchorId}");
+  });
+
+  it("복사 성공만으로 서버 action을 호출해 posted/published를 바꾸지 않는다(로그 action만 호출)", () => {
+    // 이 컴포넌트가 호출하는 서버 action은 로그 기록용 하나뿐이다.
+    const actionCalls = componentSource.match(/Action\(/g) ?? [];
+    expect(actionCalls.length).toBeGreaterThan(0);
+    expect(actionCalls.every(() => componentSource.includes("logSocialPostInlineEditClientEventAction"))).toBe(true);
+  });
+});

@@ -10,6 +10,7 @@ import {
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
 import type { SocialPostRewriteSuggestion } from "./social-rewrite-types";
+import { describeRewriteSuggestionStatus } from "./rewrite-version-user-facing-status";
 
 export interface RewriteSuggestionReviewResult {
   success: boolean;
@@ -42,10 +43,13 @@ export async function approveRewriteSuggestion(suggestionId: string, reviewedBy?
     return { success: false, message: `rewrite suggestion을 찾을 수 없습니다: ${suggestionId}` };
   }
   if (existing.suggestionStatus === "blocked") {
-    return { success: false, message: "blocked 상태의 제안은 승인할 수 없습니다." };
+    return { success: false, message: "진행 불가 상태의 제안은 선택할 수 없습니다." };
   }
   if (existing.suggestionStatus !== "ready" && existing.suggestionStatus !== "needs_review") {
-    return { success: false, message: `suggestion_status가 'ready'/'needs_review'가 아니어서(${existing.suggestionStatus}) 승인할 수 없습니다.` };
+    return {
+      success: false,
+      message: `지금 상태(${describeRewriteSuggestionStatus(existing.suggestionStatus)})에서는 개선안을 선택할 수 없습니다.`,
+    };
   }
 
   try {
@@ -57,7 +61,7 @@ export async function approveRewriteSuggestion(suggestionId: string, reviewedBy?
       existing.articleId,
       { socialPostId: existing.socialPostId, platform: existing.platform, suggestionStatus: "approved" }
     );
-    return { success: true, message: "개선 제안이 승인되었습니다.", suggestion: updated };
+    return { success: true, message: "개선안을 선택했습니다.", suggestion: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     return { success: false, message };

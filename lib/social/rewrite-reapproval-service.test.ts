@@ -186,21 +186,23 @@ describe("requestRewriteReapproval", () => {
     expect(updateRewriteReapprovalStatus).not.toHaveBeenCalled();
   });
 
-  it("quality_status가 ready가 아니면 warning을 반환하되 요청은 허용한다", async () => {
+  it("quality_status가 ready가 아니면 warning을 반환하되 요청은 허용한다(Phase UX-03C: warning 문구는 raw 필드명 대신 한국어 설명을 쓴다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ qualityStatus: "needs_revision" }));
 
     const result = await requestRewriteReapproval("social-post-2");
 
     expect(result.success).toBe(true);
-    expect(result.warnings?.some((w) => w.includes("quality_status"))).toBe(true);
+    expect(result.warnings?.some((w) => w.includes("품질검사"))).toBe(true);
+    expect(result.warnings?.some((w) => w.includes("quality_status"))).toBe(false);
   });
 
-  it("recommended_for_repost=false이면 warning을 반환한다", async () => {
+  it("recommended_for_repost=false이면 warning을 반환한다(Phase UX-03C: warning 문구는 raw 필드명 대신 한국어 설명을 쓴다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ recommendedForRepost: false, versionComparisonStatus: "similar" }));
 
     const result = await requestRewriteReapproval("social-post-2");
 
-    expect(result.warnings?.some((w) => w.includes("recommended_for_repost"))).toBe(true);
+    expect(result.warnings?.some((w) => w.includes("재게시 추천"))).toBe(true);
+    expect(result.warnings?.some((w) => w.includes("recommended_for_repost"))).toBe(false);
   });
 });
 
@@ -217,20 +219,23 @@ describe("approveRewriteReapproval", () => {
     );
   });
 
-  it("pending_review가 아니면 승인할 수 없다", async () => {
+  it("pending_review가 아니면 승인할 수 없다(Phase UX-03C: 실패 메시지에 raw 필드명이 섞이지 않는다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ rewriteReapprovalStatus: "not_requested" }));
 
     const result = await approveRewriteReapproval("social-post-2");
 
     expect(result.success).toBe(false);
+    expect(result.message).not.toContain("rewrite_reapproval_status");
+    expect(result.message).toContain("재검토 요청");
   });
 
-  it("quality_status가 ready가 아니면 승인할 수 없다", async () => {
+  it("quality_status가 ready가 아니면 승인할 수 없다(Phase UX-03C: 실패 메시지에 raw 필드명이 섞이지 않는다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ rewriteReapprovalStatus: "pending_review", qualityStatus: "needs_revision" }));
 
     const result = await approveRewriteReapproval("social-post-2");
 
     expect(result.success).toBe(false);
+    expect(result.message).not.toContain("quality_status");
   });
 
   it("금지 표현이 있으면 승인할 수 없다", async () => {
@@ -259,13 +264,14 @@ describe("rejectRewriteReapproval / revokeRewriteReapproval", () => {
     );
   });
 
-  it("approved 상태만 승인을 취소할 수 있다", async () => {
+  it("approved 상태만 승인을 취소할 수 있다(Phase UX-03C: 실패 메시지에 raw 필드명이 섞이지 않는다)", async () => {
     getRewriteVersionForReapproval.mockResolvedValue(makeSocialPost({ rewriteReapprovalStatus: "pending_review" }));
 
     const result = await revokeRewriteReapproval("social-post-2", "editor", "재검토");
 
     expect(result.success).toBe(false);
     expect(updateRewriteReapprovalStatus).not.toHaveBeenCalled();
+    expect(result.message).not.toContain("rewrite_reapproval_status");
   });
 
   it("approved 상태에서 취소하면 approval_status가 revoked가 된다", async () => {

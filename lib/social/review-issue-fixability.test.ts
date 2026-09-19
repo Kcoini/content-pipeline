@@ -27,6 +27,13 @@ describe("classifyReviewIssue", () => {
     expect(result.canAutoFix).toBe(true);
   });
 
+  it("Phase UX-05A: x/threads/instagram markdown/HTML 잔여물(platform_markup_residue) 문제는 auto_fixable이고 canAutoFix=true다(구현된 sanitizer가 있다)", () => {
+    const result = classifyReviewIssue(item({ key: "platform_markup_residue", status: "fail" }));
+    expect(result.fixability).toBe("auto_fixable");
+    expect(result.canAutoFix).toBe(true);
+    expect(result.blocksApproval).toBe(false);
+  });
+
   it("출처 부족 문제는 user_confirmation_required로 분류된다", () => {
     const result = classifyReviewIssue(
       item({ key: "wordpress_blog_single_source_verification_needed_section", status: "fail" })

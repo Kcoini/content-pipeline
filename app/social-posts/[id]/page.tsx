@@ -25,12 +25,15 @@ import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
 import {
   summarizeAutoReview,
-  describeAutoReviewRiskLevel,
-  describeApprovalReadiness,
+  summarizeUserFacingReview,
   describeAutoReviewNotRunYet,
   getApprovalGateStatus,
   getSocialPostWorkspacePrimaryAction,
 } from "@/lib/social/social-post-auto-review";
+import { AutoReviewSummaryCard } from "@/components/review/auto-review-summary-card";
+import { HumanReviewPanel, type HumanReviewItem } from "@/components/review/human-review-panel";
+import { NextActionPanel } from "@/components/workflow/next-action-panel";
+import { fromPostApprovalNextActions, type NextActionViewModelAction } from "@/lib/ui/next-action-view-model";
 import type { SocialPostQualityChecklistItem } from "@/lib/social/social-platform-types";
 import { getSocialPostDisplayBody } from "@/lib/social/social-post-display";
 import {
@@ -138,7 +141,24 @@ export default async function SocialPostDetailPage({
   // 재검토]를 기본(primary) 버튼으로 보여준다 — 목록 카드(blog/social
   // page.tsx)와 같은 기준을 이 상세 페이지에도 그대로 적용한다.
   const autoFixIsPrimary = p.qualityStatus === "needs_revision" && hasOnlyImplementedAutoFixableIssues(checklist ?? []);
-  const implementedAutoFixableCount = summarizeReviewIssues(checklist ?? []).autoFixable.filter((i) => i.canAutoFix).length;
+  const issueFixabilitySummary = summarizeReviewIssues(checklist ?? []);
+  const implementedAutoFixableCount = issueFixabilitySummary.autoFixable.filter((i) => i.canAutoFix).length;
+  // Phase UX-04A: "AI가 처리할 수 있는 문제 vs 사람이 판단해야 하는
+  // 문제"를 하나의 계산으로 통일한다 — summarizeUserFacingReview가
+  // review-issue-fixability.ts의 classifyReviewIssues를 이미 내부에서
+  // 호출해 auto_fixable 항목을 걸러낸 visibleIssues/state를 계산해
+  // 준다. 이 값을 AutoReviewSummaryCard의 기본 화면 단순화(userFacingSummary
+  // prop)와 HumanReviewPanel(사람이 확인할 항목)에 함께 쓴다 — 두
+  // 곳이 서로 다른 기준으로 "사람이 볼 문제"를 각자 다시 계산하지
+  // 않는다.
+  const userFacingReview = summarizeUserFacingReview(p.qualityStatus, review, checklist ?? []);
+  const humanReviewItems: HumanReviewItem[] = userFacingReview.visibleIssues.map((issue) => ({
+    id: issue.key,
+    label: `[${issue.axisLabel}] ${issue.message}`,
+    severity: issue.severity === "blocked" ? "blocking" : "warning",
+    actionLabel: "글 정보 편집",
+    actionHref: `${buildTabHref(p.id, "edit", returnTo)}#edit-panel`,
+  }));
   const gate = getApprovalGateStatus({
     qualityStatus: p.qualityStatus,
     approvalStatus: p.approvalStatus,
@@ -252,8 +272,14 @@ export default async function SocialPostDetailPage({
         </header>
 
         {/* Phase 3-26: 상단 요약 카드 — 플랫폼/문체/제목/상태/자동 검토
-            요약/다음 작업을 한 눈에 보여주고, 지금 눌러야 할 주요 버튼
-            "하나만" 강조한다(여러 primary action이 경쟁하지 않게 한다). */}
+            요약/다음 작업을 한 눈에 보여준다. Phase UX-03B2: 여기 버튼은
+            페이지 아래 실제 workflow(AutoReviewSummaryCard/NextActionPanel)로
+            이동하는 "빠른 이동" 용도다 — 그 자체가 별도 primary action
+            판단을 새로 만드는 게 아니라, getSocialPostWorkspacePrimaryAction이
+            "지금 어디로 가면 되는지"만 요약해서 알려준다. 페이지의 진짜
+            primary action(강조 버튼)은 항상 아래쪽 AutoReviewSummaryCard
+            footer/NextActionPanel 하나이므로, 이 버튼은 일부러 secondary
+            스타일로 낮춰 두 개의 primary action처럼 보이지 않게 한다. */}
         <section className="rounded-lg border border-zinc-300 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-700">지금 상태 요약</h2>
           <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
@@ -271,18 +297,25 @@ export default async function SocialPostDetailPage({
             </div>
             <div className="sm:col-span-2">
               <dt className="font-medium text-zinc-600">자동 검토 결과</dt>
+              {/* Phase UX-04A: raw 통과/확인 필요/수정 필요/차단 개수
+                  4줄 대신, 사람이 실제로 봐야 하는 것만 한 문장으로
+                  요약한다(auto_fixable은 제외됨) — 상세 개수는 아래
+                  자동 검토 결과 섹션의 "자동 검토 상세" 접힘에서 볼 수
+                  있다. */}
               <dd className="text-zinc-600">
-                {hasRunReview
-                  ? `${review.overallLabel} (통과 ${review.counts.passed} · 확인 필요 ${review.counts.needsCheck} · 수정 필요 ${review.counts.needsFix} · 차단 ${review.counts.blocked})`
-                  : describeAutoReviewNotRunYet(p.qualityStatus)}
+                {hasRunReview ? `${userFacingReview.stateLabel} — ${userFacingReview.stateMessage}` : describeAutoReviewNotRunYet(p.qualityStatus)}
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="font-medium text-zinc-600">다음 작업</dt>
+              <dt className="font-medium text-zinc-600">빠른 이동</dt>
               <dd className="text-zinc-600">{primaryAction.label}</dd>
             </div>
           </dl>
 
+          {/* Phase UX-03B2: 아래 버튼은 일부러 secondary 스타일(테두리만)
+              로 표시한다. 실제 primary action은 AutoReviewSummaryCard
+              footer/NextActionPanel에 있으므로, 여기서는 그 위치로
+              이동만 시켜준다 — 두 개의 primary action처럼 보이지 않게. */}
           <div className="mt-3">
             {primaryAction.kind === "run_review" ? (
               <form action={runSocialPostQualityGateAction}>
@@ -291,7 +324,7 @@ export default async function SocialPostDetailPage({
                 <input type="hidden" name="returnTo" value={selfReturnTo(tab)} />
                 <button
                   type="submit"
-                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700"
+                  className="rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                 >
                   {primaryAction.label}
                 </button>
@@ -301,14 +334,14 @@ export default async function SocialPostDetailPage({
                 href={`${buildTabHref(p.id, primaryAction.kind === "edit" ? "edit" : "preview", returnTo)}#${
                   primaryAction.kind === "edit" ? "edit-panel" : "preview-panel"
                 }`}
-                className="inline-block rounded bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700"
+                className="inline-block rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
               >
                 {primaryAction.label}
               </Link>
             ) : (
               <a
                 href={`${buildTabHref(p.id, tab, returnTo)}#final-approval-panel`}
-                className="inline-block rounded bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700"
+                className="inline-block rounded border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
               >
                 {primaryAction.label}
               </a>
@@ -365,7 +398,7 @@ export default async function SocialPostDetailPage({
           {(
             [
               ["preview", "게시용 미리보기"],
-              ["edit", "수정하기"],
+              ["edit", "글 정보 편집"],
               ["raw", "내부 원문 보기"],
             ] as [WorkspaceTab, string][]
           ).map(([value, label]) => (
@@ -404,7 +437,7 @@ export default async function SocialPostDetailPage({
                       href={`${buildTabHref(p.id, "edit", returnTo)}#edit-panel`}
                       className="rounded border border-amber-400 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
                     >
-                      본문 수정하기
+                      글 정보 편집
                     </Link>
                     {contentTypeMismatch.suggestedPlatform && (
                       <span className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-700">
@@ -431,111 +464,87 @@ export default async function SocialPostDetailPage({
                   </form>
                 </div>
               ) : (
-                (() => {
-                  const toneClass =
-                    review.overallStatus === "blocked"
-                      ? "border-red-200 bg-red-50 text-red-800"
-                      : review.overallStatus === "needs_fix"
-                        ? "border-orange-200 bg-orange-50 text-orange-800"
-                        : review.overallStatus === "needs_check"
-                          ? "border-amber-200 bg-amber-50 text-amber-800"
-                          : "border-green-200 bg-green-50 text-green-800";
-
-                  return (
-                    <div className={`mt-2 rounded border p-3 text-xs ${toneClass}`}>
-                      {/* Phase 4-5: 글 유형/적용 기준을 항상 먼저 보여준다 —
-                          기사 본문에 블로그 기준(FAQ/체크리스트 등)이
-                          잘못 적용되지 않았음을 사용자가 확인할 수 있게 한다. */}
+                <AutoReviewSummaryCard
+                  review={review}
+                  userFacingSummary={userFacingReview}
+                  renderIssueActions={() => (
+                    <>
+                      <Link
+                        href={`${buildTabHref(p.id, "edit", returnTo)}#edit-panel`}
+                        className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                      >
+                        글 정보 편집
+                      </Link>
+                      <Link
+                        href={`${buildTabHref(p.id, "preview", returnTo)}#publish-preview`}
+                        className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                      >
+                        본문 위치 보기
+                      </Link>
+                    </>
+                  )}
+                  contextNote={
+                    // Phase 4-5: 글 유형/적용 기준을 항상 먼저 보여준다 —
+                    // 기사 본문에 블로그 기준(FAQ/체크리스트 등)이 잘못
+                    // 적용되지 않았음을 사용자가 확인할 수 있게 한다.
+                    <>
                       <p className="font-medium">글 유형: {PLATFORM_LABELS[p.platform]}</p>
-                      <p className="mt-0.5">
-                        검토 기준: {reviewCriteria.criteriaSummary}을(를) 중심으로 검토했습니다.
-                      </p>
+                      <p className="mt-0.5">검토 기준: {reviewCriteria.criteriaSummary}을(를) 중심으로 검토했습니다.</p>
                       {reviewCriteria.notEnforced && <p className="mt-0.5">주의: {reviewCriteria.notEnforced}</p>}
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-1">
-                        <p className="font-semibold">{review.overallLabel}</p>
-                        <span className="rounded-full bg-white/60 px-1.5 py-0.5 text-[11px] font-medium">
-                          위험도 {describeAutoReviewRiskLevel(review.riskLevel)}
-                        </span>
-                      </div>
-                      <p className="mt-1">
-                        통과 {review.counts.passed}개 · 확인 필요 {review.counts.needsCheck}개 · 수정 필요{" "}
-                        {review.counts.needsFix}개 · 차단 {review.counts.blocked}개
+                    </>
+                  }
+                  extraBanner={
+                    // Phase 4-28: 남은 문제가 전부 자동 수정 가능하면, 문제
+                    // 목록을 보여주기 전에 "자동으로 정리할 수 있다"는 것부터
+                    // 먼저 알린다 — 새 사실/수치를 추가하지 않는다는 점도
+                    // 항상 함께 안내한다.
+                    autoFixIsPrimary ? (
+                      <p className="mt-1.5 rounded border border-indigo-200 bg-indigo-50 p-2 text-indigo-800">
+                        자동으로 정리할 수 있는 항목 {implementedAutoFixableCount}개를 발견했습니다. AI가 게시용 본문을
+                        자동으로 정리한 뒤 다시 검토할 수 있습니다. 새로운 사실이나 수치는 추가하지 않습니다.
                       </p>
-                      <p className="mt-1">{describeApprovalReadiness(review)}</p>
-                      {/* Phase 4-28: 남은 문제가 전부 자동 수정 가능하면, 문제
-                          목록을 보여주기 전에 "자동으로 정리할 수 있다"는 것부터
-                          먼저 알린다 — 새 사실/수치를 추가하지 않는다는 점도
-                          항상 함께 안내한다. */}
-                      {autoFixIsPrimary && (
-                        <p className="mt-1.5 rounded border border-indigo-200 bg-indigo-50 p-2 text-indigo-800">
-                          자동으로 정리할 수 있는 항목 {implementedAutoFixableCount}개를 발견했습니다. AI가 게시용
-                          본문을 자동으로 정리한 뒤 다시 검토할 수 있습니다.{" "}
-                          새로운 사실이나 수치는 추가하지 않습니다.
-                        </p>
-                      )}
-                      {review.issues.length > 0 && (
-                        <ul className="mt-1.5 flex flex-col gap-1">
-                          {review.issues.map((issue) => (
-                            <li key={issue.key} className="flex flex-wrap items-center gap-2">
-                              <span>
-                                · [{issue.axisLabel}] {issue.message}
-                              </span>
-                              <Link
-                                href={`${buildTabHref(p.id, "edit", returnTo)}#edit-panel`}
-                                className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
-                              >
-                                수정하기
-                              </Link>
-                              <Link
-                                href={`${buildTabHref(p.id, "preview", returnTo)}#publish-preview`}
-                                className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
-                              >
-                                본문 위치 보기
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {/* Phase 4-22/4-28: 자동 검토가 "수정 필요"를 판단했을
-                            때, AI가 사용자 확인 없이 안전하게 고칠 수 있는
-                            문제(내부 소제목 등)는 먼저 자동으로 정리하고
-                            재검토까지 실행한다 — 사실/출처/수치 확인이
-                            필요한 문제는 이 action이 건드리지 않고 그대로
-                            남긴다. 남은 문제가 전부 자동 수정 가능하면 이
-                            버튼이 primary다(목록 카드와 동일 기준). */}
-                        {p.qualityStatus === "needs_revision" && (
-                          <form action={runPostAutoFixAndRecheckAction}>
-                            <input type="hidden" name="articleId" value={p.articleId} />
-                            <input type="hidden" name="socialPostId" value={p.id} />
-                            <input type="hidden" name="returnTo" value={selfReturnTo("preview")} />
-                            <button
-                              type="submit"
-                              className={
-                                autoFixIsPrimary
-                                  ? "rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
-                                  : "rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
-                              }
-                            >
-                              자동 수정 후 재검토
-                            </button>
-                          </form>
-                        )}
-                        <form action={runSocialPostQualityGateAction}>
+                    ) : null
+                  }
+                  footer={
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {/* Phase 4-22/4-28: 자동 검토가 "수정 필요"를 판단했을
+                          때, AI가 사용자 확인 없이 안전하게 고칠 수 있는
+                          문제(내부 소제목 등)는 먼저 자동으로 정리하고
+                          재검토까지 실행한다 — 사실/출처/수치 확인이
+                          필요한 문제는 이 action이 건드리지 않고 그대로
+                          남긴다. 남은 문제가 전부 자동 수정 가능하면 이
+                          버튼이 primary다(목록 카드와 동일 기준). */}
+                      {p.qualityStatus === "needs_revision" && (
+                        <form action={runPostAutoFixAndRecheckAction}>
                           <input type="hidden" name="articleId" value={p.articleId} />
                           <input type="hidden" name="socialPostId" value={p.id} />
                           <input type="hidden" name="returnTo" value={selfReturnTo("preview")} />
                           <button
                             type="submit"
-                            className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                            className={
+                              autoFixIsPrimary
+                                ? "rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
+                                : "rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                            }
                           >
-                            자동 재검토 실행
+                            자동 수정 후 재검토
                           </button>
                         </form>
-                      </div>
+                      )}
+                      <form action={runSocialPostQualityGateAction}>
+                        <input type="hidden" name="articleId" value={p.articleId} />
+                        <input type="hidden" name="socialPostId" value={p.id} />
+                        <input type="hidden" name="returnTo" value={selfReturnTo("preview")} />
+                        <button
+                          type="submit"
+                          className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          자동 재검토 실행
+                        </button>
+                      </form>
                     </div>
-                  );
-                })()
+                  }
+                />
               )}
             </section>
 
@@ -633,8 +642,9 @@ export default async function SocialPostDetailPage({
                 저장하면 quality_status가 자동으로 초기화되므로(서비스에서
                 처리) 저장 직후 "자동 재검토가 필요합니다" 상태가 된다. */}
             <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-zinc-700">수정하기</h2>
+              <h2 className="text-sm font-semibold text-zinc-700">글 정보 편집</h2>
               <p className="mt-1 text-xs text-zinc-500">
+                제목/본문/캡션/해시태그 등 이 글의 정보를 한 번에 편집합니다(카드의 [본문 수정]은 본문만 빠르게 고칠 때 씁니다).
                 저장하면 자동 검토가 초기화됩니다. 저장 후 아래 &ldquo;자동 재검토 실행&rdquo;을 눌러 다시 확인하세요.
               </p>
 
@@ -839,7 +849,7 @@ export default async function SocialPostDetailPage({
                 관리 정보 보기 (관리자용 — 상태/성과/Rewrite/A-B Test/API/메타데이터)
               </summary>
               <p className="mt-2 text-[11px] text-zinc-400">
-                아래 정보는 내부 운영/디버깅용이며 게시용 본문이 아닙니다. 복사/export/handoff에는 포함되지 않습니다.
+                아래 정보는 내부 운영/디버깅용이며 게시용 본문이 아닙니다. 복사/내보내기/수동 게시 준비 자료에는 포함되지 않습니다.
               </p>
 
               <div className="mt-3 text-xs">
@@ -1153,18 +1163,32 @@ export default async function SocialPostDetailPage({
           <p className="mt-1 text-xs text-zinc-500">
             이 승인은 게시 준비를 허용하는 단계입니다. 자동 공개 게시는 실행하지 않습니다.
           </p>
+          {/* Phase UX-04A: "확인 필요/수정 필요/차단" raw 개수 3줄 대신
+              사람이 확인해야 하는 개수 하나로 단순화한다(auto_fixable
+              제외) — 세부 개수는 위 "자동 검토 결과" 섹션의 "자동 검토
+              상세" 접힘에서 확인할 수 있다. */}
           <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
             <div>
               <dt className="font-medium text-zinc-600">자동 검토 결과</dt>
-              <dd className="text-zinc-600">{hasRunReview ? review.overallLabel : describeAutoReviewNotRunYet(p.qualityStatus)}</dd>
+              <dd className="text-zinc-600">{hasRunReview ? userFacingReview.stateLabel : describeAutoReviewNotRunYet(p.qualityStatus)}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-600">확인 필요 / 수정 필요 / 차단</dt>
+              <dt className="font-medium text-zinc-600">확인할 사항</dt>
               <dd className="text-zinc-600">
-                {review.counts.needsCheck}개 / {review.counts.needsFix}개 / {review.counts.blocked}개
+                {hasRunReview
+                  ? userFacingReview.confirmationCount > 0
+                    ? `${userFacingReview.confirmationCount}건`
+                    : "없음"
+                  : "-"}
               </dd>
             </div>
           </dl>
+
+          {/* Phase UX-03A: 최종 승인 직전, AI가 자동으로 처리할 수 없는
+              (사람이 실제로 판단해야 하는) 항목만 한 번 더 모아 보여준다
+              — auto_fixable 항목은 위 "자동으로 정리할 수 있는 항목"
+              안내에서 이미 다뤘으므로 여기 목록에는 넣지 않는다. */}
+          {p.approvalStatus !== "approved" && <HumanReviewPanel items={humanReviewItems} title={<p className="text-xs font-medium text-zinc-700">확인이 필요한 사항</p>} />}
 
           {p.approvalStatus === "approved" && approvalNextActions ? (
             (() => {
@@ -1175,7 +1199,7 @@ export default async function SocialPostDetailPage({
               // 이 카드 자체가 "상세 화면"이므로 view_detail은 다른 페이지로
               // 보내지 않고 같은 페이지 안의 "게시용 미리보기" 탭으로
               // 이동시킨다(섹션 6: "본문 영역으로 이동" 앵커).
-              const renderNextAction = (action: PostApprovalNextAction, className: string) => {
+              const renderNextAction = (action: PostApprovalNextAction | NextActionViewModelAction, className: string) => {
                 switch (action.actionType) {
                   case "copy_body":
                     return <CopyPostBodyButton articleId={p.articleId} socialPostId={p.id} text={displayBody} className={className} />;
@@ -1227,15 +1251,11 @@ export default async function SocialPostDetailPage({
               };
 
               return (
-                <div className="mt-3 flex flex-col gap-2 text-xs">
-                  <p className="text-zinc-600">{approvalNextActions.message}</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {renderNextAction(approvalNextActions.primaryAction, primaryClass)}
-                    {approvalNextActions.secondaryActions.map((action, i) => (
-                      <span key={`${action.actionType}-${i}`}>{renderNextAction(action, secondaryClass)}</span>
-                    ))}
-                  </div>
-                </div>
+                <NextActionPanel
+                  viewModel={fromPostApprovalNextActions(approvalNextActions)}
+                  renderAction={(action, kind) => renderNextAction(action, kind === "primary" ? primaryClass : secondaryClass)}
+                  title="다음 작업"
+                />
               );
             })()
           ) : (

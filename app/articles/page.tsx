@@ -9,10 +9,11 @@ import { archiveArticleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+// Phase UX-07 (Medium): raw enum을 괄호로 병기하지 않는다 — 한국어 라벨만 노출한다.
 const STATUS_LABEL: Record<ArticleStatus, string> = {
-  draft: "초안 (draft)",
-  reviewed: "승인됨 (reviewed)",
-  published: "게시됨 (published)",
+  draft: "초안",
+  reviewed: "승인됨",
+  published: "게시됨",
 };
 
 const STATUS_STYLE: Record<ArticleStatus, string> = {

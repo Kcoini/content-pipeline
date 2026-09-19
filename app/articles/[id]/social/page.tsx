@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { buildArticleSocialPageData } from "@/lib/social/article-social-page-service";
 import { ArticleWorkflowNavigation } from "@/components/articles/article-workflow-navigation";
+import { AdvancedDetails } from "@/components/common/advanced-details";
+import { WorkflowStatusCard } from "@/components/workflow/workflow-status-card";
+import { NextActionPanel } from "@/components/workflow/next-action-panel";
+import { fromSocialPostCardActionStateToWorkflowStatus } from "@/lib/ui/workflow-status-view-model";
+import { fromSocialPostCardActionState, type NextActionViewModel, type NextActionViewModelAction } from "@/lib/ui/next-action-view-model";
 import { ContentGroupBadge, InfoBadge } from "@/components/social/content-group-badge";
 import { DeepLinkNotice, getHighlightClassName, buildAnchorId } from "@/components/navigation/deep-link-highlight";
 import { classifyContentGroup } from "@/lib/social/content-type-classifier";
@@ -28,20 +33,37 @@ import { ContentProgressSteps } from "@/components/articles/content-progress-ste
 import { PLATFORM_LABELS } from "@/lib/social/platform-generation-recommendations";
 import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
-import {
-  summarizeAutoReview,
-  describeAutoReviewRiskLevel,
-  describeApprovalReadiness,
-  describeAutoReviewNotRunYet,
-} from "@/lib/social/social-post-auto-review";
+import { summarizeAutoReview, describeAutoReviewNotRunYet, summarizeUserFacingReview, type UserFacingReviewSummary } from "@/lib/social/social-post-auto-review";
+import { AutoReviewSummaryCard } from "@/components/review/auto-review-summary-card";
 import { getPlatformReviewCriteria } from "@/lib/social/platform-review-criteria";
 import { hasOnlyImplementedAutoFixableIssues, summarizeReviewIssues } from "@/lib/social/review-issue-fixability";
+import {
+  summarizeMultiPlatformReview,
+  getMultiPlatformReviewSortKey,
+  type MultiPlatformReviewPostInput,
+} from "@/lib/ui/multi-platform-review-summary";
+import { MultiPlatformReviewSummaryCard } from "@/components/review/multi-platform-review-summary-card";
+import {
+  fromPostApprovalNextActionsToPublishPreparation,
+  notApprovedPublishPreparation,
+  type PublishPreparationAction,
+} from "@/lib/ui/publish-preparation-view-model";
+import {
+  summarizeMultiPlatformPublishPreparation,
+  getPublishPreparationSortKey,
+  type MultiPlatformPublishPreparationPostInput,
+} from "@/lib/ui/multi-platform-publish-preparation-summary";
+import { PublishPreparationSummaryCard } from "@/components/publish/publish-preparation-summary-card";
+import { PlatformPublishPreparationCard } from "@/components/publish/platform-publish-preparation-card";
+import { getPostApprovalNextActions } from "@/lib/social/post-approval-next-actions";
+import { CopyPostBodyButton } from "@/components/social/copy-post-body-button";
 import {
   generatePlaceholderSocialPostAction,
   generateSocialDraftAction,
   runSocialPostQualityGateAction,
   requestSocialPostApprovalAction,
   approveSocialPostAction,
+  bulkApproveSocialPostsAction,
   generateManualExportAction,
   runPlatformPublishingGuardAction,
   createPlatformPublishDryRunAction,
@@ -51,8 +73,10 @@ import {
   recordSocialPostMetricsAction,
   archiveSocialPostAction,
   saveSocialPostInlineEditAction,
+  saveSocialPostThreadInlineEditAction,
   runPostAutoFixAndRecheckAction,
 } from "../actions";
+import { PLATFORM_WRITING_CONFIGS } from "@/lib/social/platform-writing-config";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
@@ -89,7 +113,7 @@ export default async function ArticleSocialPage({
   const includeRewriteVersions = includeRewriteVersionsParam === "true";
   const { page, perPage } = parsePagination({ page: pageParam, perPage: perPageParam });
 
-  const { article, posts, pagination, targetPage } = await buildArticleSocialPageData(id, {
+  const { article, posts, pagination, targetPage, allPosts } = await buildArticleSocialPageData(id, {
     includeRewriteVersions,
     page,
     perPage,
@@ -99,6 +123,75 @@ export default async function ArticleSocialPage({
   if (!article) {
     notFound();
   }
+
+  // Phase UX-04B: "플랫폼별 글 검토" 요약 카드는 현재 page로 잘려나가기
+  // 전, 필터링만 끝난 전체 목록(allPosts) 기준으로 계산한다 — 사용자가
+  // 몇 page에 있든 전체 상태를 정확히 파악할 수 있게 하기 위해서다.
+  // 카드별 자동 검토 표시는 이미 summarizeUserFacingReview를 쓰고
+  // 있으므로 그 결과를 여기서도 그대로 재사용한다(새 계산 로직을
+  // 만들지 않는다).
+  const reviewByPostId = new Map<string, UserFacingReviewSummary>(
+    allPosts.map((post) => {
+      const checklist = Array.isArray(post.qualitySummary?.checklist)
+        ? (post.qualitySummary.checklist as unknown as SocialPostQualityChecklistItem[])
+        : [];
+      const review = summarizeAutoReview(checklist);
+      return [post.id, summarizeUserFacingReview(post.qualityStatus, review, checklist)];
+    })
+  );
+  const multiPlatformInputs: MultiPlatformReviewPostInput[] = allPosts.map((post) => ({
+    id: post.id,
+    approvalStatus: post.approvalStatus,
+    review: reviewByPostId.get(post.id)!,
+  }));
+  const multiPlatformSummary = summarizeMultiPlatformReview(multiPlatformInputs);
+  // 문제(차단/확인 필요/검토 실패/검토 중)가 있는 글을 먼저, 이미
+  // 승인된 글을 가장 마지막으로 보여준다(getMultiPlatformReviewSortKey,
+  // 새 정렬 기준이 아니라 UX-04B에서 이미 계산해 둔 우선순위를 그대로
+  // 쓴다). 이 page에 보이는 posts에만 적용한다 — pagination 자체의
+  // 동작(어느 글이 몇 page에 속하는지)은 바꾸지 않는다.
+  const sortedPosts = [...posts].sort(
+    (a, b) =>
+      getMultiPlatformReviewSortKey({ id: a.id, approvalStatus: a.approvalStatus, review: reviewByPostId.get(a.id)! }) -
+      getMultiPlatformReviewSortKey({ id: b.id, approvalStatus: b.approvalStatus, review: reviewByPostId.get(b.id)! })
+  );
+
+  // Phase UX-05A: "승인 완료 이후 무엇을 해야 하는지"를 검토
+  // workspace와는 분리된 별도 요약으로 보여준다. 새 판단 로직을 만들지
+  // 않는다 — 미승인 post는 notApprovedPublishPreparation, 승인된
+  // post는 기존 getPostApprovalNextActions()(이미 wordpress_blog 외
+  // 플랫폼의 "승인 후 다음 작업"을 계산하던 함수, 여기서는 platform이
+  // 전부 naver_cafe/x/threads/instagram이라 wordpress_blog 분기는
+  // 타지 않는다)를 그대로 재사용한다.
+  const publishPreparationInputs: MultiPlatformPublishPreparationPostInput[] = allPosts.map((post) => {
+    if (post.approvalStatus !== "approved") {
+      return { id: post.id, viewModel: notApprovedPublishPreparation(post.platform) };
+    }
+    const nextActions = getPostApprovalNextActions({
+      platform: post.platform,
+      apiConfigured: checkPlatformApiReadiness(post.platform).configured,
+    });
+    const viewModel = fromPostApprovalNextActionsToPublishPreparation(post.platform, nextActions, post.publishStatus, post.manualPostStatus);
+    // Phase UX-05B: "본문 복사"는 실제 게시 완료가 아니다(governance:
+    // 복사와 완료를 절대 동일시하지 않는다) — 복사 성공만으로
+    // manual_post_status/publish_status를 자동으로 바꾸지 않고, 이미
+    // 존재하는 "게시 결과 기록"(recordManualPostingResultAction, 사용자의
+    // 명시적 URL 입력 + 클릭이 필요) 섹션으로 안내하는 보조 action만
+    // 추가한다 — 그 섹션의 guard(checkRecordable)는 전혀 바꾸지 않았다.
+    if (viewModel.state === "ready") {
+      viewModel.secondaryActions = [...(viewModel.secondaryActions ?? []), { type: "record_manual_result", label: "게시 완료로 표시" }];
+    }
+    return { id: post.id, viewModel };
+  });
+  const publishPreparationSummary = summarizeMultiPlatformPublishPreparation(publishPreparationInputs);
+  const publishPreparationByPostId = new Map(publishPreparationInputs.map((p) => [p.id, p]));
+  // 개별 카드는 이미 승인된 글만 보여준다 — 미승인 글의 "승인 필요"는
+  // 위 검토 workspace(리뷰 카드/일괄 승인)에서 이미 다루므로 여기서
+  // 다시 나열하지 않는다(같은 정보를 두 영역에서 중복 표시하지 않는다).
+  const approvedPublishPreparationPosts = allPosts
+    .filter((post) => post.approvalStatus === "approved")
+    .map((post) => ({ post, entry: publishPreparationByPostId.get(post.id)! }))
+    .sort((a, b) => getPublishPreparationSortKey(a.entry) - getPublishPreparationSortKey(b.entry));
 
   // Phase 3-17: action form이 "이 카드를 강조한 채 이 페이지로 돌아오기" 위해 사용하는 returnTo.
   const selfReturnToFor = (postId: string) => buildArticleSocialUrl(id, { socialPostId: postId, highlight: postId });
@@ -147,7 +240,127 @@ export default async function ArticleSocialPage({
         )}
 
         {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-        {publishMessage && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}</div>}
+        {publishMessage && (
+          <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            {publishMessage}
+            {/* Phase UX-05B: 일괄 승인 직후 dead-end를 만들지 않는다 — 방금
+                승인된 글의 다음 작업이 있는 "게시 준비" 섹션으로 바로
+                이동할 수 있게 안내한다. */}
+            {publishMessage.includes("승인 완료") && (
+              <>
+                {" "}
+                <a href="#publish-preparation" className="font-medium underline">
+                  게시 준비 보기 →
+                </a>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Phase UX-04B: 여러 플랫폼 글을 하나씩 열어보지 않고도 전체
+            상태를 한눈에 볼 수 있는 요약 카드 — 이 article에 생성된 모든
+            SNS/커뮤니티 글(allPosts) 기준. 승인 가능한 글이 있으면 바로
+            아래에서 일괄 승인도 할 수 있다(사용자가 명시적으로 클릭 +
+            확인해야만 실행된다 — 자동 승인 없음, 외부 게시도 실행하지
+            않는다). */}
+        {multiPlatformSummary.total > 0 && (
+          <MultiPlatformReviewSummaryCard
+            summary={multiPlatformSummary}
+            renderBulkApprovalAction={(eligiblePostIds) => (
+              <form action={bulkApproveSocialPostsAction} className="mt-2">
+                <input type="hidden" name="articleId" value={article.id} />
+                {eligiblePostIds.map((postId) => (
+                  <input key={postId} type="hidden" name="socialPostId" value={postId} />
+                ))}
+                <input type="hidden" name="returnTo" value={buildArticleSocialUrl(id)} />
+                <p className="mb-1 text-[11px] text-zinc-500">
+                  확인할 사항이 없고 아직 승인되지 않은 글만 일괄 승인됩니다
+                  {multiPlatformSummary.total - eligiblePostIds.length - multiPlatformSummary.approved > 0 &&
+                    ` — 나머지 ${multiPlatformSummary.total - eligiblePostIds.length - multiPlatformSummary.approved}개는 확인이 필요해 제외됩니다`}
+                  .
+                </p>
+                <ConfirmSubmitButton
+                  confirmMessage={`${eligiblePostIds.length}개 글을 승인하시겠습니까?\n\n승인 후 게시 준비 단계로 이동할 수 있습니다. 외부 플랫폼에 자동으로 게시되지는 않습니다.`}
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+                >
+                  {eligiblePostIds.length}개 글 승인하기
+                </ConfirmSubmitButton>
+              </form>
+            )}
+          />
+        )}
+
+        {/* Phase UX-05A: "검토 및 승인"과 "게시 준비"를 별도 섹션으로
+            분리한다 — 같은 정보를 두 번 보여주지 않도록, 여기서는 이미
+            승인된 글만 다룬다(미승인 글의 "승인 필요"는 위 요약
+            카드/각 리뷰 카드에서 이미 안내됨). 일괄 승인 직후 이
+            페이지로 돌아오면, 방금 승인된 글들이 바로 이 섹션에
+            실제 다음 작업(본문 복사 등)과 함께 나타난다 — dead-end를
+            만들지 않는다. */}
+        {publishPreparationSummary.total > 0 && (
+          <section id="publish-preparation" className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <PublishPreparationSummaryCard summary={publishPreparationSummary} />
+            {approvedPublishPreparationPosts.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-2">
+                {approvedPublishPreparationPosts.map(({ post, entry }) => {
+                  const selfReturnTo = selfReturnToFor(post.id);
+                  const displayBody = getSocialPostDisplayBody(post);
+                  const renderPublishAction = (action: PublishPreparationAction, kind: "primary" | "secondary") => {
+                    const className =
+                      kind === "primary"
+                        ? "rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
+                        : "rounded border border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100";
+                    switch (action.type) {
+                      case "copy_body":
+                        return (
+                          <CopyPostBodyButton
+                            articleId={article.id}
+                            socialPostId={post.id}
+                            text={displayBody ?? ""}
+                            label={action.label}
+                            className={className}
+                            manualResultAnchorId={buildAnchorId("social-post-manual-result", post.id)}
+                          />
+                        );
+                      case "check_api_readiness":
+                        return (
+                          <a href={`${buildSocialPostDetailUrl(post.id, selfReturnTo)}#api-publishing`} className={className}>
+                            {action.label}
+                          </a>
+                        );
+                      case "record_manual_result":
+                        return (
+                          <a href={`#${buildAnchorId("social-post-manual-result", post.id)}`} className={className}>
+                            {action.label}
+                          </a>
+                        );
+                      case "view_detail":
+                      default:
+                        return post.postUrl ? (
+                          <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className={className}>
+                            {action.label}
+                          </a>
+                        ) : (
+                          <a href={buildSocialPostDetailUrl(post.id, selfReturnTo)} className={className}>
+                            {action.label}
+                          </a>
+                        );
+                    }
+                  };
+                  return (
+                    <li key={post.id}>
+                      <PlatformPublishPreparationCard
+                        viewModel={entry.viewModel}
+                        platformLabel={PLATFORM_LABELS[post.platform]}
+                        renderAction={renderPublishAction}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <h1 className="text-lg font-semibold">{article.title}</h1>
@@ -228,7 +441,7 @@ export default async function ArticleSocialPage({
             <p className="mt-2 text-xs text-zinc-500">아직 생성된 SNS/커뮤니티 글이 없습니다.</p>
           ) : (
             <ul className="mt-2 flex flex-col gap-3">
-              {posts.map((post) => {
+              {sortedPosts.map((post) => {
                 const selfReturnTo = selfReturnToFor(post.id);
                 // Phase 4-28: "자동 수정 후 재검토"가 이 카드의 기본(primary)
                 // 버튼이어야 하는지 미리 계산해 둔다 — 남은 문제가 전부 이미
@@ -279,11 +492,13 @@ export default async function ArticleSocialPage({
                         보여준다 — 자동 검토 결과보다 먼저 표시해, 사용자가 글을
                         먼저 읽고 판단할 수 있게 한다. 1,200자 이하면 전체 표시,
                         초과하면 카드 안에서만 접기/펼치기를 처리한다. [본문 수정]을
-                        누르면 페이지 이동 없이 같은 카드 안에서 textarea 편집
-                        모드로 바뀐다(SocialPostBodyPanel, "use client"). x처럼
-                        threadItems 배열 기반 플랫폼은 단일 textarea로 안전하게
-                        수정할 수 없어 편집 버튼을 보여주지 않는다(상세 페이지에서
-                        수정). */}
+                        누르면 페이지 이동 없이 같은 카드 안에서 편집 모드로
+                        바뀐다(SocialPostBodyPanel, "use client"). Phase UX-03B2:
+                        x처럼 threadItems 배열 기반 플랫폼도 단일 textarea로
+                        억지로 합치지 않고, item별 textarea로 구성된
+                        mode="thread" 편집기를 같은 카드 안에서 연다(더 이상
+                        상세 페이지로 보내지 않는다) — "본문 수정"은 시스템
+                        전체에서 항상 "같은 카드 안 편집"을 의미한다. */}
                     {(() => {
                       const displayBody = getSocialPostDisplayBody(post);
                       if (!displayBody) {
@@ -294,16 +509,41 @@ export default async function ArticleSocialPage({
                           </p>
                         );
                       }
+                      // Phase UX-03B2: x는 threadItems 배열 기반이라
+                      // getSocialPostEditableField가 null을 반환하지만,
+                      // SocialPostBodyPanel에 threadItems+saveThreadAction을
+                      // 함께 넘기면 [본문 수정]이 상세 페이지 이동 없이
+                      // 같은 카드 안에서 thread 편집기를 연다(다른
+                      // 플랫폼과 동일한 "본문 수정=inline 편집" 동작).
+                      const isThreadPlatform = PLATFORM_WRITING_CONFIGS[post.platform].supportsThreads;
+                      // Phase UX-05B: 이미 게시 완료로 표시된(publishStatus
+                      // ==="published") 글은 repository 단(saveSocialPostRevision)에서
+                      // 이미 수정 자체를 막고 있다("이미 게시된 social post는
+                      // 수정할 수 없습니다.") — 버튼을 그대로 두면 사용자가
+                      // 클릭 후에야 오류로 알게 되므로, 여기서 미리 [본문
+                      // 수정]을 감추고 이유를 안내한다(guard 자체는 바꾸지
+                      // 않는다).
+                      const isPublished = post.publishStatus === "published";
                       return (
-                        <SocialPostBodyPanel
-                          articleId={article.id}
-                          socialPostId={post.id}
-                          returnTo={selfReturnTo}
-                          displayBody={displayBody}
-                          editable={getSocialPostEditableField(post.platform) !== null}
-                          saveAction={saveSocialPostInlineEditAction}
-                          platform={post.platform}
-                        />
+                        <>
+                          <SocialPostBodyPanel
+                            articleId={article.id}
+                            socialPostId={post.id}
+                            returnTo={selfReturnTo}
+                            displayBody={displayBody}
+                            editable={!isPublished && getSocialPostEditableField(post.platform) !== null}
+                            saveAction={saveSocialPostInlineEditAction}
+                            platform={post.platform}
+                            threadItems={isThreadPlatform && !isPublished ? post.threadItems : undefined}
+                            saveThreadAction={isThreadPlatform && !isPublished ? saveSocialPostThreadInlineEditAction : undefined}
+                            threadItemMaxLength={isThreadPlatform ? PLATFORM_WRITING_CONFIGS[post.platform].maxLength : undefined}
+                          />
+                          {isPublished && (
+                            <p className="mt-1 text-[11px] text-zinc-500">
+                              이미 게시 완료로 표시된 글입니다. 본문 수정은 외부 게시물에 자동 반영되지 않습니다.
+                            </p>
+                          )}
+                        </>
                       );
                     })()}
 
@@ -339,45 +579,28 @@ export default async function ArticleSocialPage({
                         }
 
                         const review = summarizeAutoReview(checklist as never);
-                        const toneClass =
-                          review.overallStatus === "blocked"
-                            ? "border-red-200 bg-red-50 text-red-800"
-                            : review.overallStatus === "needs_fix"
-                              ? "border-orange-200 bg-orange-50 text-orange-800"
-                              : review.overallStatus === "needs_check"
-                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                : "border-green-200 bg-green-50 text-green-800";
-
                         const reviewCriteria = getPlatformReviewCriteria(post.platform);
+                        // Phase UX-04A: AI가 안전하게 처리할 수 있는(auto_fixable)
+                        // 문제는 사람이 확인할 목록이 아니다 — summarizeUserFacingReview로
+                        // 사람이 봐야 하는 issue만 골라 기본 화면에 보여주고,
+                        // 전체 목록(auto_fixable 포함)은 카드 안 "자동 검토 상세"
+                        // 접힘으로 옮긴다(AutoReviewSummaryCard가 내부적으로 처리).
+                        const userFacingSummary = summarizeUserFacingReview(post.qualityStatus, review, checklist as never);
 
                         return (
-                          <div className={`mt-2 rounded border p-2 text-[11px] ${toneClass}`}>
-                            {/* Phase 4-5: 글 유형별 기준이 섞이지 않았음을 항상 먼저 보여준다. */}
-                            <p className="text-zinc-600">
-                              글 유형: {PLATFORM_LABELS[post.platform]} · 검토 기준: {reviewCriteria.criteriaSummary}
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
-                              <p className="font-semibold">자동 검토 결과: {review.overallLabel}</p>
-                              <span className="rounded-full bg-white/60 px-1.5 py-0.5 font-medium">
-                                위험도 {describeAutoReviewRiskLevel(review.riskLevel)}
-                              </span>
-                            </div>
-                            <p className="mt-1">
-                              통과 {review.counts.passed}개 · 확인 필요 {review.counts.needsCheck}개 · 수정 필요{" "}
-                              {review.counts.needsFix}개 · 차단 {review.counts.blocked}개
-                            </p>
-                            <p className="mt-1">{describeApprovalReadiness(review)}</p>
-                            {review.issues.length > 0 && (
-                              <ul className="mt-1.5 flex flex-col gap-0.5">
-                                {review.issues.slice(0, 5).map((issue) => (
-                                  <li key={issue.key}>
-                                    · [{issue.axisLabel}] {issue.message}
-                                  </li>
-                                ))}
-                                {review.issues.length > 5 && <li>· 그 외 {review.issues.length - 5}건 (상세 상태 보기 참고)</li>}
-                              </ul>
-                            )}
-                          </div>
+                          <AutoReviewSummaryCard
+                            review={review}
+                            userFacingSummary={userFacingSummary}
+                            compact
+                            labelPrefix="자동 검토 결과: "
+                            maxIssues={5}
+                            contextNote={
+                              // Phase 4-5: 글 유형별 기준이 섞이지 않았음을 항상 먼저 보여준다.
+                              <p className="text-zinc-600">
+                                글 유형: {PLATFORM_LABELS[post.platform]} · 검토 기준: {reviewCriteria.criteriaSummary}
+                              </p>
+                            }
+                          />
                         );
                       })()}
                     </div>
@@ -477,41 +700,56 @@ export default async function ArticleSocialPage({
                         }
                       };
 
+                      // Phase UX-03B1: "자동 수정 후 재검토"는 cardState(기존
+                      // helper)가 알지 못하는 이 화면 전용 action이다 — 공통
+                      // NextActionViewModel을 여기서 조합할 때만 끼워 넣는다
+                      // (helper 자체는 바꾸지 않는다). autoFixIsPrimary면 이
+                      // action이 primary로, cardState의 원래 primary는
+                      // secondary로 내려간다(카드 하나에 primary는 항상 하나).
+                      const autoFixAction =
+                        post.qualityStatus === "needs_revision"
+                          ? { label: "자동 수정 후 재검토", actionType: "auto_fix_and_recheck" }
+                          : null;
+                      const baseViewModel = fromSocialPostCardActionState(cardState);
+                      const viewModel: NextActionViewModel =
+                        autoFixIsPrimary && autoFixAction
+                          ? {
+                              ...baseViewModel,
+                              primaryAction: autoFixAction,
+                              secondaryActions: [...visibleSecondaryActions, baseViewModel.primaryAction!],
+                            }
+                          : {
+                              ...baseViewModel,
+                              secondaryActions: autoFixAction
+                                ? [...visibleSecondaryActions, autoFixAction]
+                                : visibleSecondaryActions,
+                            };
+
+                      const renderActionForPanel = (action: NextActionViewModelAction, kind: "primary" | "secondary") =>
+                        action.actionType === "auto_fix_and_recheck" ? (
+                          <form action={runPostAutoFixAndRecheckAction}>
+                            <input type="hidden" name="articleId" value={article.id} />
+                            <input type="hidden" name="socialPostId" value={post.id} />
+                            <input type="hidden" name="returnTo" value={selfReturnTo} />
+                            <button type="submit" className={kind === "primary" ? primaryClass : secondaryClass}>
+                              {action.label}
+                            </button>
+                          </form>
+                        ) : (
+                          renderAction(action as SocialPostCardAction, kind === "primary" ? primaryClass : secondaryClass)
+                        );
+
                       return (
                         <>
-                          <p className="mt-2 text-[11px] text-zinc-500">
-                            상태: <span className="font-medium text-zinc-700">{cardState.statusBadge}</span>
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                            {/* Phase 4-28: 남은 문제가 전부 자동으로 고칠 수 있는
-                                항목뿐이면(autoFixIsPrimary), 사용자에게 먼저 "문제
-                                확인하기"를 요구하지 않고 [자동 수정 후 재검토]를
-                                기본(primary) 버튼으로 보여준다 — 한 카드에 primary
-                                버튼은 항상 하나만 강조한다(cardState.primaryAction은
-                                이 경우 secondary로 내려간다). */}
-                            {!autoFixIsPrimary && renderAction(cardState.primaryAction, primaryClass)}
-                            {visibleSecondaryActions.map((action, i) => (
-                              <span key={`${action.actionType}-${i}`}>{renderAction(action, secondaryClass)}</span>
-                            ))}
-                            {autoFixIsPrimary && renderAction(cardState.primaryAction, secondaryClass)}
-                            {/* Phase 4-22/4-28: 자동 검토가 "수정 필요"를 판단했을 때,
-                                내부 작성용 소제목처럼 AI가 사용자 확인 없이 안전하게
-                                고칠 수 있는 문제는 먼저 자동으로 정리하고 재검토까지
-                                실행한다 — 사실/출처/수치 확인이 필요한 문제는 이
-                                action이 건드리지 않고 그대로 남긴다
-                                (lib/social/post-auto-fix-service.ts). 남은 문제가
-                                전부 자동 수정 가능하면 이 버튼이 primary다. */}
-                            {post.qualityStatus === "needs_revision" && (
-                              <form action={runPostAutoFixAndRecheckAction}>
-                                <input type="hidden" name="articleId" value={article.id} />
-                                <input type="hidden" name="socialPostId" value={post.id} />
-                                <input type="hidden" name="returnTo" value={selfReturnTo} />
-                                <button type="submit" className={autoFixIsPrimary ? primaryClass : secondaryClass}>
-                                  자동 수정 후 재검토
-                                </button>
-                              </form>
-                            )}
-                          </div>
+                          <WorkflowStatusCard
+                            viewModel={fromSocialPostCardActionStateToWorkflowStatus(cardState)}
+                            heading="상태"
+                          />
+                          <NextActionPanel
+                            viewModel={{ ...viewModel, message: undefined }}
+                            renderAction={renderActionForPanel}
+                            title="다음 작업"
+                          />
                           {/* Phase 4-20: 화살표를 이어붙여(성과 보기/기사 개요)
                               primary/secondary action과 나란히 보이던
                               이동 링크를 "관련 화면 보기" 접힘으로 뺀다 — 기능은
@@ -532,9 +770,8 @@ export default async function ArticleSocialPage({
                       );
                     })()}
 
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-[11px] text-zinc-400">상세 상태 보기 / 보조 작업 (관리자용, 기본 접힘)</summary>
-                      <p className="mt-1 text-[11px] text-zinc-400">
+                    <AdvancedDetails title="상세 상태 보기 / 보조 작업 (관리자용, 기본 접힘)">
+                      <p className="text-[11px] text-zinc-400">
                         {describeStatusField("quality_status")}: {describeStatusValue(post.qualityStatus)} ·{" "}
                         {describeStatusField("approval_status")}: {describeStatusValue(post.approvalStatus)} ·{" "}
                         {describeStatusField("export_status")}: {describeStatusValue(post.exportStatus)} ·{" "}
@@ -611,7 +848,7 @@ export default async function ArticleSocialPage({
                           </button>
                         </form>
                       </div>
-                    </details>
+                    </AdvancedDetails>
 
                     <details className="mt-2" id={buildAnchorId("social-post-manual-result", post.id)}>
                       <summary className="cursor-pointer text-[11px] text-zinc-400">게시 결과 기록 / Metrics 입력</summary>

@@ -14,8 +14,17 @@ describe("TonePerformanceChart", () => {
         data={[{ toneStyle: "informational", averagePerformanceScore: 55.5, totalViews: 10, totalClicks: 1, measuredCount: 4 }]}
       />
     );
-    expect(html).toContain("informational");
+    expect(html).toContain("정보형");
     expect(html).toContain("55.5");
     expect(html).toContain("measured 4");
+  });
+
+  it("Phase UX-03C: raw toneStyle enum을 그대로 노출하지 않고 TONE_STYLE_CONFIGS 라벨로 번역한다", () => {
+    const html = renderToStaticMarkup(
+      <TonePerformanceChart
+        data={[{ toneStyle: "informational", averagePerformanceScore: 55.5, totalViews: 10, totalClicks: 1, measuredCount: 4 }]}
+      />
+    );
+    expect(html).not.toContain("informational");
   });
 });

@@ -129,8 +129,11 @@ export const STATUS_FIELD_LABELS: Record<string, string> = {
   applicationStatus: "적용 상태",
   version_comparison_status: "버전 비교 상태",
   versionComparisonStatus: "버전 비교 상태",
-  rewrite_reapproval_status: "재승인 상태",
-  rewriteReapprovalStatus: "재승인 상태",
+  // Phase UX-03C: "재승인"은 UX-03B2에서 사용자 문구로 쓰지 않기로 한
+  // 용어다(재검토 요청/최종 승인 두 단계를 뭉뚱그려 혼동을 유발했다) —
+  // 필드 라벨도 같은 원칙을 따른다.
+  rewrite_reapproval_status: "재검토/최종 승인 상태",
+  rewriteReapprovalStatus: "재검토/최종 승인 상태",
   rewrite_reexport_status: "재내보내기 상태",
   rewriteReexportStatus: "재내보내기 상태",
   rewrite_republish_workflow_status: "게시 준비 흐름",

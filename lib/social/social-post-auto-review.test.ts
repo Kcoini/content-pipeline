@@ -6,6 +6,7 @@ import {
   describeAutoReviewNotRunYet,
   getApprovalGateStatus,
   getSocialPostWorkspacePrimaryAction,
+  summarizeUserFacingReview,
 } from "./social-post-auto-review";
 
 describe("summarizeAutoReview (Phase 3-25)", () => {
@@ -153,6 +154,47 @@ describe("getApprovalGateStatus (Phase 3-26)", () => {
   it("검토를 통과했고 본문이 있으며 차단 항목이 없으면 승인 가능하다", () => {
     expect(getApprovalGateStatus(base)).toEqual({ canApprove: true, reason: null });
   });
+
+  it("게시 상태가 차단되어 있으면 승인 불가다(Phase UX-05A 전수 감사)", () => {
+    const result = getApprovalGateStatus({ ...base, publishStatus: "blocked" });
+    expect(result.canApprove).toBe(false);
+    expect(result.reason).toContain("게시 상태가 차단되어");
+  });
+
+  it("이미 게시된 글은 승인 불가다(Phase UX-05A 전수 감사)", () => {
+    const result = getApprovalGateStatus({ ...base, publishStatus: "published" });
+    expect(result.canApprove).toBe(false);
+    expect(result.reason).toContain("이미 게시된 글");
+  });
+
+  it("자동 검토 실행이 실패했으면 승인 불가다(Phase UX-05A 전수 감사)", () => {
+    const result = getApprovalGateStatus({ ...base, qualityStatus: "failed" });
+    expect(result.canApprove).toBe(false);
+    expect(result.reason).toContain("실행이 실패했습니다");
+  });
+
+  it("Phase UX-05A: 모든 canApprove=false 케이스는 사용자용 자연어 reason을 갖고, raw DB 필드명/enum이 섞이지 않는다", () => {
+    const cases = [
+      { ...base, approvalStatus: "approved" },
+      { ...base, publishStatus: "blocked" },
+      { ...base, publishStatus: "published" },
+      { ...base, qualityStatus: "not_checked" },
+      { ...base, qualityStatus: "failed" },
+      { ...base, qualityStatus: "blocked" },
+      { ...base, hasContent: false },
+      { ...base, hasBlockingIssues: true },
+    ];
+    for (const input of cases) {
+      const result = getApprovalGateStatus(input);
+      expect(result.canApprove).toBe(false);
+      expect(result.reason).toBeTruthy();
+      // raw enum/필드명이 문장에 그대로 섞이지 않는다(예: "quality_status=ready", "approval_status!=approved").
+      expect(result.reason).not.toMatch(/[a-z_]+\s*(===|!==|=)\s*['"a-z_]+/i);
+      expect(result.reason).not.toContain("quality_status");
+      expect(result.reason).not.toContain("approval_status");
+      expect(result.reason).not.toContain("publish_status");
+    }
+  });
 });
 
 describe("getSocialPostWorkspacePrimaryAction (Phase 3-26)", () => {
@@ -189,5 +231,71 @@ describe("getSocialPostWorkspacePrimaryAction (Phase 3-26)", () => {
     expect(getSocialPostWorkspacePrimaryAction("ready", "pending_review", summarizeAutoReview([])).label).toBe(
       "최종 승인"
     );
+  });
+});
+
+describe("summarizeUserFacingReview (Phase UX-04A)", () => {
+  it("qualityStatus=not_checked면 checking 상태다", () => {
+    const review = summarizeAutoReview([]);
+    const summary = summarizeUserFacingReview("not_checked", review, []);
+    expect(summary.state).toBe("checking");
+    expect(summary.stateLabel).toBe("자동 검토 중");
+  });
+
+  it("qualityStatus=failed면 failed 상태다", () => {
+    const review = summarizeAutoReview([]);
+    const summary = summarizeUserFacingReview("failed", review, []);
+    expect(summary.state).toBe("failed");
+  });
+
+  it("문제가 없으면 ready 상태이고 confirmationCount는 0이다", () => {
+    const checklist = [{ key: "content_present", status: "pass" as const, message: "통과" }];
+    const review = summarizeAutoReview(checklist);
+    const summary = summarizeUserFacingReview("ready", review, checklist);
+    expect(summary.state).toBe("ready");
+    expect(summary.confirmationCount).toBe(0);
+    expect(summary.visibleIssues).toHaveLength(0);
+  });
+
+  it("auto_fixable 문제만 남아 있으면 사람이 확인할 항목이 아니므로 ready로 취급하고 issue를 숨긴다", () => {
+    // wordpress_blog_body_depth는 review-issue-fixability의 AUTO_FIXABLE_KEYS에 속한다.
+    const checklist = [{ key: "wordpress_blog_body_depth", status: "fail" as const, message: "본문이 짧습니다." }];
+    const review = summarizeAutoReview(checklist);
+    const summary = summarizeUserFacingReview("needs_revision", review, checklist);
+    expect(summary.state).toBe("ready");
+    expect(summary.confirmationCount).toBe(0);
+    expect(summary.visibleIssues).toHaveLength(0);
+    expect(summary.hiddenAutoFixableCount).toBe(1);
+  });
+
+  it("user_confirmation_required 문제가 있으면 needs_confirmation이고 그 문제만 visibleIssues에 남는다", () => {
+    const checklist = [
+      { key: "wordpress_blog_body_depth", status: "fail" as const, message: "본문이 짧습니다." },
+      { key: "news_article_no_unsourced_claim", status: "warning" as const, message: "출처를 확인하세요." },
+    ];
+    const review = summarizeAutoReview(checklist);
+    const summary = summarizeUserFacingReview("needs_revision", review, checklist);
+    expect(summary.state).toBe("needs_confirmation");
+    expect(summary.confirmationCount).toBe(1);
+    expect(summary.visibleIssues.map((i) => i.key)).toEqual(["news_article_no_unsourced_claim"]);
+    expect(summary.hiddenAutoFixableCount).toBe(1);
+  });
+
+  it("blocking 문제가 있으면 auto_fixable/user_confirmation 여부와 관계없이 blocked다", () => {
+    const checklist = [
+      { key: "wordpress_blog_body_depth", status: "fail" as const, message: "본문이 짧습니다." },
+      { key: "content_present", status: "blocked" as const, message: "본문이 없습니다." },
+    ];
+    const review = summarizeAutoReview(checklist);
+    const summary = summarizeUserFacingReview("needs_revision", review, checklist);
+    expect(summary.state).toBe("blocked");
+    expect(summary.visibleIssues.map((i) => i.key)).toContain("content_present");
+  });
+
+  it("raw fixability/qualityStatus enum을 stateLabel/stateMessage에 그대로 노출하지 않는다", () => {
+    const review = summarizeAutoReview([]);
+    const summary = summarizeUserFacingReview("not_checked", review, []);
+    expect(summary.stateLabel).not.toContain("not_checked");
+    expect(summary.stateMessage).not.toContain("auto_fixable");
   });
 });

@@ -11,6 +11,7 @@ import {
   updateRewriteRepublishWorkflowStatus,
 } from "@/lib/repositories/social-posts-repository";
 import { checkForbiddenPatterns } from "./platform-publishing-rules";
+import { describeStatusValue } from "./status-labels";
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
 import type { SocialPost } from "./social-platform-types";
@@ -76,22 +77,26 @@ export async function requestRewriteReapproval(
   }
 
   const warnings: string[] = [];
-  if (!post.recommendedForRepost) warnings.push("recommended_for_repost=false입니다 — 비교 결과가 아직 rewrite_better가 아닐 수 있습니다.");
-  if (post.versionComparisonStatus !== "rewrite_better") warnings.push(`version_comparison_status가 'rewrite_better'가 아닙니다(${post.versionComparisonStatus}).`);
-  if (post.qualityStatus !== "ready") warnings.push(`quality_status가 'ready'가 아닙니다(${post.qualityStatus}) — 먼저 Quality Recheck를 권장합니다.`);
+  if (!post.recommendedForRepost) warnings.push("아직 재게시 추천 대상으로 표시되지 않았습니다 — 비교 결과가 아직 재작성 글이 더 나은 것으로 확인되지 않았을 수 있습니다.");
+  if (post.versionComparisonStatus !== "rewrite_better") {
+    warnings.push(`원본과 비교한 결과가 아직 "재작성 글이 더 나음"이 아닙니다(현재: ${describeStatusValue(post.versionComparisonStatus)}).`);
+  }
+  if (post.qualityStatus !== "ready") {
+    warnings.push(`품질검사가 아직 준비되지 않았습니다(현재: ${describeStatusValue(post.qualityStatus)}) — 먼저 버전 품질 재검사를 권장합니다.`);
+  }
 
   if (!post.isRewriteVersion) {
-    const message = "is_rewrite_version=false인 social post는 재승인을 요청할 수 없습니다.";
+    const message = "재작성 버전이 아닌 social post는 재검토를 요청할 수 없습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_blocked", "failed", message, post.articleId, baseDetails(post, { reasonCode: "not_rewrite_version" }));
     return { success: false, message };
   }
   if (post.publishStatus === "published") {
-    const message = "이미 게시된 social post는 재승인을 요청할 필요가 없습니다.";
+    const message = "이미 게시된 social post는 재검토를 요청할 필요가 없습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_blocked", "failed", message, post.articleId, baseDetails(post, { reasonCode: "already_published" }));
     return { success: false, message };
   }
   if (post.manualPostStatus === "posted") {
-    const message = "이미 수동 게시 기록이 있는 social post는 재승인을 요청할 필요가 없습니다.";
+    const message = "이미 수동 게시 기록이 있는 social post는 재검토를 요청할 필요가 없습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_blocked", "failed", message, post.articleId, baseDetails(post, { reasonCode: "already_manual_posted" }));
     return { success: false, message };
   }
@@ -114,7 +119,7 @@ export async function requestRewriteReapproval(
       baseDetails(post, { warningCount: warnings.length })
     );
 
-    return { success: true, message: "재승인을 요청했습니다.", socialPost: updated, warnings };
+    return { success: true, message: "재검토를 요청했습니다.", socialPost: updated, warnings };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_failed", "failed", message, post.articleId, baseDetails(post));
@@ -134,17 +139,17 @@ export async function approveRewriteReapproval(
   }
 
   if (post.rewriteReapprovalStatus !== "pending_review") {
-    const message = `rewrite_reapproval_status가 'pending_review'가 아니어서(${post.rewriteReapprovalStatus}) 승인할 수 없습니다.`;
+    const message = `재검토 요청이 되어 있지 않아 최종 승인을 할 수 없습니다(현재 상태: ${describeStatusValue(post.rewriteReapprovalStatus)}).`;
     await logReapprovalEvent("social_rewrite_reapproval_blocked", "failed", message, post.articleId, baseDetails(post, { reasonCode: "not_pending_review" }));
     return { success: false, message };
   }
   if (!post.isRewriteVersion) {
-    const message = "is_rewrite_version=false인 social post는 재승인할 수 없습니다.";
+    const message = "재작성 버전이 아닌 social post는 최종 승인할 수 없습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_blocked", "failed", message, post.articleId, baseDetails(post, { reasonCode: "not_rewrite_version" }));
     return { success: false, message };
   }
   if (post.qualityStatus !== "ready") {
-    const message = `quality_status가 'ready'가 아니어서(${post.qualityStatus}) 재승인할 수 없습니다.`;
+    const message = `품질검사가 아직 준비되지 않아(현재: ${describeStatusValue(post.qualityStatus)}) 최종 승인을 할 수 없습니다.`;
     await logReapprovalEvent("social_rewrite_reapproval_blocked", "failed", message, post.articleId, baseDetails(post, { reasonCode: "quality_not_ready" }));
     return { success: false, message };
   }
@@ -187,7 +192,7 @@ export async function approveRewriteReapproval(
       baseDetails(post)
     );
 
-    return { success: true, message: "재승인이 완료되었습니다.", socialPost: updated };
+    return { success: true, message: "최종 승인이 완료되었습니다.", socialPost: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_failed", "failed", message, post.articleId, baseDetails(post));
@@ -225,7 +230,7 @@ export async function rejectRewriteReapproval(
       baseDetails(post, { rejectedBy: rejectedBy ?? null })
     );
 
-    return { success: true, message: "재승인이 반려되었습니다.", socialPost: updated };
+    return { success: true, message: "재검토 요청이 반려되었습니다.", socialPost: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_failed", "failed", message, post.articleId, baseDetails(post));
@@ -244,7 +249,10 @@ export async function revokeRewriteReapproval(
     return { success: false, message: `social post를 찾을 수 없습니다: ${socialPostId}` };
   }
   if (post.rewriteReapprovalStatus !== "approved") {
-    return { success: false, message: `rewrite_reapproval_status가 'approved'가 아니어서(${post.rewriteReapprovalStatus}) 승인을 취소할 수 없습니다.` };
+    return {
+      success: false,
+      message: `최종 승인 상태가 아니어서(현재: ${describeStatusValue(post.rewriteReapprovalStatus)}) 승인을 취소할 수 없습니다.`,
+    };
   }
 
   try {
@@ -265,7 +273,7 @@ export async function revokeRewriteReapproval(
       baseDetails(post, { revokedBy: revokedBy ?? null })
     );
 
-    return { success: true, message: "재승인이 취소되었습니다.", socialPost: updated };
+    return { success: true, message: "최종 승인이 취소되었습니다.", socialPost: updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     await logReapprovalEvent("social_rewrite_reapproval_failed", "failed", message, post.articleId, baseDetails(post));

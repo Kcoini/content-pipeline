@@ -4,6 +4,21 @@
 - 범위: 코드 조사 전용. 이 문서 작성 과정에서 코드/컴포넌트/DB/설정은 변경하지 않았다.
 - 조사 방법: route 전수 조사, 글 카드 유형 전수 조사, 기술 정보 노출 grep 조사, 사용자 여정/자동화 가능성 조사(4개 병렬 조사 결과 종합)
 
+> **업데이트 (2026-09-19, Phase UX-06)**: UX-02~05B의 모든 변경을
+> 실제 사용자 여정(WordPress/Naver Cafe/X thread/Multi-platform/
+> Rewrite/Dashboard/Trends) 기준으로 자동 검증했다. 핵심 Journey
+> blocker 0건, dead-end 0건, raw 기술 정보 노출 0건, primary action
+> 충돌 0건을 확인했고 **UX-07 진입 기준을 충족**했다. 자세한 내용은
+> [`docs/ux/ux-06-user-journey-validation.md`](./ux-06-user-journey-validation.md),
+> [`docs/ux/ux-06-journey-matrix.md`](./ux-06-journey-matrix.md) 참고.
+
+> **업데이트 (2026-09-19, Phase UX-07, 프로젝트 종료)**: 남은 부분
+> 해결 High(H5/H6)를 정리하고 Medium/Low를 재분류했다. Critical
+> open 0, High open 0, Journey blocker 0, dead-end 0, 위험한
+> publish/approval 오해 0 — **UX 개선 프로젝트 완료 조건을
+> 충족했다.** 자세한 내용은
+> [`docs/ux/ux-final-report.md`](./ux-final-report.md) 참고.
+
 ---
 
 ## 1. Executive Summary
@@ -61,40 +76,51 @@
 
 ## 4. High 문제
 
-| # | 위치 | 문제 |
-|---|---|---|
-| H1 | `app/themes/[themeId]/page.tsx:172-176` | Mock 모드 배너에 `ARTICLE_SEARCH_ENABLED=false` env 변수명이 그대로 노출 |
-| H2 | `components/platform-api/api-readiness-badge.tsx:11-13`, `api-readiness-summary.tsx:26,46` | "Dry-run 준비됨", "dry-run only" 등 기술 용어가 라벨 자체에 그대로 포함 |
-| H3 | `components/social-ab-tests/ab-test-card.tsx:78-90` | `"ready로 변경"` 버튼처럼 raw enum이 버튼 라벨에 그대로 사용됨 |
-| H4 | `app/dashboard/blog/page.tsx:122-155`, `app/dashboard/rewrite/page.tsx:110-143` | 필터 드롭다운 옵션 텍스트가 `not_checked/ready/needs_revision/blocked/failed` 등 raw enum 그대로 |
-| H5 | `app/articles/[id]/page.tsx` (WordPress 전송 섹션 전체) | "고급 기능" details 안에는 있으나, 하위 섹션들이 다시 개별 접힘 없이 펼쳐진 상태로 나열되어 펼치는 순간 기술 정보가 대량 쏟아짐 |
-| H6 | `SocialPostBodyPanel` 편집 UI vs `app/social-posts/[id]/page.tsx` "수정하기" 탭 | 동일한 "본문 inline 수정" 기능이 서로 다른 필드 구성/버튼 배치로 **중복 구현**됨 (InlinePostBodyEditor 후보) |
-| H7 | `social/page.tsx:353-381` vs `social-posts/[id]/page.tsx:444-538` | "자동 검토 요약"(통과/확인필요/수정필요/차단) 블록이 거의 동일한 JSX로 두 곳에 각각 인라인 구현됨 (AutoReviewSummaryCard 후보) |
-| H8 | `app/articles/[id]/rewrite/page.tsx:223,369,382` | 한 화면에서 "개선 제안 승인" / "재승인 요청" / "재승인 승인하기"라는 세 가지 다른 의미의 "승인" 용어가 공존해 혼동 유발 |
-| H9 | X 플랫폼 카드 (`social/page.tsx`) | 다른 플랫폼은 inline 수정 가능하지만 X만 "본문 수정" 클릭 시 상세 페이지로 이동 (thread 구조 때문) — 플랫폼 간 동일 라벨, 다른 동작 |
-| H10 | `app/articles/[id]/blog/page.tsx:149-157` | 로그 필터 라벨에 `"Handoff"` 등 영어 용어가 번역 없이 노출 |
+> **업데이트 (2026-09-18, Phase UX-03B1)**: H10은 해결되었다. 자세한
+> 내용은 [`docs/ux/ux-03b1-workflow-next-action.md`](./ux-03b1-workflow-next-action.md) 참고.
+>
+> **업데이트 (2026-09-18, Phase UX-03B2)**: H8/H9는 해결되었다. 자세한
+> 내용은 [`docs/ux/ux-03b2-interaction-consistency.md`](./ux-03b2-interaction-consistency.md) 참고.
+
+| # | 위치 | 문제 | 상태 |
+|---|---|---|---|
+| H1 | `app/themes/[themeId]/page.tsx:172-176` | Mock 모드 배너에 `ARTICLE_SEARCH_ENABLED=false` env 변수명이 그대로 노출 | ✅ 해결 (UX-03C) — "테스트 데이터 모드"로 문구 교체, env 변수명 제거. `app/trends/page.tsx`의 동일 패턴("Mock 모드"/"Real API 모드")도 함께 한국어로 교체 |
+| H2 | `components/platform-api/api-readiness-badge.tsx:11-13`, `api-readiness-summary.tsx:26,46` | "Dry-run 준비됨", "dry-run only" 등 기술 용어가 라벨 자체에 그대로 포함 | ✅ 해결 (UX-04B) — `dry_run_ready`→"연결 확인 가능", `ready_for_future_test`→"실제 게시 기능 준비 중"으로 교체. `api-readiness-summary.tsx`의 "dry-run 가능"/"feature flag"/"blockers"/"warnings", `api-dry-run-payload-preview.tsx`의 "API Dry-run Payload"/영문 필드명도 함께 한국어로 정리 |
+| H3 | `components/social-ab-tests/ab-test-card.tsx:78-90` | `"ready로 변경"` 버튼처럼 raw enum이 버튼 라벨에 그대로 사용됨 | ✅ 해결 (UX-04B) — "테스트 준비 완료로 표시"/"테스트 시작"으로 교체, testStatus 배지도 raw enum 대신 `TEST_STATUS_LABELS`로 번역 |
+| H4 | `app/dashboard/blog/page.tsx:122-155`, `app/dashboard/rewrite/page.tsx:110-143` | 필터 드롭다운 옵션 텍스트가 `not_checked/ready/needs_revision/blocked/failed` 등 raw enum 그대로 | ✅ 해결 확인 (UX-02B에서 이미 해결, UX-03C에서 재검증) — 두 페이지 모두 `describeStatusField`/`describeStatusValue`를 거치며 `<option value="raw">{describeStatusValue(raw)}</option>` 패턴으로 value(제출값)와 표시 텍스트가 분리되어 있음을 코드로 재확인 |
+| H5 | `app/articles/[id]/page.tsx` (WordPress 전송 섹션 전체) | "고급 기능" details 안에는 있으나, 하위 섹션들이 다시 개별 접힘 없이 펼쳐진 상태로 나열되어 펼치는 순간 기술 정보가 대량 쏟아짐 | ✅ 해결 (UX-07) — 관리자 접힘 내부를 SEO 연동/대표 이미지/WordPress 연결·반영 실행/게시 안전 설정 4개 카테고리 accordion으로 그룹핑(기본 닫힘). 개별 섹션 내용/기존 leaf accordion은 그대로 유지, 카테고리 accordion 1단만 추가(accordion 과다 중첩 방지). `lib/ui/ux-07-polish.test.ts`로 회귀 고정 |
+| H6 | `SocialPostBodyPanel` 편집 UI vs `app/social-posts/[id]/page.tsx` "수정하기" 탭 | 동일한 "본문 inline 수정" 기능이 서로 다른 필드 구성/버튼 배치로 **중복 구현**됨 (InlinePostBodyEditor 후보) | ✅ 해결 (UX-07) — 조사 결과 두 UI는 실제로 중복이 아니라(카드의 inline editor=본문만, 상세 페이지 탭=제목/본문/캡션/해시태그/스레드까지) **용어 충돌**이 진짜 문제였음을 확인. "수정하기" → "글 정보 편집"으로 라벨 변경해 "본문 수정"(inline)과 명확히 구분, business logic/action은 변경 없음 |
+| H7 | `social/page.tsx:353-381` vs `social-posts/[id]/page.tsx:444-538` | "자동 검토 요약"(통과/확인필요/수정필요/차단) 블록이 거의 동일한 JSX로 두 곳에 각각 인라인 구현됨 (AutoReviewSummaryCard 후보) | ✅ 해결 (UX-03A) — `AutoReviewSummaryCard` 공통 컴포넌트로 통합 |
+| H8 | `app/articles/[id]/rewrite/page.tsx:223,369,382` | 한 화면에서 "개선 제안 승인" / "재승인 요청" / "재승인 승인하기"라는 세 가지 다른 의미의 "승인" 용어가 공존해 혼동 유발 | ✅ 해결 (UX-03B2) — "개선안 선택"/"재검토 요청"/"최종 승인"으로 라벨 재정리(`describeRewriteSuggestionStatus` 신설). state machine/DB 필드는 변경 없음 |
+| H9 | X 플랫폼 카드 (`social/page.tsx`) | 다른 플랫폼은 inline 수정 가능하지만 X만 "본문 수정" 클릭 시 상세 페이지로 이동 (thread 구조 때문) — 플랫폼 간 동일 라벨, 다른 동작 | ✅ 해결 (UX-03B2) — `InlinePostBodyEditor`에 `mode="thread"` 추가, X 카드도 다른 플랫폼과 동일하게 카드 안에서 인라인 편집 |
+| H10 | `app/articles/[id]/blog/page.tsx:149-157` | 로그 필터 라벨에 `"Handoff"` 등 영어 용어가 번역 없이 노출 | ✅ 해결 (UX-03B1) — `describeStatusField`의 기존 `handoff_status` 매핑과 통일해 한국어로 교체 |
 
 ## 5. Medium 문제
 
-- `app/articles/page.tsx:12-16` — 상태 라벨이 `"초안 (draft)"`처럼 한국어 라벨 뒤에 raw enum을 괄호로 병기 (완전한 Level 3 은닉 원칙과 부분 충돌)
-- `components/social-performance-dashboard/dashboard-filter-controls.tsx:4-5`, `charts/low-performance-chart.tsx:14` — 필터/범례에 raw status 노출
-- `app/trends/page.tsx`, `app/themes/[themeId]/page.tsx`의 `PlatformBadge`류 컴포넌트가 각 페이지에 개별 구현되어 있고, 하나는 색상만 매핑, 하나는 한국어 변환이 없어 **동일 데이터의 표현 불일치**
-- `article.status`/`post.status` raw ↔ 라벨 변환 여부가 페이지마다 4가지로 다름 (`/articles`=라벨+원문 병기, `/articles/[id]/blog`=원문만, `/dashboard/blog`=라벨만, `/social-posts/[id]`=라벨 우선+raw는 별도 탭)
-- Level 3 접힘 영역의 이름이 페이지마다 제각각: "고급 기능"(`/articles/[id]`), "상세 상태 보기"(`/articles/[id]/blog`), "raw 탭"(`/social-posts/[id]`), "상세 관리"(`/dashboard`) — 동일 개념, 4개의 다른 UI 패턴
-- `app/social-posts/[id]/page.tsx` — `tab=raw` 파라미터로 개발자용 화면에 URL 직접 접근 가능 (공유 링크 오발송 위험)
-- `app/dashboard/automation-safety/page.tsx:101-119` — 버튼 4개가 모두 동일한 액션(`rerunAutomationSafetyReview`)을 호출 — 실질 기능은 1개인데 버튼이 4개로 분산
-- `app/articles/[id]/performance/page.tsx:104-111` — 화면 상단이 차트보다 먼저 3단락짜리 disclaimer 텍스트로 채워짐
-- `app/articles/[id]/social/page.tsx:735,769` — "내부 원문(raw)" 섹션과 "콘텐츠 미리보기(기존 필드)" 섹션이 기본 화면에 함께 존재, 레거시 필드로 추정되는 중복 표시
-- `app/dashboard/platform-api/page.tsx`, `/dashboard/automation-safety/page.tsx` — 관리자용 화면임을 명시하고 있으나, 일반 사용자 네비게이션(`DashboardTopNav`)에 노출되는지 별도 확인 필요
-- 언론기사(`news_article`)의 "수동 export 준비" 버튼이 실제로 무엇을 하는지(다운로드/화면 이동 등) 라벨만으로 불명확
+> **업데이트 (2026-09-18, Phase UX-03C)**: PlatformBadge 중복 구현, 성과
+> 대시보드 필터/차트 raw status 노출 2건이 해결되었다. 자세한 내용은
+> [`docs/ux/ux-03c-route-adoption-platform-labels.md`](./ux-03c-route-adoption-platform-labels.md)
+> 참고.
+
+- ✅ 해결 (UX-03C) — ~~`components/social-performance-dashboard/dashboard-filter-controls.tsx:4-5`, `charts/low-performance-chart.tsx:14` — 필터/범례에 raw status 노출~~. `dashboard-filter-controls.tsx`의 필드 라벨/platform·toneStyle select 옵션/`performance_status`·`manual_post_status` 옵션/정렬 라벨을 기존 헬퍼(`PLATFORM_LABELS`/`TONE_STYLE_CONFIGS`/`describeStatusField`/`describeStatusValue`)로 교체, `low-performance-chart.tsx` 범례와 `tone-performance-chart.tsx` 막대 라벨도 동일하게 교체
+- ✅ 해결 (UX-03C) — ~~`app/trends/page.tsx`, `app/themes/[themeId]/page.tsx`의 `PlatformBadge`류 컴포넌트가 각 페이지에 개별 구현되어 있고, 하나는 색상만 매핑, 하나는 한국어 변환이 없어 동일 데이터의 표현 불일치~~. `components/common/platform-badge.tsx` + `lib/ui/platform-badge.ts`로 통합(SocialPlatform과 trend 검색 출처 naver/daum/mock을 하나의 helper가 함께 라벨링). `components/social-performance-dashboard/charts/platform-performance-chart.tsx`의 별도 영문 라벨 매핑(`"Naver Blog"` 등)도 같은 helper로 교체
+- ✅ 해결 (UX-07) — ~~`app/articles/page.tsx:12-16` — 상태 라벨이 `"초안 (draft)"`처럼 한국어 라벨 뒤에 raw enum을 괄호로 병기~~. `초안`/`승인됨`/`게시됨`으로 raw enum 제거
+- `article.status`/`post.status` raw ↔ 라벨 변환 여부가 페이지마다 4가지로 다름 — **의도적 유지(Accepted)**: 각 페이지 성격이 달라(목록/워크플로/관리자 필터/탭 분리 상세) 강제 통일 시 얻는 이득보다 리팩터 위험이 크다고 판단, UX-08+ 기능 개발 시 해당 페이지를 만질 때 함께 정리
+- Level 3 접힘 영역의 이름이 페이지마다 제각각(`/articles/[id]`="관리자 기능", `/articles/[id]/blog`="상세 상태 보기", `/social-posts/[id]`="내부 원문 보기", `/dashboard`="상세 관리") — **의도적 유지(Accepted)**: 재확인 결과 4곳이 담는 내용의 성격이 서로 다르다(관리자 전용 기능 실행 / 실행 이력 로그 / 원문 그대로 보기 / 대시보드 하위 관리 화면 묶음) — 이름이 달라도 각 맥락에서는 오해 소지가 적어 강제 통일은 보류
+- `app/social-posts/[id]/page.tsx` — `tab=raw` 파라미터로 개발자용 화면에 URL 직접 접근 가능 — **향후 기능 개선(Deferred)**: route 자체를 분리해야 하는 구조 변경이라 UX-07 범위(polish) 밖, UX-08+ 후보로 유지
+- ✅ 해결 (UX-04B) — ~~`app/dashboard/automation-safety/page.tsx:101-119` — 버튼 4개가 모두 동일한 액션(`rerunAutomationSafetyReview`)을 호출~~. 최신 코드로 재확인한 결과 실제로 4개 버튼이 완전히 동일한 action(구분 파라미터 없음)이었음을 확인, 1개 버튼("안전 점검 다시 실행")으로 통합. 카테고리별 결과는 읽기 전용으로 계속 확인 가능
+- `app/articles/[id]/performance/page.tsx:104-111` — 화면 상단이 차트보다 먼저 3단락짜리 disclaimer 텍스트로 채워짐 — 미해결(UX-03C에서 `/dashboard/social-performance`를 확인했으나 동일 문제는 없었음 — disclaimer가 4줄 이내로 이미 양호)
+- ✅ 해결 확인 (UX-07 재조사) — ~~`app/articles/[id]/social/page.tsx:735,769` — "내부 원문(raw)" 섹션과 "콘텐츠 미리보기(기존 필드)" 섹션이 기본 화면에 함께 존재~~. 최신 코드에는 해당 중복 섹션이 존재하지 않음(이전 Phase에서 이미 정리됨, 감사 문서가 stale했음)
+- ✅ 해결 확인 (UX-07 재조사) — ~~`app/dashboard/platform-api/page.tsx`, `/dashboard/automation-safety/page.tsx` 일반 네비게이션 노출 여부~~. `components/navigation/dashboard-top-nav.tsx` 확인 결과 두 메뉴 모두 드롭다운 안에만 있고 `automation-safety`는 `danger` 플래그로 옅게 구분됨(섹션 10 규칙 준수)
+- ✅ 해결 확인 (UX-07 재조사) — ~~언론기사(`news_article`)의 "수동 export 준비" 버튼 라벨 불명확~~. 현재 코드에서 해당 라벨 자체가 존재하지 않음(governance 섹션 2 표의 변환이 이미 적용되어 "수동 게시 준비 자료"류 표현만 남아 있음, 감사 문서가 stale했음)
 
 ## 6. Low 문제
 
-- `app/trends/page.tsx`의 `PlatformBadge`가 `naver`/`daum`/`mock` raw 문자열을 배지 텍스트로 사용 (관용적 배지라 심각도는 낮음)
-- `RelatedPostLinks`의 "→" 화살표 라벨이 여전히 작업 순서처럼 보일 여지 (컴포넌트 자체는 이미 분리되어 낮은 우선순위)
-- `app/dashboard/automation-safety/page.tsx:28` — `publish_guards: "게시 가드"` 매핑은 되어 있으나 페이지 성격상 낮은 우선순위
-- `/dashboard`의 "상세 관리" 접힘 안 pipeline log type이 영문 그대로 (접힘 상태라 영향 적음)
-- 표현/문구 다듬기 다수 (별도 목록화하지 않음, UX-07 polish 단계에서 일괄 처리 권장)
+- ✅ 해결 (UX-03C) — ~~`app/trends/page.tsx`의 `PlatformBadge`가 `naver`/`daum`/`mock` raw 문자열을 배지 텍스트로 사용~~. 공통 `PlatformBadge`가 "네이버"/"다음"/"테스트 데이터"로 번역
+- `RelatedPostLinks`의 "→" 화살표 라벨이 여전히 작업 순서처럼 보일 여지 — **의도적 유지(Accepted, UX-07 재확인)**: 컴포넌트가 이미 분리되어 있고 실제 오해 사례가 보고된 적 없어 낮은 우선순위 유지
+- `app/dashboard/automation-safety/page.tsx:28` — `publish_guards: "게시 가드"` 매핑은 되어 있으나 페이지 성격상 낮은 우선순위 — **의도적 유지(Accepted)**
+- `/dashboard`의 "상세 관리" 접힘 안 pipeline log type이 영문 그대로 — **의도적 유지(Accepted)**: 접힘 상태라 기본 노출 없음, 관리자/디버깅 목적 로그라 영향 적음
+- 표현/문구 다듬기 다수 — UX-07에서 `/articles` 상태 라벨 raw enum 제거 1건을 일괄 처리, 나머지는 개별 이슈로 보고된 것이 없어 추가 항목화하지 않음
 
 ---
 
@@ -103,32 +129,33 @@
 | Route | 핵심 문제 | Severity |
 |---|---|---|
 | `/` | 없음 (즉시 redirect) | - |
-| `/dashboard` | 이미 모범 사례에 가까움. 상세 관리 안 로그 타입 영문 | Low |
-| `/themes/[themeId]` | env var 노출, PlatformBadge 중복 구현 | High |
+| `/dashboard` | 이미 모범 사례. UX-03C에서 재확인(현재 상태/다음 작업/진행 중/완료 판단 로직 단일, raw 노출 없음) — 변경 불필요로 결론 | Low |
+| `/themes/[themeId]` | ✅ env var 노출/PlatformBadge 중복 구현 해결 (UX-03C) | 해결됨 |
 | `/articles` | 상태 라벨에 raw enum 병기 | Medium |
-| `/articles/[id]` | env var 대량 노출, "테스트"인데 실공개게시, 섹션명 중복, provider select 미접힘 | **Critical** |
-| `/articles/[id]/blog` | WordPress 패널 raw 상태 대량 노출, article.status 미번역, 필터 영문 용어 | **Critical** |
+| `/articles/[id]` | ✅ Critical 항목 해결(UX-02A). UX-03C에서 기본 화면을 현재 상태/다음 작업(WordPress 블로그 글 관리)/보조(SNS 글 관리)로 재구성, 관리자 기능은 `AdvancedDetails` 성격의 접힘으로 유지(내부 세부 재구조화는 보류, H5 참고) | 부분 해결 |
+| `/articles/[id]/blog` | ✅ 해결 (UX-02B) | 해결됨 |
 | `/articles/[id]/social` | 대체로 양호(governance rule 반영됨), 레거시 필드 중복 표시 | Medium |
-| `/articles/[id]/rewrite` | "승인" 용어 3종 혼동, 카드 단위 조사 공백 | High |
+| `/articles/[id]/rewrite` | ✅ "승인" 용어 3종 혼동 해결(UX-03B2) + 카드 단위 전수 감사 완료(UX-03C — primary action 반복 표시 버그 발견/수정, raw platform 노출 수정, 내부 상태값 접힘을 `AdvancedDetails`로 통일) | 해결됨 |
 | `/articles/[id]/performance` | 상단 disclaimer 과다 | Low |
 | `/social-posts/[id]` | 탭 구조로 Level 분리 모범 사례, raw 탭 URL 직접 접근 가능, disabled 사유 미표시 가능성 | Medium |
-| `/dashboard/platform-api`, `/dashboard/automation-safety` | 관리자 화면 성격 명확하나 일반 동선 노출 여부 확인 필요, 버튼 4개→기능 1개 중복 | Medium |
-| `/dashboard/blog` | 필터 옵션 raw enum, 나머지는 라벨 변환 양호 | High(필터만) |
+| `/dashboard/platform-api`, `/dashboard/automation-safety` | ✅ 버튼 4개→기능 1개 중복 해결 (UX-04B). 관리자 화면 성격 명확하나 일반 동선 노출 여부 확인은 미해결 | 부분 해결 |
+| `/dashboard/blog` | ✅ UX-03C에서 재확인 — 필터/테이블 모두 이미 라벨 변환됨, primary action 중복 없음(추가 조치 불필요로 결론) | 해결 확인 |
 | `/dashboard/content` | 문제 없음 | Low |
-| `/dashboard/rewrite`, `/dashboard/social-performance` | 유사 패턴 추정, 다음 Phase 재확인 | 추정 Medium |
-| `/trends` | PlatformBadge 중복 구현 | Medium |
+| `/dashboard/rewrite` | ✅ 해결 (UX-03C) — 테이블 헤더/필터가 새 rewrite 용어와 일치하도록 정리, `rewrite_reapproval_status` 필드 라벨을 공용 helper에서 직접 수정 | 해결됨 |
+| `/dashboard/social-performance` | ✅ 해결 (UX-03C) — 페이지 자체는 문제 없었으나, 렌더링에 쓰는 `dashboard-filter-controls`/`low-performance-chart`/`tone-performance-chart`에서 raw status/enum 노출 다수 발견해 수정 | 해결됨 |
+| `/trends` | ✅ PlatformBadge 중복 구현/Mock 모드 영문 배지 해결 (UX-03C) | 해결됨 |
 
 ## 8. 카드별 문제 요약
 
 | 카드 유형 | 핵심 문제 | Severity |
 |---|---|---|
-| WordPress 블로그 | `WordPressPublishingPanel` raw 상태/ID 대량 상시노출, article.status 미번역, 액션 소스 3곳 이상 | **Critical** |
+| WordPress 블로그 | ✅ 해결 (UX-02B) | 해결됨 |
 | 네이버 블로그 | WordPress 패널 없어 상대적으로 양호, "다음 작업"이 export로만 제한적 | Medium |
 | 네이버 카페/Threads/Instagram | Level 분리 양호(governance rule 반영), 버튼 개수는 많으나 위계 명확 | Low~Medium |
-| X | 본문 수정 시 상세 페이지 이동 필요 (다른 플랫폼과 불일치) | High |
+| X | ✅ 해결 (UX-03B2) — 본문 수정이 이제 다른 플랫폼과 동일하게 카드 안에서 열림 | 해결됨 |
 | 언론기사/해설기사/칼럼 | naver_blog와 동일 구조 공유, export 버튼 동작 불명확 | Medium |
 | 기사 목록 카드(`/articles`) | 상태 라벨에 raw enum 병기 | Medium |
-| rewrite 카드 | 조사 공백 — 다음 Phase 확인 필요 | 미정 |
+| rewrite 카드(개선 제안/재작성 버전) | ✅ 해결 (UX-03C) — 카드별 전수 감사 완료: primary action 1개 확인, "개선안 선택" 버튼에 disabled 로직이 아예 없던 버그(반복 표시 위험) 발견/수정, 대상 원본 글 select의 raw platform key 노출 수정, dead-end 없음 확인, 내부 상태값 접힘을 `AdvancedDetails`로 통일 | 해결됨 |
 
 ---
 
@@ -158,28 +185,46 @@
 
 전체 분류표는 `docs/ux/user-journey-audit.md` 참고. 핵심 요약:
 - 이미 자동화됨(참고용): 안전한 리뷰 이슈 자동 수정, 자동 수정 후 재검토, fixability 판정 (`lib/social/post-auto-fix-service.ts`, `review-issue-fixability.ts`)
-- 자동화 가능하나 미구현: status 한국어 변환의 전면 적용(헬퍼는 있으나 일부 화면 미적용), markdown/HTML 잔여물 정리 서비스, PlatformBadge 라벨 통합
+- 자동화 가능하나 미구현: status 한국어 변환의 전면 적용(헬퍼는 있으나 일부 화면 미적용)
+- ✅ 해결 (UX-05A) — ~~markdown/HTML 잔여물 정리 서비스~~. x/threads/instagram에 `platform_markup_residue` 검사 + 자동 정리기 신설(`lib/social/plain-text-markup-residue-sanitizer.ts`)
+- ✅ 해결 (UX-03C) — ~~PlatformBadge 라벨 통합~~
 - 사용자 판단 필요(자동화 부적절): SEO provider 선택, WordPress Draft 생성 실행, 실제 공개 게시
+
+> **업데이트 (2026-09-18, Phase UX-04A)**: "AI가 자동 처리할 수 있는
+> 문제(auto_fixable)는 사용자 화면에서 숨기고, 사람 판단이 필요한
+> 것만 보여준다"는 원칙을 3개 핵심 route(`/articles/[id]/social`,
+> `/social-posts/[id]`, `/articles/[id]/blog`)에 실제로 적용했다.
+> 자세한 내용은 [`docs/ux/ux-04a-human-review-simplification.md`](./ux-04a-human-review-simplification.md) 참고.
 
 ## 12. 공통 컴포넌트 후보 (요약)
 
-| 후보 | 분류 |
-|---|---|
-| JobProgressCard | 그대로 재사용 가능 (이미 모범 구현) |
-| CopyPostBodyButton | 그대로 재사용 가능 |
-| RelatedLinks (`RelatedPostLinks`) | 그대로 재사용 가능 |
-| tone label helper | 그대로 재사용 가능 |
-| status label helper | 그대로 재사용 가능하나 적용 범위 확대 필요 |
-| UnifiedPostBodyViewer | 약간 수정하면 공통화 가능 (`SocialPostBodyPanel` 기반 확장) |
-| NextActionPanel | 약간 수정하면 공통화 가능 (3개 유사 로직 인터페이스 통일) |
-| FinalApprovalPanel | 약간 수정하면 공통화 가능 |
-| PlatformPublishPreview | 약간 수정하면 공통화 가능 |
-| InlinePostBodyEditor | 중복 구현되어 있음 |
-| WordPressPublishPrepCard | 중복 구현되어 있음 (패널 안에 또 패널) |
-| AutoReviewSummaryCard | 중복 구현되어 있음 |
-| AdvancedDetails | 새 공통 컴포넌트 필요 |
-| HumanReviewPanel | 새 공통 컴포넌트 필요 |
-| WorkflowStatusCard | 새 공통 컴포넌트 필요 (부분적으로 `/dashboard`에 유사 구현 있음, 추출 필요) |
+> **업데이트 (2026-09-18, Phase UX-03A)**: AdvancedDetails/AutoReviewSummaryCard/
+> InlinePostBodyEditor/HumanReviewPanel을 신설·적용했다. 자세한 내용은
+> [`docs/ux/ux-03a-common-ux-foundation.md`](./ux-03a-common-ux-foundation.md) 참고.
+>
+> **업데이트 (2026-09-18, Phase UX-03B1)**: NextActionPanel/WorkflowStatusCard도
+> 신설·구현하고 우선순위 1 화면 3곳(blog/social 카드, social-posts 상세)에
+> 적용했다. 자세한 내용은
+> [`docs/ux/ux-03b1-workflow-next-action.md`](./ux-03b1-workflow-next-action.md) 참고.
+> 우선순위 2 화면(`/articles/[id]`, `/dashboard/blog`, `/dashboard`)은 UX-03B2로 남았다.
+
+| 후보 | 분류 | 상태 |
+|---|---|---|
+| JobProgressCard | 그대로 재사용 가능 (이미 모범 구현) | 변경 없음 |
+| CopyPostBodyButton | 그대로 재사용 가능 | 변경 없음 |
+| RelatedLinks (`RelatedPostLinks`) | 그대로 재사용 가능 | 변경 없음 |
+| tone label helper | 그대로 재사용 가능 | 변경 없음 |
+| status label helper | 그대로 재사용 가능하나 적용 범위 확대 필요 | 변경 없음(semantic audit으로 기존 매핑 검증 완료) |
+| UnifiedPostBodyViewer | 약간 수정하면 공통화 가능 (`SocialPostBodyPanel` 기반 확장) | 미착수 |
+| NextActionPanel | 약간 수정하면 공통화 가능 (3개 유사 로직 인터페이스 통일) | ✅ 구현 완료(`components/workflow/next-action-panel.tsx` + `lib/ui/next-action-view-model.ts`), blog/social 카드·social-posts 상세 적용. `/articles/[id]` 등 우선순위 2는 UX-03B2 |
+| FinalApprovalPanel | 약간 수정하면 공통화 가능 | 미착수 |
+| PlatformPublishPreview | 약간 수정하면 공통화 가능 | 미착수 |
+| InlinePostBodyEditor | 중복 구현되어 있음 | ✅ 구현 완료(`components/social/inline-post-body-editor.tsx`), `SocialPostBodyPanel`이 내부에서 재사용. `/social-posts/[id]` 다중 필드 편집 탭은 범위 밖(다른 성격) |
+| WordPressPublishPrepCard | 중복 구현되어 있음 (패널 안에 또 패널) | ✅ 부분 해결(UX-02B에서 패널 자체 단순화, UX-03A에서 헤딩 중복 이미 제거됨 — 구조 완전 통합은 UX-03) |
+| AutoReviewSummaryCard | 중복 구현되어 있음 | ✅ 구현 완료(`components/review/auto-review-summary-card.tsx`), `social/page.tsx` + `social-posts/[id]/page.tsx`에 적용 |
+| AdvancedDetails | 새 공통 컴포넌트 필요 | ✅ 구현 완료(`components/common/advanced-details.tsx`), 4곳 적용 |
+| HumanReviewPanel | 새 공통 컴포넌트 필요 | ✅ 구현 완료(`components/review/human-review-panel.tsx`), `social-posts/[id]` 최종 승인 패널에 적용 |
+| WorkflowStatusCard | 새 공통 컴포넌트 필요 (부분적으로 `/dashboard`에 유사 구현 있음, 추출 필요) | ✅ 구현 완료(`components/workflow/workflow-status-card.tsx` + `lib/ui/workflow-status-view-model.ts`), blog/social 카드 적용. `/dashboard`는 기존 패턴이 이미 좋아 UX-03B2에서 신중히 검토 |
 
 ## 13. 우선순위 개선안 (요약, 상세는 roadmap 문서)
 

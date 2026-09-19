@@ -67,3 +67,15 @@ describe("raw JSON/API 응답 미노출 (Phase 3-27)", () => {
     expect(pageSource).not.toContain("rawContent");
   });
 });
+
+describe("themes/[themeId] 페이지 — PlatformBadge 공통화 + env var 노출 제거 (Phase UX-03C)", () => {
+  it("페이지 자체 PlatformBadge를 다시 구현하지 않고 공통 컴포넌트를 쓴다", () => {
+    expect(pageSource).toContain('from "@/components/common/platform-badge"');
+    expect(pageSource).not.toContain("function PlatformBadge(");
+  });
+
+  it("Mock 모드 안내 문구에 env 변수 이름(ARTICLE_SEARCH_ENABLED)을 그대로 노출하지 않는다", () => {
+    expect(pageSource).not.toContain("ARTICLE_SEARCH_ENABLED=false");
+    expect(pageSource).toContain("테스트 데이터 모드");
+  });
+});

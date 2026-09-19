@@ -49,4 +49,18 @@ describe("buildArticleSocialPageData", () => {
 
     expect(posts.map((p) => p.id)).toEqual(["p1"]);
   });
+
+  it("Phase UX-04B: allPosts는 pagination과 무관하게 필터링된 전체 목록을 반환한다(요약 카드가 전체 개수를 계산할 수 있게)", async () => {
+    listSocialPostsByArticle.mockResolvedValue([
+      makePost({ id: "p1", platform: "x" }),
+      makePost({ id: "p2", platform: "threads" }),
+      makePost({ id: "p3", platform: "instagram" }),
+      makePost({ id: "p4", platform: "wordpress_blog" }),
+    ]);
+
+    const { posts, allPosts } = await buildArticleSocialPageData("article-1", { perPage: 1 });
+
+    expect(posts).toHaveLength(1);
+    expect(allPosts.map((p) => p.id).sort()).toEqual(["p1", "p2", "p3"]);
+  });
 });

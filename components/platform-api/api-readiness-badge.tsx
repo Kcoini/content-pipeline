@@ -4,12 +4,18 @@
 
 import type { PlatformApiReadinessStatus } from "@/lib/social/platform-api-readiness-checker";
 
+// Phase UX-04B: "Dry-run 준비됨"/"향후 테스트 준비됨"은 기술 용어(dry-run,
+// test)를 그대로 쓰고 있었다. 실제 의미는 코드(platform-api-readiness-checker.ts)
+// 기준으로 다음과 같다 — dry_run_ready: 설정은 됐지만 실제 게시 호출 없이
+// "연결 확인"만 되는 상태. ready_for_future_test: 설정/플래그는 모두
+// 충족됐지만 실제 API 호출 코드 자체가 아직 구현되어 있지 않은 상태(둘 다
+// 실제 게시로 이어지지 않는다는 점은 동일하다).
 const STATUS_LABELS: Record<PlatformApiReadinessStatus, string> = {
   not_supported: "미지원",
   disabled: "비활성화됨",
   missing_config: "설정 누락",
-  dry_run_ready: "Dry-run 준비됨",
-  ready_for_future_test: "향후 테스트 준비됨",
+  dry_run_ready: "연결 확인 가능",
+  ready_for_future_test: "실제 게시 기능 준비 중",
   blocked: "차단됨",
 };
 

@@ -20,7 +20,7 @@ vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
 }));
 
-const { requestApproval, approveSocialPost, rejectSocialPost, revokeApproval } = await import(
+const { requestApproval, approveSocialPost, rejectSocialPost, revokeApproval, bulkApproveSocialPosts } = await import(
   "./social-post-approval-service"
 );
 
@@ -230,6 +230,74 @@ describe("revokeApproval", () => {
 
     expect(result.success).toBe(false);
     expect(revokeSocialPostApprovalInRepository).not.toHaveBeenCalled();
+  });
+});
+
+describe("bulkApproveSocialPosts (Phase UX-04B)", () => {
+  it("모든 post가 승인 가능하면 전부 승인하고 successCount를 반환한다", async () => {
+    getSocialPostById.mockImplementation((id: string) => Promise.resolve(makeSocialPost({ id })));
+    approveSocialPostInRepository.mockImplementation((id: string) =>
+      Promise.resolve(makeSocialPost({ id, approvalStatus: "approved" }))
+    );
+
+    const result = await bulkApproveSocialPosts(["a", "b", "c"], "editor");
+
+    expect(result.successCount).toBe(3);
+    expect(result.failureCount).toBe(0);
+    expect(result.approvedSocialPosts.map((p) => p.id)).toEqual(["a", "b", "c"]);
+    expect(approveSocialPostInRepository).toHaveBeenCalledTimes(3);
+  });
+
+  it("기존 승인 guard(checkApprovable)를 각 post에 그대로 적용한다 — 이미 승인된 post는 실패로 남는다", async () => {
+    getSocialPostById.mockImplementation((id: string) =>
+      Promise.resolve(makeSocialPost({ id, approvalStatus: id === "already-approved" ? "approved" : "not_requested" }))
+    );
+    approveSocialPostInRepository.mockImplementation((id: string) =>
+      Promise.resolve(makeSocialPost({ id, approvalStatus: "approved" }))
+    );
+
+    const result = await bulkApproveSocialPosts(["ok", "already-approved"], "editor");
+
+    expect(result.successCount).toBe(1);
+    expect(result.failureCount).toBe(1);
+    expect(result.failures[0]).toEqual({ socialPostId: "already-approved", message: "이미 승인된 social post입니다." });
+    // 이미 승인된 post에는 repository의 approveSocialPost가 호출되지 않는다(guard가 먼저 막는다).
+    expect(approveSocialPostInRepository).toHaveBeenCalledTimes(1);
+  });
+
+  it("부분 실패를 지원한다 — 일부 실패해도 나머지는 계속 승인을 진행한다", async () => {
+    getSocialPostById.mockImplementation((id: string) =>
+      Promise.resolve(makeSocialPost({ id, qualityStatus: id === "blocked-post" ? "blocked" : "ready" }))
+    );
+    approveSocialPostInRepository.mockImplementation((id: string) =>
+      Promise.resolve(makeSocialPost({ id, approvalStatus: "approved" }))
+    );
+
+    const result = await bulkApproveSocialPosts(["a", "blocked-post", "b"], "editor");
+
+    expect(result.successCount).toBe(2);
+    expect(result.failureCount).toBe(1);
+    expect(result.failures[0].socialPostId).toBe("blocked-post");
+  });
+
+  it("외부 게시 관련 함수를 호출하지 않는다(approval_status만 바꾼다)", async () => {
+    getSocialPostById.mockImplementation((id: string) => Promise.resolve(makeSocialPost({ id })));
+    approveSocialPostInRepository.mockImplementation((id: string) =>
+      Promise.resolve(makeSocialPost({ id, approvalStatus: "approved" }))
+    );
+
+    await bulkApproveSocialPosts(["a"], "editor");
+
+    // repository의 approveSocialPost만 호출되고, export/publish 관련 mock은 이 테스트 파일에 아예 존재하지 않는다
+    // (import된 적이 없으므로 호출될 수도 없다) — 이 사실 자체가 게시 로직을 부르지 않는다는 근거다.
+    expect(approveSocialPostInRepository).toHaveBeenCalledWith("a", "editor", null);
+  });
+
+  it("빈 목록을 받으면 아무것도 승인하지 않고 0/0을 반환한다", async () => {
+    const result = await bulkApproveSocialPosts([], "editor");
+    expect(result.successCount).toBe(0);
+    expect(result.failureCount).toBe(0);
+    expect(getSocialPostById).not.toHaveBeenCalled();
   });
 });
 

@@ -13,6 +13,7 @@
 
 import type { ReactNode } from "react";
 import { describeStatusValue } from "@/lib/social/status-labels";
+import { AdvancedDetails } from "@/components/common/advanced-details";
 
 export type WordPressPublishingTargetType = "article" | "wordpress_blog";
 
@@ -152,9 +153,8 @@ export function WordPressPublishingPanel({
 
       {children}
 
-      <details className="mt-2">
-        <summary className={`cursor-pointer text-[10px] ${subTextClass}`}>상세 상태 보기</summary>
-        <dl className={`mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] sm:grid-cols-2 ${labelClass}`}>
+      <AdvancedDetails>
+        <dl className={`grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] sm:grid-cols-2 ${labelClass}`}>
           <div>
             <dt className="font-medium">WordPress Post/Draft ID</dt>
             <dd>
@@ -229,7 +229,7 @@ export function WordPressPublishingPanel({
             </div>
           )}
         </dl>
-      </details>
+      </AdvancedDetails>
     </div>
   );
 }

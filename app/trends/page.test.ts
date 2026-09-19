@@ -331,3 +331,18 @@ describe("trends 페이지 - existing_theme_update 후보가 '✓ 테마로 저�
     expect(pageSource).toContain("새 하위 주제로 저장하시겠습니까?");
   });
 });
+
+describe("trends 페이지 — PlatformBadge 공통화 (Phase UX-03C)", () => {
+  it("페이지 자체 PlatformBadge를 다시 구현하지 않고 공통 컴포넌트를 쓴다", () => {
+    expect(pageSource).toContain('from "@/components/common/platform-badge"');
+    expect(pageSource).not.toContain("function PlatformBadge(");
+    expect(pageSource).not.toContain("colorMap");
+  });
+
+  it("모드 배지가 영문 'Mock 모드'가 아니라 한국어로 표시된다", () => {
+    expect(pageSource).not.toContain("Mock 모드");
+    expect(pageSource).not.toContain('"Real API 모드"');
+    expect(pageSource).toContain("테스트 데이터 모드");
+    expect(pageSource).toContain("실제 API 연동 모드");
+  });
+});

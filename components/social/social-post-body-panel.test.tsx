@@ -147,25 +147,16 @@ describe("SocialPostBodyPanel 정적 소스 검사", () => {
     expect(componentSource).toContain("useState");
   });
 
-  it("편집 모드에서는 textarea와 저장 후 승인/저장 후 자동 검토/저장만 하기/취소 버튼을 보여준다", () => {
-    expect(componentSource).toContain("<textarea");
-    expect(componentSource).toContain("저장 후 승인");
-    expect(componentSource).toContain("저장 후 자동 검토");
-    expect(componentSource).toContain("저장만 하기");
-    expect(componentSource).toContain("취소");
-  });
-
-  it("저장 버튼들은 하나의 form과 saveAction을 공유하고, saveMode만 버튼별로 다르다(name=saveMode)", () => {
-    expect(componentSource).toContain('<form action={saveAction}>');
-    expect((componentSource.match(/name="saveMode"/g) ?? []).length).toBe(3);
-    expect(componentSource).toContain('value="save_review_and_approve"');
-    expect(componentSource).toContain('value="save_and_review"');
-    expect(componentSource).toContain('value="save_only"');
-  });
-
-  it("textarea 초기값은 displayBody 전체다(줄바꿈 유지 스타일 포함)", () => {
-    expect(componentSource).toContain("defaultValue={displayBody}");
-    expect(componentSource).toContain("whiteSpace: \"pre-wrap\"");
+  it("Phase UX-03A: 편집 모드 UI는 공통 InlinePostBodyEditor를 재사용한다(중복 구현 대신)", () => {
+    expect(componentSource).toContain('from "./inline-post-body-editor"');
+    expect(componentSource).toContain("<InlinePostBodyEditor");
+    expect(componentSource).toContain("value={displayBody}");
+    expect(componentSource).toContain("title={`${bodyLabel} 수정`}");
+    expect(componentSource).toContain("saveAction={saveAction}");
+    expect(componentSource).toContain("onCancel={cancelEditor}");
+    // 편집 모드 UI 자체(textarea/저장 버튼 3종/취소)의 상세 검사는
+    // inline-post-body-editor.test.tsx가 담당한다 — 여기서는 이
+    // 컴포넌트가 그 공통 컴포넌트를 실제로 쓰는지만 확인한다.
   });
 
   it("취소를 누르면 편집 모드가 꺼지고, 열기/취소 이벤트를 로그로 남긴다(사용자 흐름을 막지 않는 fire-and-forget)", () => {
@@ -228,5 +219,62 @@ describe("Phase 4-27: 본문 관련 버튼([본문 복사]/[전체 보기]·[본
     expect(copyIdx).toBeGreaterThan(-1);
     expect(copyIdx).toBeLessThan(expandIdx);
     expect(expandIdx).toBeLessThan(editIdx);
+  });
+});
+
+describe("SocialPostBodyPanel thread 모드 (Phase UX-03B2: X 등 배열 기반 콘텐츠)", () => {
+  const threadItems = [
+    { order: 1, text: "첫 번째 트윗" },
+    { order: 2, text: "두 번째 트윗" },
+  ];
+
+  it("threadItems+saveThreadAction이 있으면 editable=false여도 [본문 수정] 버튼이 보인다(X도 다른 플랫폼과 동일하게 inline 편집 가능)", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/social"
+        displayBody="첫 번째 트윗 두 번째 트윗"
+        editable={false}
+        saveAction={noopAction}
+        threadItems={threadItems}
+        saveThreadAction={noopAction}
+      />
+    );
+    expect(html).toContain("본문 수정");
+  });
+
+  it("threadItems/saveThreadAction 중 하나만 있으면 thread 모드로 취급하지 않는다(둘 다 있어야 함)", () => {
+    const html = renderToStaticMarkup(
+      <SocialPostBodyPanel
+        articleId="article-1"
+        socialPostId="post-1"
+        returnTo="/articles/article-1/social"
+        displayBody="본문"
+        editable={false}
+        saveAction={noopAction}
+        threadItems={threadItems}
+      />
+    );
+    expect(html).not.toContain("본문 수정");
+  });
+
+  it("정적 소스 검사: isThreadMode/copyText/effectiveEditable 계산 로직이 있다", () => {
+    expect(componentSource).toContain(
+      "const isThreadMode = threadItems !== undefined && saveThreadAction !== undefined;"
+    );
+    expect(componentSource).toContain("const effectiveEditable = isThreadMode ? true : editable;");
+    expect(componentSource).toContain("formatThreadItemsForCopy(threadItems)");
+    expect(componentSource).toContain('from "@/lib/social/thread-item-formatter"');
+  });
+
+  it("정적 소스 검사: 편집 모드에서 thread면 InlinePostBodyEditor를 mode=\"thread\"로, order 순서대로 정렬해서 연다", () => {
+    const start = componentSource.indexOf("if (editing && isThreadMode");
+    const end = componentSource.indexOf("if (editing) {", start);
+    const block = componentSource.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(block).toContain('mode="thread"');
+    expect(block).toContain("saveAction={saveThreadAction}");
+    expect(block).toContain(".sort((a, b) => a.order - b.order)");
   });
 });

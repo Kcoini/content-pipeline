@@ -36,6 +36,11 @@ const IMPLEMENTED_AUTO_FIXERS = new Set<string>([
   "no_internal_section_headings",
   "naver_cafe_no_markdown_heading",
   "naver_cafe_no_markdown_escape",
+  // Phase UX-05A: x/threads/instagram의 markdown/HTML 잔여물도
+  // lib/social/plain-text-markup-residue-sanitizer.ts(post-auto-fix-service.ts에서
+  // 자동 실행)로 실제 정리된다 — naver_cafe와 같은 성격(mechanical
+  // formatting cleanup)의 결정론적 변환이라 canAutoFix=true로 둔다.
+  "platform_markup_residue",
 ]);
 
 /**
@@ -54,6 +59,7 @@ const AUTO_FIXABLE_KEYS = new Set<string>([
   "wordpress_blog_non_generic_opening",
   "news_article_lead_present",
   "naver_blog_keyword_repetition",
+  "platform_markup_residue",
 ]);
 
 /**

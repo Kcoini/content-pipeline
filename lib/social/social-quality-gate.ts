@@ -160,6 +160,56 @@ const WORDPRESS_BLOG_TABLE_PATTERN = /\|[^\n]*\|[ \t]*\r?\n[ \t]*\|[\s:-]+\|/;
 
 const X_MAX_ITEM_LENGTH = 280;
 
+// Phase UX-05A: x/threads/instagram도 naver_cafe와 같은 이유로 AI가
+// markdown 습관(escape된 `\#`/`\*\*`, HTML entity, 실제 `##` 소제목,
+// `**굵게**`, 원본 HTML 태그)을 남길 수 있는데, UX-04B 조사 결과 이
+// 세 플랫폼에는 그런 잔여물을 감지하는 검사가 전혀 없었다(naver_cafe만
+// 있었음). escape/HTML entity 패턴은 naver_cafe와 동일한 것을
+// 재사용한다(NAVER_CAFE_MARKDOWN_ESCAPE_PATTERN — 이름은 cafe 전용처럼
+// 보이지만 패턴 자체는 플랫폼 무관하게 일반적인 markdown escape/HTML
+// entity 형태다). 실제 정리는
+// lib/social/plain-text-markup-residue-sanitizer.ts(post-auto-fix-service.ts
+// 에서 자동 실행)가 담당한다.
+/** 순수(escape 안 된) markdown bold(**텍스트**) 마커. */
+const MARKUP_RESIDUE_BOLD_PATTERN = /\*\*[^*\n]+\*\*/;
+/** 흔한 원본 HTML 태그(div/p/span/br/h1-6/ul/ol/li/strong/em/b/i/a) 잔여물. */
+const MARKUP_RESIDUE_HTML_TAG_PATTERN = /<\/?(?:div|p|span|br|h[1-6]|ul|ol|li|strong|em|b|i|a)\b[^>]*>/i;
+
+/**
+ * threadItems/cardItems/caption을 줄바꿈을 보존한 채로 이어붙인다 —
+ * collectTextForPatternCheck는 필드를 공백으로 합쳐 줄바꿈이 사라지므로
+ * (line 앵커가 필요한 heading 패턴에 쓸 수 없다), 이 검사 전용으로
+ * 별도 수집 함수를 둔다(naver_cafe_no_markdown_heading과 동일한 이유).
+ */
+function collectRawTextWithLineBreaksForMarkupCheck(input: SocialPostQualityGateInput): string {
+  const threadText = (input.threadItems ?? []).map((item) => item.text).join("\n");
+  const cardText = (input.cardItems ?? []).map((item) => `${item.heading}\n${item.body}`).join("\n");
+  return [input.postBody, input.caption, threadText, cardText].filter(Boolean).join("\n");
+}
+
+/** markdown/HTML 잔여물이 있는지 확인한다(escape된 마커/HTML entity, 순수 heading/bold 마커, 원본 HTML 태그). */
+function detectPlainTextMarkupResidue(rawText: string): boolean {
+  return (
+    NAVER_CAFE_MARKDOWN_ESCAPE_PATTERN.test(rawText) ||
+    MARKDOWN_HEADING_PATTERN.test(rawText) ||
+    MARKUP_RESIDUE_BOLD_PATTERN.test(rawText) ||
+    MARKUP_RESIDUE_HTML_TAG_PATTERN.test(rawText)
+  );
+}
+
+/** x/threads/instagram 공용 checklist 항목 — key를 플랫폼별로 나누지 않는다(no_internal_section_headings와 동일한 공용 key 관례). */
+function markupResiduePlatformCheck(input: SocialPostQualityGateInput): SocialPostQualityChecklistItem {
+  const found = detectPlainTextMarkupResidue(collectRawTextWithLineBreaksForMarkupCheck(input));
+  return checklistItem(
+    "platform_markup_residue",
+    "markdown/HTML 잔여물 없음",
+    found ? "fail" : "pass",
+    found
+      ? "본문에 markdown 마커(##, **) 또는 HTML 태그/entity 잔여물이 남아 있습니다 — plain text로 정리해야 합니다."
+      : "markdown/HTML 잔여물이 없습니다."
+  );
+}
+
 /** 85 이상이면 ready, 그 미만이면(blocked가 아닌 한) needs_revision. */
 const READY_SCORE_THRESHOLD = 85;
 
@@ -777,18 +827,22 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
         );
 
         // naver_cafe는 plain text 커뮤니티 글이어야 한다 — AI가 실수로
-        // 남긴 escape된 markdown(\##, \*\*, &#x20; 등)이 있으면 카페에
-        // 그대로 붙여넣었을 때 이상하게 보인다. sanitizeNaverCafePlainText로
-        // 저장/표시 시 정리되지만, 정리되지 않은 원본이 quality gate에
-        // 들어온 경우를 대비해 여기서도 명확히 차단한다.
-        const markdownEscapeFound = NAVER_CAFE_MARKDOWN_ESCAPE_PATTERN.test(text);
+        // 남긴 escape된 markdown(\##, \*\*, &#x20; 등)이나 escape 안 된
+        // **굵게** 표시가 있으면 카페에 그대로 붙여넣었을 때 이상하게
+        // 보인다. sanitizeNaverCafePlainText로 저장/표시 시 정리되지만,
+        // 정리되지 않은 원본이 quality gate에 들어온 경우를 대비해
+        // 여기서도 명확히 차단한다. Phase UX-05B: escape된 문자만 보고
+        // 있어 unescaped **bold**(x/threads/instagram의
+        // platform_markup_residue 검사에서 이미 쓰는
+        // MARKUP_RESIDUE_BOLD_PATTERN)를 놓치던 비대칭을 해소했다.
+        const markdownEscapeFound = NAVER_CAFE_MARKDOWN_ESCAPE_PATTERN.test(text) || MARKUP_RESIDUE_BOLD_PATTERN.test(text);
         checklist.push(
           checklistItem(
             "naver_cafe_no_markdown_escape",
             "escape된 markdown/HTML entity 없음",
             markdownEscapeFound ? "fail" : "pass",
             markdownEscapeFound
-              ? "본문에 \\##, \\**, &#x20; 같은 markdown escape/HTML entity 잔여물이 남아 있습니다 — plain text로 정리해야 합니다."
+              ? "본문에 \\##, \\**, &#x20;, **굵게** 같은 markdown escape/HTML entity/서식 잔여물이 남아 있습니다 — plain text로 정리해야 합니다."
               : "markdown escape/HTML entity 잔여물이 없습니다."
           )
         );
@@ -862,6 +916,15 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
             )
           );
         }
+        checklist.push(markupResiduePlatformCheck(input));
+        break;
+      }
+
+      case "threads": {
+        // Phase UX-05A: threads는 이전까지 플랫폼 전용 검사가 하나도
+        // 없었다(default로 떨어짐) — markdown/HTML 잔여물 검사만이라도
+        // 우선 추가한다.
+        checklist.push(markupResiduePlatformCheck(input));
         break;
       }
 
@@ -887,6 +950,7 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
               : "card_items가 없습니다 (있으면 가산 요소)."
           )
         );
+        checklist.push(markupResiduePlatformCheck(input));
         break;
       }
 

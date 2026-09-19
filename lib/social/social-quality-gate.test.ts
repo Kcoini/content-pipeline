@@ -221,6 +221,21 @@ describe("runSocialPostQualityGate", () => {
     expect(item?.status).toBe("pass");
   });
 
+  it("naver_cafe: escape 안 된 **bold**가 남아 있으면 fail이다(Phase UX-05B — x/threads/instagram과 같은 기준으로 통일)", () => {
+    const result = runSocialPostQualityGate({
+      platform: "naver_cafe",
+      toneStyle: "informational",
+      postTitle: "질문 있어요",
+      postBody:
+        "이 부분은 **정말 중요합니다** 꼭 읽어주세요. " +
+        "회원분들 어떻게 생각하세요? 다들 경험 있으신가요? " +
+        "본문 내용입니다. ".repeat(30),
+    });
+
+    const item = result.checklist.find((c) => c.key === "naver_cafe_no_markdown_escape");
+    expect(item?.status).toBe("fail");
+  });
+
   it("naver_cafe: 본문에 localhost 링크가 있으면 blocked다", () => {
     const result = runSocialPostQualityGate({
       platform: "naver_cafe",
@@ -865,6 +880,97 @@ describe("runSocialPostQualityGate", () => {
       });
       const item = result.checklist.find((c) => c.key === "naver_cafe_no_markdown_heading");
       expect(item?.status).toBe("pass");
+    });
+  });
+
+  describe("platform_markup_residue — x/threads/instagram markdown/HTML 잔여물 감지 (Phase UX-05A)", () => {
+    it("X: thread item에 markdown heading(##)이 남아 있으면 fail이다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "x",
+        toneStyle: "informational",
+        threadItems: [{ order: 1, text: "## 오늘의 발표 내용을 정리했습니다" }],
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).toBe("fail");
+    });
+
+    it("Threads: 이전에는 platform 전용 검사가 전혀 없었지만 이제 markdown 잔여물을 감지한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "threads",
+        toneStyle: "informational",
+        postBody: "\\*\\*중요 발표\\*\\*가 있었습니다.",
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).toBe("fail");
+    });
+
+    it("Instagram: caption에 raw HTML 태그가 남아 있으면 fail이다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "instagram",
+        toneStyle: "story",
+        caption: "<p>오늘의 이야기입니다.</p>",
+        mediaRequirements: { requiresImage: true },
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).toBe("fail");
+    });
+
+    it("안전한(정상) 본문은 auto_fixable 분류를 받도록 fail 없이 pass다 — X 정상 스레드", () => {
+      const result = runSocialPostQualityGate({
+        platform: "x",
+        toneStyle: "informational",
+        threadItems: [
+          { order: 1, text: "오늘 발표된 내용을 정리했습니다." },
+          { order: 2, text: "핵심은 다음과 같습니다." },
+          { order: 3, text: "자세한 내용은 링크를 참고하세요." },
+        ],
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("정상적인 해시태그(#AI 등)는 heading으로 오탐하지 않는다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "threads",
+        toneStyle: "informational",
+        postBody: "오늘의 주제는 #AI #자동화 입니다. 다들 어떻게 생각하시나요?",
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("instagram의 정상 caption/card_items는 오탐하지 않는다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "instagram",
+        toneStyle: "story",
+        caption: "오늘의 카드뉴스입니다.",
+        cardItems: [{ order: 1, heading: "핵심 요약", body: "본문 내용입니다." }],
+        mediaRequirements: { requiresImage: true },
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("blocked가 아니라 fail이다(형식 문제이지 안전 문제가 아니므로 — naver_cafe_no_markdown_heading과 동일한 심각도 원칙)", () => {
+      const result = runSocialPostQualityGate({
+        platform: "x",
+        toneStyle: "informational",
+        threadItems: [{ order: 1, text: "## 문제 있는 제목" }],
+      });
+      const item = result.checklist.find((c) => c.key === "platform_markup_residue");
+      expect(item?.status).not.toBe("blocked");
+    });
+
+    it("naver_cafe의 기존 검사(naver_cafe_no_markdown_heading 등)는 그대로 유지된다(중복/충돌 없음)", () => {
+      const result = runSocialPostQualityGate({
+        platform: "naver_cafe",
+        toneStyle: "informational",
+        postTitle: "질문 있어요",
+        postBody: "## 잘못된 제목",
+      });
+      expect(result.checklist.find((c) => c.key === "naver_cafe_no_markdown_heading")?.status).toBe("fail");
+      // naver_cafe는 platform_markup_residue 검사 대상이 아니다(자체 검사를 그대로 쓴다).
+      expect(result.checklist.find((c) => c.key === "platform_markup_residue")).toBeUndefined();
     });
   });
 });
