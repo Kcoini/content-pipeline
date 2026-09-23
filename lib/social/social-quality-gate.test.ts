@@ -165,6 +165,22 @@ describe("runSocialPostQualityGate", () => {
     expect(item?.status).toBe("fail");
   });
 
+  it("OPS-01 Pilot C 회귀: item당 280자 이내인 정상 다중 item thread는 합산 길이 때문에 length_check가 잘못 걸리지 않는다", () => {
+    const result = runSocialPostQualityGate({
+      platform: "x",
+      toneStyle: "informational",
+      threadItems: [
+        { order: 1, text: "가".repeat(200) },
+        { order: 2, text: "나".repeat(200) },
+        { order: 3, text: "다".repeat(200) },
+      ],
+    });
+
+    expect(result.checklist.find((c) => c.key === "length_check")).toBeUndefined();
+    const itemLengthCheck = result.checklist.find((c) => c.key === "x_thread_item_length");
+    expect(itemLengthCheck?.status).toBe("pass");
+  });
+
   it("instagram에서 media_requirements.requiresImage가 명시되지 않으면 warning이다", () => {
     const result = runSocialPostQualityGate({
       platform: "instagram",
@@ -971,6 +987,57 @@ describe("runSocialPostQualityGate", () => {
       expect(result.checklist.find((c) => c.key === "naver_cafe_no_markdown_heading")?.status).toBe("fail");
       // naver_cafe는 platform_markup_residue 검사 대상이 아니다(자체 검사를 그대로 쓴다).
       expect(result.checklist.find((c) => c.key === "platform_markup_residue")).toBeUndefined();
+    });
+  });
+
+  describe("fact_grounding (OPS-02A) — 모든 플랫폼 공통", () => {
+    it("evidenceText가 없으면(하위 호환) 검사를 실행하지 않는다 — 기존 동작 유지", () => {
+      const result = runSocialPostQualityGate({
+        platform: "instagram",
+        toneStyle: "comparison",
+        caption: "업계 최고의 성능을 자랑합니다.",
+      });
+      expect(result.checklist.find((c) => c.key === "fact_grounding")).toBeUndefined();
+    });
+
+    it("OPS-01 Pilot C 재현: instagram에서 근거 없는 비교 수치가 있으면 warning(확인 필요)으로 잡는다 — 이전에는 검사 자체가 없어 놓쳤다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "instagram",
+        toneStyle: "comparison",
+        caption:
+          "배터리식 전기차는 1회 충전 항속거리 200~300km, 수소 연료전지차는 600~700km 주행이 가능합니다.",
+        hashtags: ["전기차"],
+        cardItems: [{ order: 1, heading: "요약", body: "충전 습관이 중요합니다." }],
+        mediaRequirements: { requiresImage: true },
+        evidenceText: "리튬이온 전지는 배터리식 전기차에 널리 쓰인다.",
+      });
+      const item = result.checklist.find((c) => c.key === "fact_grounding");
+      expect(item?.status).toBe("warning");
+      expect(item?.status).not.toBe("blocked");
+    });
+
+    it("근거가 있는 수치는 warning으로 잡지 않는다(false positive 방지) — wordpress_blog 포함 다른 플랫폼에도 동일 적용", () => {
+      const result = runSocialPostQualityGate({
+        platform: "wordpress_blog",
+        toneStyle: "informational",
+        postTitle: "기준금리 안내",
+        postBody: "## 개요\n한국은행 기준금리는 2.50%로 유지되고 있습니다.\n## 정리\n참고하세요.",
+        evidenceText: "한국은행 기준금리는 2026년 2월 기준 연 2.50%다.",
+      });
+      const item = result.checklist.find((c) => c.key === "fact_grounding");
+      expect(item?.status).toBe("pass");
+    });
+
+    it("raw checklist key(fact_grounding)를 그대로 노출하지 않고 자연어 메시지를 제공한다", () => {
+      const result = runSocialPostQualityGate({
+        platform: "x",
+        toneStyle: "curiosity",
+        threadItems: [{ order: 1, text: "세계 최대 규모입니다." }],
+        evidenceText: "이 프로젝트는 국내 최초로 시작되었다.",
+      });
+      const item = result.checklist.find((c) => c.key === "fact_grounding");
+      expect(item?.message).not.toContain("fact_grounding");
+      expect(item?.message).toMatch(/출처|확인/);
     });
   });
 });

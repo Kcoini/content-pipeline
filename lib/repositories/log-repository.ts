@@ -650,6 +650,37 @@ export async function getLogsByArticleId(articleId: string, limit = 20): Promise
   return (data ?? []).map(mapLogRow);
 }
 
+/**
+ * OPS-02B: 특정 event_name 목록 + 기간(옵션)으로 로그를 조회한다(비용
+ * 리포트용 — scripts/ops/report-ai-usage.ts). 기존 getLogs/
+ * getLogsByArticleId와 마찬가지로 pipeline_logs를 그대로 읽기만
+ * 한다(새 테이블/스키마 변경 없음).
+ */
+export async function getLogsByTypesAndRange(
+  eventTypes: readonly LogEventType[],
+  options: { since?: string; until?: string; limit?: number } = {}
+): Promise<PipelineLogEntry[]> {
+  const supabase = createServerSupabaseClient();
+
+  let query = supabase
+    .from("pipeline_logs")
+    .select()
+    .in("event_name", eventTypes as string[])
+    .order("created_at", { ascending: false })
+    .limit(options.limit ?? 5000);
+
+  if (options.since) query = query.gte("created_at", options.since);
+  if (options.until) query = query.lte("created_at", options.until);
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`파이프라인 로그 조회에 실패했습니다: ${error.message}`);
+  }
+
+  return (data ?? []).map(mapLogRow);
+}
+
 /** 계약 검사 결과를 contract_runs에 기록한다. */
 export async function recordContractCheck(
   input: RecordContractCheckInput

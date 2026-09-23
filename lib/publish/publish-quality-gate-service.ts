@@ -737,9 +737,12 @@ export async function runPublishQualityGate(articleId: string): Promise<RunPubli
           ? "publish_quality_gate_needs_revision"
           : "publish_quality_gate_completed";
 
+    // OPS-02B: gate가 예외 없이 끝까지 실행됐다면 status가 blocked여도
+    // "실행 자체는 성공"이다(QA-01-FIX1/social_quality_gate_blocked와 동일
+    // 원칙) — 실행 실패는 이 함수의 catch 블록에서 별도 이벤트로 남는다.
     await logGateEvent(
       eventType,
-      status === "blocked" ? "failed" : "success",
+      "success",
       `기사(${articleId})의 Publish Quality Gate가 완료되었습니다 (status: ${status}, score: ${score}).`,
       articleId,
       article,

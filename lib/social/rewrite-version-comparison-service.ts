@@ -128,9 +128,11 @@ export async function compareRewriteVersion(rewriteSocialPostId: string, compare
 
     await updateSocialPostVersionComparisonSummary(rewriteSocialPostId, comparison);
 
+    // OPS-02B: 비교 실행 자체는 성공했다 — comparisonStatus가 blocked여도
+    // "실행 실패"가 아니다(QA-01-FIX1과 동일 원칙).
     await logComparisonEvent(
       "social_rewrite_version_comparison_completed",
-      decision.comparisonStatus === "blocked" ? "failed" : "success",
+      "success",
       `social post(${rewriteSocialPostId})의 버전 비교가 완료되었습니다 (status: ${decision.comparisonStatus}).`,
       rewrite.articleId,
       {

@@ -62,6 +62,7 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     platformBrief: null,
     evidenceHighlights: [],
     verificationHighlights: [],
+    evidenceText: "",
     ...overrides,
   };
 }

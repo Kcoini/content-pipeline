@@ -250,4 +250,100 @@ describe("runAutoFixAndRecheck", () => {
       expect(savedBody).toContain("내용");
     });
   });
+
+  // OPS-02A 섹션 17-19: 통제된 fixture 3종을 review → auto_fix → re-review
+  // 전 구간에 통과시키고, 각각에서 "문제 실제 제거/의미 유지/새 사실
+  // 추가 없음/다른 문단 훼손 없음/재검토 통과"를 명시적으로 확인한다.
+  // 기존 코드가 실제로 하는 일(결정론적 sanitizer, 새 AI 재작성 없음)만
+  // 검증한다 — 이 fixture들이 새 auto-fixer를 요구하지 않는다.
+  describe("OPS-02A: auto_fix fixture 3종 전/후 비교(re-review 포함)", () => {
+    it("Fixture A(markdown residue, threads): 잔여물만 제거되고 실제 문장/사실은 그대로 남는다", async () => {
+      const original = "전기차 배터리는 **최대 500회** 충·방전이 가능합니다. 온도 관리가 핵심입니다.";
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "threads",
+          postBody: original,
+          qualitySummary: { checklist: [makeChecklistItem({ key: "platform_markup_residue" })] },
+        })
+      );
+      runSocialPostQualityGateAndSave.mockResolvedValue({
+        success: true,
+        message: "검토 완료",
+        socialPost: makePost({
+          platform: "threads",
+          postBody: "전기차 배터리는 최대 500회 충·방전이 가능합니다. 온도 관리가 핵심입니다.",
+          qualityStatus: "ready",
+          qualitySummary: { checklist: [makeChecklistItem({ key: "platform_markup_residue", status: "pass" })] },
+        }),
+      });
+
+      const result = await runAutoFixAndRecheck("post-1");
+      const savedBody = editSocialPostContent.mock.calls[0][1].postBody as string;
+
+      expect(savedBody).not.toContain("**"); // 문제 실제 제거
+      expect(savedBody).toContain("최대 500회 충·방전"); // 의미/사실 보존(수치 그대로)
+      expect(savedBody).toContain("온도 관리가 핵심입니다"); // 다른 문장 훼손 없음
+      expect(savedBody).toBe(original.replace(/\*\*/g, "")); // markdown 마커 제거 외에는 원문과 완전히 동일(새 사실 추가 없음)
+      expect(result.finalState).toBe("approvable"); // re-review 통과
+    });
+
+    it("Fixture B(내부 drafting heading, wordpress_blog): 소제목만 정리되고 본문 문단은 그대로 남는다", async () => {
+      const original = "## 리드문\n\n장기요양보험은 국민건강보험공단에서 접수합니다. 등급판정까지 약 30일이 걸립니다.";
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "wordpress_blog",
+          postBody: original,
+          qualitySummary: { checklist: [makeChecklistItem({ key: "no_internal_section_headings" })] },
+        })
+      );
+      runSocialPostQualityGateAndSave.mockResolvedValue({
+        success: true,
+        message: "검토 완료",
+        socialPost: makePost({
+          postBody: "## 신청 방법\n\n장기요양보험은 국민건강보험공단에서 접수합니다. 등급판정까지 약 30일이 걸립니다.",
+          qualityStatus: "ready",
+          qualitySummary: { checklist: [makeChecklistItem({ key: "no_internal_section_headings", status: "pass" })] },
+        }),
+      });
+
+      const result = await runAutoFixAndRecheck("post-1");
+      const savedBody = editSocialPostContent.mock.calls[0][1].postBody as string;
+
+      expect(savedBody).not.toContain("리드문"); // 내부 작성 구조명 제거
+      expect(savedBody).toContain("국민건강보험공단에서 접수"); // 사실 문장 보존
+      expect(savedBody).toContain("약 30일"); // 수치 보존(새로 바뀌지 않음)
+      expect(result.finalState).toBe("approvable"); // re-review 통과
+    });
+
+    it("Fixture C(naver_cafe markdown escape/HTML entity): plain text로만 정리되고 사실 내용은 그대로 남는다", async () => {
+      const original = "\\## 후기\n\n\\*\\*충전 습관\\*\\*&#x20;덕분에 배터리 수명이 길어졌어요. 다들 어떠세요?";
+      getSocialPostById.mockResolvedValue(
+        makePost({
+          platform: "naver_cafe",
+          postBody: original,
+          qualitySummary: { checklist: [makeChecklistItem({ key: "naver_cafe_no_markdown_escape" })] },
+        })
+      );
+      runSocialPostQualityGateAndSave.mockResolvedValue({
+        success: true,
+        message: "검토 완료",
+        socialPost: makePost({
+          platform: "naver_cafe",
+          postBody: "후기\n\n충전 습관 덕분에 배터리 수명이 길어졌어요. 다들 어떠세요?",
+          qualityStatus: "ready",
+          qualitySummary: { checklist: [makeChecklistItem({ key: "naver_cafe_no_markdown_escape", status: "pass" })] },
+        }),
+      });
+
+      const result = await runAutoFixAndRecheck("post-1");
+      const savedBody = editSocialPostContent.mock.calls[0][1].postBody as string;
+
+      expect(savedBody).not.toContain("\\##");
+      expect(savedBody).not.toContain("\\*\\*");
+      expect(savedBody).not.toContain("&#x20;");
+      expect(savedBody).toContain("충전 습관"); // 사실/표현 보존
+      expect(savedBody).toContain("배터리 수명이 길어졌어요"); // 다른 문장 훼손 없음
+      expect(result.finalState).toBe("approvable"); // re-review 통과
+    });
+  });
 });

@@ -17,6 +17,7 @@ import { getPlatformWritingConfig } from "./platform-writing-config";
 import { getToneTransformerRule } from "./tone-transformer-rules";
 import { classifyWordPressBlogSourceMode } from "./wordpress-blog-source-mode";
 import { detectInternalSectionHeadings } from "./internal-section-heading-sanitizer";
+import { findUngroundedClaims } from "./fact-grounding-validator";
 
 /** 게시용 본문에 마스터 원고 내부 작성 구조명(리드문/본문/배경 설명/쟁점/향후 확인할 점/출처)이 남아 있으면 안 되는 platform. */
 const BODY_BASED_PLATFORMS_CHECKED_FOR_INTERNAL_HEADINGS: readonly SocialPlatform[] = [
@@ -231,6 +232,14 @@ export interface SocialPostQualityGateInput {
    * 적용한다. 다른 플랫폼에는 영향이 없다.
    */
   usableSourceCount?: number;
+  /**
+   * OPS-02A: 마스터 원고 verifiedFacts를 fact-grounding-validator.ts의
+   * buildEvidenceText()로 합친 근거 텍스트. 전달되면(마스터 원고가 있는
+   * article이면) 모든 플랫폼 공통으로 fact_grounding 검사를 실행한다 —
+   * 전달되지 않으면(마스터 원고가 없는 하위 호환 경로) 이 검사를
+   * 건너뛴다(기존 동작 유지, false positive 방지).
+   */
+  evidenceText?: string;
 }
 
 function checklistItem(
@@ -323,6 +332,29 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
   );
 
   const text = collectTextForPatternCheck(input);
+
+  // OPS-02A: 마스터 원고 evidenceText가 전달됐을 때만(하위 호환 —
+  // 없으면 건너뛴다) 모든 플랫폼 공통으로 fact-grounding을 검사한다.
+  // OPS-01 Pilot C의 실제 Miss(instagram이 등록 source에 없는 수소차
+  // 비교 수치를 포함했는데 review가 못 잡음)를 계기로 추가했다. status는
+  // "warning"(→ 자동 검토에서 needs_check/확인 필요로 표시, blocked
+  // 아님 — 근거 부족이 반드시 게시를 막을 오류는 아니므로)이고,
+  // review-issue-fixability.ts의 AUTO_FIXABLE_KEYS에는 이 key를 넣지
+  // 않아 기본값(user_confirmation_required)을 그대로 따른다 — AI가
+  // 임의로 삭제/수정하지 않는다.
+  if (input.evidenceText !== undefined) {
+    const groundingIssues = findUngroundedClaims(text, input.evidenceText);
+    checklist.push(
+      checklistItem(
+        "fact_grounding",
+        "출처 기반 사실 근거",
+        groundingIssues.length > 0 ? "warning" : "pass",
+        groundingIssues.length > 0
+          ? `본문에 출처로 뒷받침되지 않는 수치/비교 표현이 ${groundingIssues.length}건 있습니다. 출처 원문과 대조해 확인하세요.`
+          : "본문의 수치/비교 표현이 출처 기반 사실과 대조해 확인되었습니다."
+      )
+    );
+  }
 
   const threatFound = THREAT_PATTERNS.filter((pattern) => text.includes(pattern));
   checklist.push(
@@ -431,7 +463,14 @@ export function runSocialPostQualityGate(input: SocialPostQualityGateInput): Soc
       );
     }
 
-    if (contentPresent) {
+    // OPS-01 Pilot C에서 실제로 발견된 버그: thread 기반 플랫폼(x)은
+    // getContentLength()가 threadItems 전체 길이를 합산하는데,
+    // config.maxLength(280)는 "item 하나당" 기준이다 — item이 2개 이상인
+    // 정상적인 thread는 합산 길이가 항상 280자를 넘어 구조적으로 100%
+    // False Positive가 발생했다. thread 플랫폼은 이미 item 단위로 정확히
+    // 검사하는 전용 검사(x_thread_item_length, 아래)가 있으므로, 이
+    // 범용 length_check는 thread를 지원하지 않는 플랫폼에서만 실행한다.
+    if (contentPresent && !config.supportsThreads) {
       const length = getContentLength(input);
       const tooShort = length < config.minLength;
       const tooLong = length > config.maxLength;

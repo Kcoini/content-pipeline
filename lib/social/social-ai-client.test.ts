@@ -116,6 +116,35 @@ describe("generateSocialPostWithAI", () => {
     expect(result.error).toContain("SOCIAL_AI_MAX_TOKENS");
   });
 
+  it("OPS-02A 재현: 문자열 값 안의 이스케이프 안 된 큰따옴표(대화/인용)로 JSON이 깨지면 안전한 실패를 반환한다(추측 복구 금지)", async () => {
+    // OPS-01 Pilot C에서 실제로 재현된 실패 형태 그대로 — threads+story
+    // 조합에서 모델이 대화를 인용하며 "..."를 이스케이프 없이 그대로 써서
+    // JSON 문자열이 중간에 끊긴다. code fence는 정상이고 stop_reason도
+    // end_turn(잘림 아님)이라 markdown_fence/max_tokens 복구 경로로는
+    // 고칠 수 없다 — 이런 경우 "그럴듯하게" 복구를 시도하지 않고 안전한
+        // 실패로 남기는 것이 의도된 동작이다(social-prompt-assembler.ts에
+    // 예방 지침을 추가했지만, 예방이 100%가 아닐 수 있으므로 이
+    // 실패 처리 경로 자체도 회귀 테스트로 고정한다).
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    messagesCreate.mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text:
+            "```json\n{\n  \"platform\": \"threads\",\n  \"tone_style\": \"story\",\n  \"post_body\": \"친구가 물었던 건 \"배터리 얼마나 가냐\"는 거였어요.\",\n  \"hashtags\": []\n}\n```",
+        },
+      ],
+      usage: { input_tokens: 100, output_tokens: 50 },
+      stop_reason: "end_turn",
+    });
+
+    const result = await generateSocialPostWithAI(baseInput({ platform: "threads", toneStyle: "story" }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("AI 응답을 JSON으로 파싱하지 못했습니다.");
+    expect(result.output).toBeUndefined();
+  });
+
   it("예외가 발생해도 Runtime Error로 터지지 않고 안전한 실패를 반환한다", async () => {
     vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
     messagesCreate.mockRejectedValue(new Error("network down"));

@@ -6,6 +6,7 @@ import {
   evaluateArticleModeMock,
   loadEvalConfig,
   applyGateConditions,
+  estimateEvalMaxTokens,
 } from "./eval-article";
 import type { Article } from "@/lib/types/domain";
 import type { SourceSummary } from "./source-summarizer";
@@ -166,6 +167,57 @@ describe("evaluateArticleWithAi", () => {
     expect(typeof result.aggregateScore).toBe("number");
     expect(result.passed).toBe(true);
     expect(result.notes).toBe("전반적으로 양호한 기사입니다.");
+  });
+
+  it("OPS-02A 회귀: 응답이 max_tokens에서 잘려 criteria_scores가 비어 있으면 '실제 0점'이 아니라 평가 실행 실패로 처리한다", async () => {
+    // OPS-01 Pilot A에서 실제로 재현된 버그: monetized_blog(criteria 17개)에서
+    // 응답이 중간에 잘려 input이 비어 있었는데도 모든 criteria가
+    // score:0/reason:""으로 채워져 "정말 0점을 받은 것"처럼 저장됐다.
+    const mockResponse = {
+      content: [
+        {
+          type: "tool_use",
+          id: "eval-2",
+          name: "score_article",
+          input: {},
+        },
+      ],
+      stop_reason: "max_tokens",
+    };
+
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const result = await evaluateArticleWithAi(article, sourceSummaries);
+
+    expect(result.aggregateScore).toBe(0);
+    expect(result.passed).toBe(false);
+    expect(result.criteriaScores).toEqual({});
+    expect(result.notes).toContain("평가 실행 실패");
+    expect(result.notes).not.toBe("");
+  });
+});
+
+describe("estimateEvalMaxTokens — OPS-02A max_tokens 회귀", () => {
+  it("criteria가 아주 적으면(예: 5개) 기본 하한(2048)을 그대로 쓴다", () => {
+    expect(estimateEvalMaxTokens(5)).toBe(2048);
+  });
+
+  it("criteria가 많은 mode(monetized_blog, 17개)는 기본값(2048)보다 큰 max_tokens를 요청한다 — OPS-01 Pilot A에서 stop_reason=max_tokens로 잘려 aggregateScore=0이 된 실제 버그의 root cause fix", () => {
+    const config = loadEvalConfig("monetized-blog.eval.yaml");
+    const tokens = estimateEvalMaxTokens(config.criteria.length);
+
+    expect(config.criteria.length).toBe(17);
+    expect(tokens).toBeGreaterThan(2048);
+    expect(tokens).toBe(config.criteria.length * 220);
   });
 });
 

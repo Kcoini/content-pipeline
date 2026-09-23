@@ -199,6 +199,16 @@ describe("runPublishQualityGate", () => {
     expect(draftItem?.status).toBe("blocked");
   });
 
+  it("OPS-02B 회귀: blocked 판정이어도 실행 자체는 성공이므로 publish_quality_gate_blocked 이벤트의 logEvent status는 success다", async () => {
+    getArticleById.mockResolvedValue(makeArticle({ targetKeyword: null }));
+
+    await runPublishQualityGate("article-1");
+
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "publish_quality_gate_blocked", status: "success" })
+    );
+  });
+
   it("article.status가 reviewed/approved가 아니면 blocked로 처리된다", async () => {
     getArticleById.mockResolvedValue(makeArticle({ status: "draft" }));
 

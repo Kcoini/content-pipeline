@@ -286,9 +286,11 @@ export async function runAutoFixAndRecheck(socialPostId: string): Promise<AutoFi
   );
   const remainingBlockingIssues = recheckedClassified.filter((i) => i.status !== "pass" && i.fixability === "blocking");
 
+  // OPS-02B: 재검토 실행 자체는 성공했다 — finalState가 blocked여도
+  // "실행 실패"가 아니다(QA-01-FIX1과 동일 원칙).
   await logAutoFixEvent(
     "post_auto_recheck_completed",
-    finalState === "blocked" ? "failed" : "success",
+    "success",
     `자동 재검토를 완료했습니다 (finalState: ${finalState}).`,
     post.articleId,
     { socialPostId, finalState, remainingUserConfirmationCount: remainingUserConfirmationIssues.length, remainingBlockingCount: remainingBlockingIssues.length }

@@ -48,6 +48,12 @@ describe("classifyReviewIssue", () => {
     expect(result.fixability).toBe("user_confirmation_required");
   });
 
+  it("OPS-02A: fact_grounding(출처 근거 없는 수치/비교)은 user_confirmation_required로 분류되고 자동 수정 대상이 아니다 — 새 사실을 만들어 대체하면 안 되므로", () => {
+    const result = classifyReviewIssue(item({ key: "fact_grounding", status: "warning" }));
+    expect(result.fixability).toBe("user_confirmation_required");
+    expect(result.canAutoFix).toBe(false);
+  });
+
   it("본문 없음 문제는 blocking으로 분류된다", () => {
     const result = classifyReviewIssue(item({ key: "content_present", status: "blocked" }));
     expect(result.fixability).toBe("blocking");

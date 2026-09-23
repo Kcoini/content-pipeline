@@ -132,4 +132,14 @@ describe("assembleSocialWritingPrompt", () => {
     expect(briefBlock.length).toBeLessThan(4200);
     expect(briefBlock).toContain("길이 제한으로 생략됨");
   });
+
+  it("OPS-02A: 대화/인용에 이스케이프 안 된 큰따옴표를 쓰지 말라는 안내가 system prompt에 포함된다(threads+story JSON 파싱 실패 예방)", () => {
+    // OPS-01 Pilot C에서 threads+story 조합이 반복 재현했던 실제 실패
+    // 원인(대화 인용 안의 이스케이프 안 된 ")을 platform/tone에 관계없이
+    // 공통 system prompt에서 예방한다 — 특정 조합만 고치지 않는다.
+    const result = assembleSocialWritingPrompt(makeContext({ platform: "threads", toneStyle: "story" }));
+
+    expect(result.systemPrompt).toContain("작은따옴표");
+    expect(result.systemPrompt).toContain("이스케이프");
+  });
 });

@@ -29,6 +29,7 @@ import {
   isSocialAiGenerationEnabled,
   getSocialAiMaxTokens,
   getSocialAiTemperature,
+  getSocialAiModel,
 } from "./social-ai-generation-config";
 import { generateSocialPostWithAI } from "./social-ai-client";
 import {
@@ -403,6 +404,10 @@ export async function generateSocialDraft(
         {
           platform,
           toneStyle,
+          // OPS-02B: 비용 집계를 위해 요청 시점 모델 식별자를 함께
+          // 남긴다(SOCIAL_AI_MODEL이 나중에 바뀌어도 과거 로그의 실제
+          // 사용 모델을 알 수 있게 — lib/ops/model-pricing.ts 참고).
+          model: getSocialAiModel(),
           inputTokens: aiResult.usage?.inputTokens,
           outputTokens: aiResult.usage?.outputTokens,
           postBodyLength: aiPostBodyLength,
@@ -531,11 +536,17 @@ export async function generateSocialDraft(
         cardItems: socialPost.cardItems,
         mediaRequirements: socialPost.mediaRequirements,
         usableSourceCount: context.usableSourceCount,
+        // OPS-02A: 마스터 원고가 있으면(evidenceText 비어있지 않으면)
+        // 모든 플랫폼 공통으로 fact-grounding 검사를 실행한다 — 특정
+        // 플랫폼만 patch하지 않는다(섹션 7).
+        evidenceText: context.evidenceText || undefined,
       });
       await updateSocialPostQuality(socialPost.id, qualityResult);
+      // OPS-02B: quality gate 실행 자체는 성공했다 — status가 blocked여도
+      // "실행 실패"가 아니다(QA-01-FIX1과 동일 원칙).
       await logSocialEvent(
         "social_quality_gate_completed",
-        qualityResult.status === "blocked" ? "failed" : "success",
+        "success",
         `social post(${socialPost.id})의 quality gate가 완료되었습니다 (status: ${qualityResult.status}, score: ${qualityResult.score}).`,
         articleId,
         { socialPostId: socialPost.id, platform, qualityStatus: qualityResult.status, qualityScore: qualityResult.score }
@@ -587,6 +598,10 @@ export async function generateSocialDraft(
       threadItemCount: finalSocialPost.threadItems.length,
       hashtagCount: finalSocialPost.hashtags.length,
       cardItemCount: finalSocialPost.cardItems.length,
+      // OPS-02B: 비용 집계용 모델 식별자(aiEnabled=false인 mock 경로에서는
+      // 실제 호출이 없으므로 undefined로 남아도 안전 — 집계 시
+      // token/가격 모두 계산 대상에서 빠진다).
+      model: aiEnabled ? getSocialAiModel() : undefined,
       inputTokens: usage?.inputTokens,
       outputTokens: usage?.outputTokens,
     };

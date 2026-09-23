@@ -70,6 +70,19 @@ Next.js + TypeScript + Supabase + GitHub 기반의 블로그/홈페이지용 기
   irreversible actions.
 - 커밋 전에 `docs/ux/ux-regression-checklist.md`로 점검한다.
 
+## Ops Rules (Phase OPS-02B 최종 고정, 요약)
+- Never treat unknown AI cost as zero — unknown price/token data is a
+  separate "unavailable" bucket, never folded into the known total.
+- Never classify a business-blocked state(승인 대기/quality gate
+  blocked/fact-grounding 확인 필요 등) as an execution failure — 실행
+  실패(failed)와 business state(blocked/warning)는 항상 분리한다.
+- External side effects(WordPress Draft/공개 게시 등) require an
+  explicit user action — never trigger automatically.
+- Public publishing에는 반드시 server-side guard가 있어야 한다(UI에서
+  숨겼다는 것만으로 안전하다고 판단하지 않는다).
+- 배포 전 `npm run ops:preflight`를 실행한다(`docs/ops/deployment-checklist.md` 참고).
+- 로그에 full body/prompt/secret을 남기지 않는다(기존 원칙 유지).
+
 ## 작업 시 주의사항
 - 출처가 3개 미만이면 기사 생성을 시작하지 않는다
   (`contracts/source.contract.yaml`의 `min-source-count` 규칙).

@@ -195,6 +195,14 @@ export async function runSocialPostQualityGateAndSave(socialPostId: string): Pro
   );
 
   try {
+    // OPS-02A: 재검토(본문 수정 후 자동 재검토)에도 초기 생성과 동일하게
+    // fact-grounding 검사를 적용한다(섹션 7 — 특정 경로만 patch하지
+    // 않는다). 마스터 원고가 없으면 evidenceText가 빈 문자열이라 검사
+    // 자체를 건너뛴다(하위 호환).
+    const context = await buildSocialWritingContext(existing.articleId, {
+      platform: existing.platform,
+      toneStyle: existing.toneStyle,
+    });
     const result = runSocialPostQualityGate({
       platform: existing.platform,
       toneStyle: existing.toneStyle,
@@ -206,15 +214,22 @@ export async function runSocialPostQualityGateAndSave(socialPostId: string): Pro
       threadItems: existing.threadItems,
       cardItems: existing.cardItems,
       mediaRequirements: existing.mediaRequirements,
+      evidenceText: context.evidenceText || undefined,
     });
 
     const updated = await updateSocialPostQuality(socialPostId, result);
 
     const eventType: LogEventType =
       result.status === "blocked" ? "social_quality_gate_blocked" : "social_quality_gate_completed";
+    // OPS-02B: quality gate가 예외 없이 끝까지 실행됐다면(이 지점에 도달했다면)
+    // status가 blocked여도 "실행 자체는 성공"이다 — QA-01-FIX1이
+    // social_platform_publish_guard_blocked에 적용한 것과 동일한 원칙
+    // (blocked/failed 두 값을 "실행 성공(blocked 포함)"과 "실행 실패"에
+    // 각각 대응시킨다). 실제 실행 실패는 아래 catch 블록의
+    // social_quality_gate_failed(status: "failed")만 담당한다.
     await logSocialEvent(
       eventType,
-      result.status === "blocked" ? "failed" : "success",
+      "success",
       `social post(${socialPostId})의 quality gate가 완료되었습니다 (status: ${result.status}, score: ${result.score}).`,
       existing.articleId,
       { socialPostId, platform: existing.platform, status: result.status, score: result.score }

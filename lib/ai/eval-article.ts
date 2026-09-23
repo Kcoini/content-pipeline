@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load } from "js-yaml";
+import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient, ANTHROPIC_MODEL } from "./anthropic-client";
 import { toAiErrorMessage } from "./ai-errors";
 import type { Article } from "@/lib/types/domain";
@@ -246,21 +247,56 @@ interface RawCriterionScore {
   reason?: unknown;
 }
 
-export async function evaluateArticleWithAi(
-  article: Pick<Article, "title" | "content">,
-  sourceSummaries: SourceSummary[],
-  evalConfig: EvalConfig = loadEvalConfig("article-quality.v1.eval.yaml")
-): Promise<ArticleEvalResult> {
+/**
+ * OPS-02A: 평가 기준 개수에 비례해 max_tokens를 계산한다. 고정값
+ * 2048이었을 때 monetized_blog(criteria 17개)처럼 기준이 많은 mode에서
+ * 응답이 중간에 잘려(stop_reason="max_tokens") tool_use input이
+ * 비어버리는 실제 버그가 있었다(OPS-01 Pilot A에서 재현 —
+ * aggregateScore=0인데 criteriaScores 17개 전부 score:0/reason:""로
+ * 저장된 것이 증거 — 예외가 아니라 "빈 응답을 그대로 파싱"한 결과였다).
+ * 기준 하나당 한국어 reason 1~2문장 + score를 JSON으로 쓰기에 충분한
+ * 여유를 준다.
+ */
+export function estimateEvalMaxTokens(criteriaCount: number): number {
+  return Math.max(2048, criteriaCount * 220);
+}
+
+/**
+ * OPS-02A: 응답이 max_tokens에서 잘렸거나(stop_reason="max_tokens")
+ * criteria_scores가 기대한 기준을 하나도 채우지 못했으면(빈 객체 등)
+ * "평가 실행 실패"로 취급한다 — 원칙(섹션 9): 평가 실행 실패를
+ * 조용히 aggregateScore=0(마치 실제로 0점을 받은 것처럼)으로 표시하지
+ * 않는다. DB에 상태 컬럼을 새로 추가하지 않고(notes text 컬럼은 이미
+ * 있음), notes에 실패 사유를 명시해 "진짜 0점"과 구분되게 한다.
+ */
+function isTruncatedOrEmptyEvalResponse(
+  stopReason: string | null,
+  parsedCriteriaCount: number,
+  expectedCriteriaCount: number
+): boolean {
+  if (stopReason === "max_tokens") return true;
+  return expectedCriteriaCount > 0 && parsedCriteriaCount === 0;
+}
+
+interface RunToolUseEvalParams {
+  systemPrompt: string;
+  tool: Anthropic.Tool;
+  userPrompt: string;
+  evalConfig: EvalConfig;
+}
+
+/** evaluateArticleWithAi/evaluateArticleModeWithAi가 공유하는 tool_use 평가 실행 로직. */
+async function runToolUseEval({ systemPrompt, tool, userPrompt, evalConfig }: RunToolUseEvalParams): Promise<ArticleEvalResult> {
   try {
     const client = getAnthropicClient();
 
     const response = await client.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2048,
-      system: EVAL_SYSTEM_PROMPT,
-      tools: [EVAL_TOOL],
-      tool_choice: { type: "tool", name: "score_article" },
-      messages: [{ role: "user", content: buildEvalUserPrompt(article, sourceSummaries) }],
+      max_tokens: estimateEvalMaxTokens(evalConfig.criteria.length),
+      system: systemPrompt,
+      tools: [tool],
+      tool_choice: { type: "tool", name: tool.name },
+      messages: [{ role: "user", content: userPrompt }],
     });
 
     const toolUseBlock = response.content.find((b) => b.type === "tool_use");
@@ -272,6 +308,15 @@ export async function evaluateArticleWithAi(
       criteria_scores?: Record<string, RawCriterionScore>;
       notes?: unknown;
     };
+
+    const parsedCriteriaCount = input.criteria_scores ? Object.keys(input.criteria_scores).length : 0;
+    if (isTruncatedOrEmptyEvalResponse(response.stop_reason, parsedCriteriaCount, evalConfig.criteria.length)) {
+      throw new Error(
+        response.stop_reason === "max_tokens"
+          ? "평가 응답이 max_tokens에서 잘렸습니다(criteria_scores를 신뢰할 수 없어 실패로 처리)."
+          : "평가 응답에 criteria_scores가 비어 있습니다."
+      );
+    }
 
     const criteriaScores: Record<string, CriterionScore> = {};
     for (const criterion of evalConfig.criteria) {
@@ -287,13 +332,30 @@ export async function evaluateArticleWithAi(
 
     return { criteriaScores, aggregateScore, passed, notes };
   } catch (error) {
+    // OPS-02A: 평가 "실행 실패"는 aggregateScore=0이라는 숫자로는 여전히
+    // 저장되지만(스키마 변경 없이 안전하게 남길 수 있는 범위), notes에
+    // 실패 사유를 명시해 "실제로 0점을 받았다"와 구분한다. 이 notes는
+    // eval_runs.notes(기존 컬럼)에 그대로 저장된다.
     return {
       criteriaScores: {},
       aggregateScore: 0,
       passed: false,
-      notes: `AI 평가 응답을 처리하지 못했습니다: ${toAiErrorMessage(error)}`,
+      notes: `평가 실행 실패(evaluation_error): ${toAiErrorMessage(error)}`,
     };
   }
+}
+
+export async function evaluateArticleWithAi(
+  article: Pick<Article, "title" | "content">,
+  sourceSummaries: SourceSummary[],
+  evalConfig: EvalConfig = loadEvalConfig("article-quality.v1.eval.yaml")
+): Promise<ArticleEvalResult> {
+  return runToolUseEval({
+    systemPrompt: EVAL_SYSTEM_PROMPT,
+    tool: EVAL_TOOL,
+    userPrompt: buildEvalUserPrompt(article, sourceSummaries),
+    evalConfig,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -376,49 +438,12 @@ export async function evaluateArticleModeWithAi(
   sourceSummaries: SourceSummary[],
   evalConfig: EvalConfig
 ): Promise<ArticleEvalResult> {
-  try {
-    const client = getAnthropicClient();
-
-    const response = await client.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 2048,
-      system: buildGenericEvalSystemPrompt(evalConfig),
-      tools: [buildGenericEvalTool(evalConfig)],
-      tool_choice: { type: "tool", name: "score_article" },
-      messages: [{ role: "user", content: buildEvalUserPrompt(article, sourceSummaries) }],
-    });
-
-    const toolUseBlock = response.content.find((b) => b.type === "tool_use");
-    if (!toolUseBlock || toolUseBlock.type !== "tool_use") {
-      throw new Error("AI가 도구를 호출하지 않았습니다.");
-    }
-
-    const input = toolUseBlock.input as {
-      criteria_scores?: Record<string, RawCriterionScore>;
-      notes?: unknown;
-    };
-
-    const criteriaScores: Record<string, CriterionScore> = {};
-    for (const criterion of evalConfig.criteria) {
-      const raw = input.criteria_scores?.[criterion.id];
-      const score = typeof raw?.score === "number" ? Math.round(raw.score) : 0;
-      const reason = typeof raw?.reason === "string" ? raw.reason : "";
-      criteriaScores[criterion.id] = { score, reason };
-    }
-
-    const aggregateScore = calculateAggregateScore(evalConfig, criteriaScores);
-    const passed = applyGateConditions(evalConfig, criteriaScores, aggregateScore);
-    const notes = typeof input.notes === "string" ? input.notes : "";
-
-    return { criteriaScores, aggregateScore, passed, notes };
-  } catch (error) {
-    return {
-      criteriaScores: {},
-      aggregateScore: 0,
-      passed: false,
-      notes: `AI 평가 응답을 처리하지 못했습니다: ${toAiErrorMessage(error)}`,
-    };
-  }
+  return runToolUseEval({
+    systemPrompt: buildGenericEvalSystemPrompt(evalConfig),
+    tool: buildGenericEvalTool(evalConfig),
+    userPrompt: buildEvalUserPrompt(article, sourceSummaries),
+    evalConfig,
+  });
 }
 
 /**

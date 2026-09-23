@@ -166,6 +166,27 @@ describe("recordManualPostingResult", () => {
     expect(result.socialPost?.postUrl).toBe("https://blog.naver.com/myid/12345");
   });
 
+  it("OPS-02B 멱등성 회귀: 이미 manualPostStatus='posted'인 글에 다시 기록을 시도하면 새 URL로 덮어쓰지 않고 차단한다(중복 제출 안전성)", async () => {
+    getSocialPostForManualPosting.mockResolvedValue(makeSocialPost({ manualPostStatus: "posted", publishStatus: "published" }));
+
+    const result = await recordManualPostingResult("social-post-1", {
+      manualPostUrl: "https://blog.naver.com/myid/DIFFERENT-URL",
+      manualPostedBy: "someone-else",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("이미 게시 완료로 기록된 글입니다");
+    expect(updateManualPostingResult).toHaveBeenCalledWith(
+      "social-post-1",
+      expect.objectContaining({ status: "blocked" })
+    );
+    // 실제 기존 게시 URL을 덮어쓰는 posted 상태 저장 호출이 없어야 한다.
+    expect(updateManualPostingResult).not.toHaveBeenCalledWith(
+      "social-post-1",
+      expect.objectContaining({ status: "posted", manualPostUrl: "https://blog.naver.com/myid/DIFFERENT-URL" })
+    );
+  });
+
   it("approval_status가 approved가 아니면 blocked된다", async () => {
     getSocialPostForManualPosting.mockResolvedValue(makeSocialPost({ approvalStatus: "pending_review" }));
 

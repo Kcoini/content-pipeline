@@ -87,6 +87,7 @@ function makeContext(overrides: Partial<SocialWritingContext> = {}): SocialWriti
     platformBrief: null,
     evidenceHighlights: [],
     verificationHighlights: [],
+    evidenceText: "",
     ...overrides,
   };
 }
@@ -237,6 +238,17 @@ describe("runSocialPostQualityGateAndSave", () => {
     await runSocialPostQualityGateAndSave("social-post-1");
 
     expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "social_quality_gate_blocked" }));
+  });
+
+  it("OPS-02B 회귀: blocked 판정이어도 실행 자체는 성공이므로 logEvent status는 success다(실행 실패와 혼동하지 않는다)", async () => {
+    getSocialPostById.mockResolvedValue(makeSocialPost({ postBody: "" }));
+    updateSocialPostQuality.mockResolvedValue(makeSocialPost({ qualityStatus: "blocked" }));
+
+    await runSocialPostQualityGateAndSave("social-post-1");
+
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "social_quality_gate_blocked", status: "success" })
+    );
   });
 });
 

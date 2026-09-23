@@ -4,6 +4,7 @@
 
 import { getSocialPostById, updateSocialPostQuality } from "@/lib/repositories/social-posts-repository";
 import { runSocialPostQualityGate } from "./social-quality-gate";
+import { buildSocialWritingContext } from "./social-writing-context-builder";
 import { isSocialPlatform, isToneStyle } from "./social-platform-types";
 import { logEvent } from "@/lib/harness/logger";
 import type { LogEventType, LogStatus } from "@/lib/harness/logger";
@@ -77,6 +78,13 @@ export async function recheckRewriteVersionQuality(
   }
 
   try {
+    // OPS-02A: rewrite version 재검수에도 동일하게 fact-grounding을
+    // 적용한다(섹션 7). 마스터 원고가 없으면 evidenceText가 비어 있어
+    // 검사를 건너뛴다(하위 호환).
+    const context = await buildSocialWritingContext(post.articleId, {
+      platform: post.platform,
+      toneStyle: post.toneStyle,
+    });
     const qualityResult = runSocialPostQualityGate({
       platform: post.platform,
       toneStyle: post.toneStyle,
@@ -88,15 +96,18 @@ export async function recheckRewriteVersionQuality(
       threadItems: post.threadItems,
       cardItems: post.cardItems,
       mediaRequirements: post.mediaRequirements,
+      evidenceText: context.evidenceText || undefined,
     });
 
     const updated = await updateSocialPostQuality(socialPostId, qualityResult);
 
     const eventType: LogEventType =
       qualityResult.status === "blocked" ? "social_rewrite_version_quality_recheck_blocked" : "social_rewrite_version_quality_recheck_completed";
+    // OPS-02B: recheck 실행 자체는 성공했다 — status가 blocked여도
+    // "실행 실패"가 아니다(QA-01-FIX1과 동일 원칙).
     await logRecheckEvent(
       eventType,
-      qualityResult.status === "blocked" ? "failed" : "success",
+      "success",
       `social post(${socialPostId})의 rewrite version quality recheck가 완료되었습니다 (status: ${qualityResult.status}, score: ${qualityResult.score}).`,
       post.articleId,
       {

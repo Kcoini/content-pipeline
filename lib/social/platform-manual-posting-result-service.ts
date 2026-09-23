@@ -56,6 +56,12 @@ function urlDomain(url: string | null | undefined): string | null {
  * 필드명을 섞지 않는다) — 판단 조건 자체는 전혀 바꾸지 않았다.
  */
 function checkRecordable(post: SocialPost): string | null {
+  // OPS-02B: 멱등성 gap 수정 — 이전에는 publishStatus==="blocked"/"failed"만
+  // 막았고 이미 "posted"로 기록된 글은 다시 걸러지지 않아, 같은 요청이
+  // 중복 제출되면(네트워크 재시도/이중 클릭) manualPostUrl/manualPostedAt/
+  // manualPostedBy가 새 값으로 조용히 덮어써질 수 있었다(실제 외부
+  // side effect는 없지만 완료 기록이 의도치 않게 바뀔 수 있는 gap).
+  if (post.manualPostStatus === "posted") return "이미 게시 완료로 기록된 글입니다(중복 기록 방지).";
   if (post.qualityStatus !== "ready") return "품질검사를 먼저 통과해야 게시 완료를 기록할 수 있습니다.";
   if (post.approvalStatus !== "approved") return "먼저 승인이 완료되어야 게시 완료를 기록할 수 있습니다.";
   if (post.exportStatus !== "ready" && post.exportStatus !== "exported") {

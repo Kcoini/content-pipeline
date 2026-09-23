@@ -4,6 +4,9 @@ import type { SocialPost } from "./social-platform-types";
 const getSocialPostById = vi.fn();
 const updateSocialPostQuality = vi.fn();
 const logEvent = vi.fn();
+// OPS-02A: recheckRewriteVersionQuality가 fact-grounding evidenceText를
+// 위해 buildSocialWritingContext를 호출한다 — 실제 DB를 부르지 않도록 mock한다.
+const buildSocialWritingContext = vi.fn();
 
 vi.mock("@/lib/repositories/social-posts-repository", () => ({
   getSocialPostById: (...args: unknown[]) => getSocialPostById(...args),
@@ -11,6 +14,9 @@ vi.mock("@/lib/repositories/social-posts-repository", () => ({
 }));
 vi.mock("@/lib/harness/logger", () => ({
   logEvent: (...args: unknown[]) => logEvent(...args),
+}));
+vi.mock("./social-writing-context-builder", () => ({
+  buildSocialWritingContext: (...args: unknown[]) => buildSocialWritingContext(...args),
 }));
 
 const { recheckRewriteVersionQuality } = await import("./rewrite-version-quality-recheck-service");
@@ -133,8 +139,10 @@ beforeEach(() => {
   getSocialPostById.mockReset();
   updateSocialPostQuality.mockReset();
   logEvent.mockReset();
+  buildSocialWritingContext.mockReset();
   logEvent.mockResolvedValue({});
   updateSocialPostQuality.mockImplementation(async (id, result) => makeSocialPost({ id, qualityStatus: result.status, qualityScore: result.score }));
+  buildSocialWritingContext.mockResolvedValue({ evidenceText: "" });
 });
 
 describe("recheckRewriteVersionQuality", () => {

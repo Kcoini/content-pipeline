@@ -86,6 +86,8 @@ const AXIS_BY_KEY: Record<string, AutoReviewAxis> = {
   opinion_column_counterargument_present: "structure",
   // Phase UX-05A: x/threads/instagram markdown/HTML 잔여물 — naver_cafe_no_markdown_escape와 같은 축.
   platform_markup_residue: "platform_fit",
+  // OPS-02A: 모든 플랫폼 공통 fact-grounding 검사(lib/social/fact-grounding-validator.ts).
+  fact_grounding: "source",
 };
 
 function resolveAxis(key: string): AutoReviewAxis {

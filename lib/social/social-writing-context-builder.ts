@@ -9,6 +9,7 @@ import { getPlatformWritingConfig, getSocialOutputContractName } from "./platfor
 import { countUsableSources } from "./wordpress-blog-source-mode";
 import { getToneStyleConfig } from "./tone-style-config";
 import { getPlatformBrief } from "@/lib/articles/master-manuscript-builder";
+import { buildEvidenceText } from "./fact-grounding-validator";
 import { asArray } from "@/lib/utils/safe-array";
 import type { MasterManuscriptPlatformBriefs } from "@/lib/articles/master-manuscript-types";
 import type {
@@ -107,6 +108,15 @@ export interface SocialWritingContext {
   evidenceHighlights: string[];
   /** Phase 4-8: 확인 필요 사항 중 일부(최대 3건) — 단정하지 말아야 할 내용을 프롬프트가 알게 한다. */
   verificationHighlights: string[];
+  /**
+   * OPS-02A: 마스터 원고 verifiedFacts 전체를 합친 근거 텍스트
+   * (lib/social/fact-grounding-validator.ts의 buildEvidenceText) —
+   * evidenceHighlights(프롬프트용, 최대 4건 요약)와 달리 quality gate의
+   * fact-grounding 검사가 claim-evidence 대조에 쓴다. 마스터 원고가
+   * 없으면 빈 문자열(하위 호환 — 이 경우 quality gate 호출부가 검사
+   * 자체를 건너뛴다).
+   */
+  evidenceText: string;
 }
 
 /** article.content(마크다운/HTML 섞인 원문)에서 태그/기호를 제거한 순수 텍스트로 짧게 요약한다. */
@@ -175,6 +185,7 @@ export async function buildSocialWritingContext(
         .map((e) => `${e.claim} (근거 ${asArray(e.supportingSourceIds).length}건, ${e.strength === "strong" ? "충분" : "보통"}${e.caution ? ` — ${e.caution}` : ""})`)
     : [];
   const verificationHighlights = masterManuscript ? asArray(masterManuscript.verificationNeeded).slice(0, MAX_VERIFICATION_HIGHLIGHTS) : [];
+  const evidenceText = masterManuscript ? buildEvidenceText(asArray(masterManuscript.verifiedFacts)) : "";
 
   return {
     articleId: article.id,
@@ -204,5 +215,6 @@ export async function buildSocialWritingContext(
     platformBrief,
     evidenceHighlights,
     verificationHighlights,
+    evidenceText,
   };
 }
