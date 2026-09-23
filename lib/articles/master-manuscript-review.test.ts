@@ -42,6 +42,7 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
 }
 
 function makeSource(overrides: Partial<Source> = {}): Source {
+  const keyPoints = overrides.keyPoints ?? ["AI 투자 규모가 전년 대비 증가했다"];
   return {
     id: "source-1",
     themeId: "theme-1",
@@ -53,11 +54,14 @@ function makeSource(overrides: Partial<Source> = {}): Source {
     createdAt: "2026-01-10T00:00:00.000Z",
     fetchStatus: "success",
     fetchError: null,
-    rawContent: "raw...",
+    // OPS-04-FIX1: source-evidence-integrity-validator가 rawContent와
+    // keyPoints를 대조하므로, fixture의 rawContent가 keyPoints를
+    // 실제로 포함해야 한다(master-manuscript-builder.test.ts와 동일 패턴).
+    rawContent: overrides.rawContent ?? `${keyPoints.join(" ")} (테스트용 원문 — 위 keyPoints를 실제로 포함한다.)`,
     summaryStatus: "success",
     summaryError: null,
     summarizedAt: "2026-01-10T00:00:00.000Z",
-    keyPoints: ["AI 투자 규모가 전년 대비 증가했다"],
+    keyPoints,
     ...overrides,
   };
 }

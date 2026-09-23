@@ -70,6 +70,24 @@ describe("findUngroundedClaims — OPS-02A fact-grounding validator", () => {
   it("본문이 비어 있으면 issue가 없다", () => {
     expect(findUngroundedClaims("", "근거 텍스트")).toEqual([]);
   });
+
+  it("OPS-04-FIX1(FP-E) 재현: 번호 목록('3. ...', '5. ...')이 숫자만 남은 별도 문장으로 잘못 분리되지 않는다", () => {
+    const verifiedFacts = [fact("간헐적 단식은 여러 방식이 있다.")];
+    const evidenceText = buildEvidenceText(verifiedFacts);
+
+    const post = [
+      "간헐적 단식 해보신 분 계신가요?",
+      "1. 어떤 방식으로 하셨어요?",
+      "2. 성공하신 분 있으면 비결 좀 알려주세요.",
+      "3. 실패하신 분은 어떤 점이 힘드셨나요?",
+      "4. 시작하기 전에 꼭 알아야 할 게 있을까요?",
+      "5. 전문가 상담 받고 시작하는 게 나을까요?",
+    ].join("\n");
+
+    const issues = findUngroundedClaims(post, evidenceText);
+    expect(issues.some((i) => i.sentence === "3.")).toBe(false);
+    expect(issues.some((i) => i.sentence === "5.")).toBe(false);
+  });
 });
 
 describe("detectConflictingVerifiedFacts — OPS-02A 상충 source 탐지", () => {

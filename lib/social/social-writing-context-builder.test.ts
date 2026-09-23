@@ -215,10 +215,14 @@ describe("buildSocialWritingContext", () => {
 
   it("Phase 4-8: 마스터 원고가 있으면 근거 있는(weak 제외) evidenceMap 항목만 짧게 전달한다", async () => {
     const { buildMasterManuscript } = await import("@/lib/articles/master-manuscript-builder");
+    // OPS-04-FIX1: source-evidence-integrity-validator가 rawContent와
+    // keyPoints를 대조하므로, 이 fixture는 rawContent가 keyPoints를
+    // 실제로 포함하도록 override한다(기본 makeSource의 rawContent는
+    // "raw HTML이 context에 안 새어나간다"는 별개 테스트 전용 고정값).
     const master = buildMasterManuscript(makeArticle(), [
-      makeSource({ id: "s1", keyPoints: ["교차 확인된 사실"] }),
-      makeSource({ id: "s2", keyPoints: ["교차 확인된 사실"] }),
-      makeSource({ id: "s3", keyPoints: ["단독 출처 사실"] }),
+      makeSource({ id: "s1", keyPoints: ["교차 확인된 사실"], rawContent: "교차 확인된 사실입니다." }),
+      makeSource({ id: "s2", keyPoints: ["교차 확인된 사실"], rawContent: "교차 확인된 사실입니다." }),
+      makeSource({ id: "s3", keyPoints: ["단독 출처 사실"], rawContent: "단독 출처 사실입니다." }),
     ]);
     getArticleById.mockResolvedValue(makeArticle({ formatMetadata: { master_manuscript: master } }));
 

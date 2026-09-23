@@ -6,6 +6,7 @@
 
 import { getAnthropicClient } from "./anthropic-client";
 import type { Source, Theme } from "@/lib/types/domain";
+import { filterSupportedKeyPoints } from "@/lib/sources/source-evidence-integrity-validator";
 
 export interface SourceSummary {
   sourceId: string;
@@ -33,6 +34,17 @@ function buildSummaryText(source: Source): string {
 }
 
 /**
+ * OPS-04-FIX1: keyPoints를 article 생성 프롬프트에 넘기기 직전, raw
+ * source content로 실제 뒷받침되는지 대조해 supported만 남긴다 — 이
+ * 함수가 article-writer.ts의 유일한 입력 경로라서, 여기서 걸러내면
+ * 오염된 candidate fact가 master 원고 본문에까지 들어가는 것을
+ * 가능한 한 upstream에서 막는다(섹션 11).
+ */
+function buildSupportedKeyPoints(source: Source): string[] {
+  return filterSupportedKeyPoints({ id: source.id, keyPoints: source.keyPoints ?? [], rawContent: source.rawContent });
+}
+
+/**
  * mock 구현: 저장된 summary / keyPoints를 그대로 사용한다.
  */
 export function summarizeSourcesMock(sources: Source[]): SourceSummary[] {
@@ -43,7 +55,7 @@ export function summarizeSourcesMock(sources: Source[]): SourceSummary[] {
     publisher: source.publisher,
     publishedAt: source.publishedAt,
     summary: buildSummaryText(source),
-    keyPoints: source.keyPoints ?? [],
+    keyPoints: buildSupportedKeyPoints(source),
     sourceAngle: "",
   }));
 }
@@ -68,7 +80,7 @@ export async function summarizeSourcesWithAi(
     publisher: source.publisher,
     publishedAt: source.publishedAt,
     summary: buildSummaryText(source),
-    keyPoints: source.keyPoints ?? [],
+    keyPoints: buildSupportedKeyPoints(source),
     sourceAngle: "",
   }));
 }

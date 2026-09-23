@@ -17,6 +17,7 @@ import type { Article, Source } from "@/lib/types/domain";
 import { BASE_PROHIBITED_PATTERNS } from "@/lib/social/platform-writing-config";
 import { getMasterManuscriptDirectionLabel } from "./article-modes";
 import type { SocialPlatform } from "@/lib/social/social-platform-types";
+import { evaluateSourceKeyPoints, type GroupedFactIntegrity } from "@/lib/sources/source-evidence-integrity-validator";
 import type {
   MasterManuscript,
   MasterManuscriptSourceSummary,
@@ -103,29 +104,38 @@ function buildSourceSummaries(sources: readonly Source[]): MasterManuscriptSourc
 }
 
 /**
- * 같은 keyPoint 문장이 여러 출처에 등장하면 confidence를 높인다(교차
- * 확인된 사실로 취급) — AI의 주관적 판단이 아니라 출처 개수로만
- * 기계적으로 결정한다.
+ * OPS-04-FIX1: "candidate fact(AI가 추출한 keyPoint)"가 raw source
+ * content로 실제 뒷받침되는지 먼저 검사한 뒤(source-evidence-integrity-
+ * validator.ts), supported로 판정된 것만 verifiedFacts로 승격한다.
+ * needs_review/unsupported는 verifiedFacts에 포함하지 않는다 — 대신
+ * buildMasterManuscript()에서 verificationNeeded로 안내한다(섹션 13 —
+ * 제외는 허용, AI가 다시 써서 "수정"하는 것은 금지).
+ *
+ * 같은 keyPoint 문장이 여러 출처에 등장하면(그리고 supported로
+ * 통과하면) confidence를 높인다(교차 확인된 사실로 취급) — AI의
+ * 주관적 판단이 아니라 출처 개수로만 기계적으로 결정한다.
  */
-function buildVerifiedFacts(sources: readonly Source[]): MasterManuscriptVerifiedFact[] {
-  const bySentence = new Map<string, Set<string>>();
-  for (const source of sources) {
-    for (const point of source.keyPoints) {
-      const key = point.trim();
-      if (!key) continue;
-      if (!bySentence.has(key)) bySentence.set(key, new Set());
-      bySentence.get(key)!.add(source.id);
-    }
-  }
+function buildVerifiedFacts(sources: readonly Source[]): {
+  verifiedFacts: MasterManuscriptVerifiedFact[];
+  rejectedFacts: GroupedFactIntegrity[];
+} {
+  const graded = evaluateSourceKeyPoints(sources);
 
-  return Array.from(bySentence.entries())
+  const verifiedFacts = graded
+    .filter((g) => g.status === "supported")
     .slice(0, MAX_VERIFIED_FACTS_IN_MASTER_MANUSCRIPT)
-    .map(([fact, sourceIdSet]) => ({
-      fact,
-      sourceIds: Array.from(sourceIdSet),
-      confidence: sourceIdSet.size >= 2 ? "high" : "medium",
-      factType: classifyFactType(fact),
+    .map((g) => ({
+      fact: g.fact,
+      sourceIds: g.sourceIds,
+      confidence: g.sourceIds.length >= 2 ? ("high" as const) : ("medium" as const),
+      factType: classifyFactType(g.fact),
+      integrityStatus: "supported" as const,
+      evidenceExcerpt: g.evidenceExcerpt,
     }));
+
+  const rejectedFacts = graded.filter((g) => g.status !== "supported");
+
+  return { verifiedFacts, rejectedFacts };
 }
 
 /** 단독 연도(2020~2029)/월일 표현이 있는지. */
@@ -378,15 +388,26 @@ function buildOptimizationSupport(
 
 export function buildMasterManuscript(article: Article, sources: readonly Source[]): MasterManuscript {
   const sourceSummaries = buildSourceSummaries(sources);
-  const verifiedFacts = buildVerifiedFacts(sources);
+  const { verifiedFacts, rejectedFacts } = buildVerifiedFacts(sources);
   const supportingMessages = verifiedFacts.slice(0, 3).map((f) => f.fact);
 
   // "확인 필요 사항": 단일 출처에서만 확인된 사실(교차 확인이 안 된 것) +
-  // 출처 자체가 부족하면 그 사실도 함께 안내한다.
-  const verificationNeeded: string[] = verifiedFacts
-    .filter((f) => f.confidence === "medium")
-    .slice(0, 5)
-    .map((f) => `"${f.fact}" — 출처 1건에서만 확인됨, 교차 확인이 필요합니다.`);
+  // 출처 자체가 부족하면 그 사실도 함께 안내한다 + OPS-04-FIX1: raw
+  // source로 자동 확인하지 못한(needs_review) 사실과, raw source에서
+  // 확인되지 않은(unsupported) 사실도 여기로만 안내한다 — verifiedFacts
+  // 에는 절대 포함하지 않는다(섹션 13/15 — downstream cascade 방지).
+  const verificationNeeded: string[] = [
+    ...verifiedFacts
+      .filter((f) => f.confidence === "medium")
+      .slice(0, 5)
+      .map((f) => `"${f.fact}" — 출처 1건에서만 확인됨, 교차 확인이 필요합니다.`),
+    ...rejectedFacts
+      .filter((r) => r.status === "needs_review")
+      .map((r) => `"${r.fact}" — 출처 원문에서 자동으로 완전히 확인하지 못했습니다(${r.reason}). 사람이 직접 원문과 대조해 주세요.`),
+    ...rejectedFacts
+      .filter((r) => r.status === "unsupported")
+      .map((r) => `"${r.fact}" — 출처 원문에서 확인되지 않았습니다(${r.reason}). 사실로 사용하지 마세요.`),
+  ];
   if (sourceSummaries.length < 3) {
     verificationNeeded.push(`현재 확인 가능한 출처가 ${sourceSummaries.length}건뿐입니다 — 추가 출처 확인을 권장합니다.`);
   }
@@ -478,6 +499,12 @@ export function buildMasterManuscript(article: Article, sources: readonly Source
     issues: buildIssues(verifiedFacts),
     readerMeaning: buildReaderMeaning(supportingMessages),
     verificationNeeded,
+    rejectedFacts: rejectedFacts.map((r) => ({
+      fact: r.fact,
+      sourceIds: r.sourceIds,
+      status: r.status as "needs_review" | "unsupported" | "conflicting",
+      reason: r.reason,
+    })),
     prohibitedOrCarefulExpressions: {
       prohibited: [...BASE_PROHIBITED_PATTERNS],
       careful,

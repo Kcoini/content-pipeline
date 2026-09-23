@@ -1,0 +1,271 @@
+// OPS-04 Article B: naver_blog(manual export, 신규 노출) +
+// naver_cafe/x/threads/instagram(copy) 다중 플랫폼 실제 운영 확대.
+// 실제 Supabase DB / 실제 Anthropic API. 실제 외부 게시 API 호출은
+// 이 코드베이스에 존재하지 않는다(OPS-02B에서 이미 확인) — 승인까지만
+// 진행하고 "게시 완료로 표시"는 호출하지 않는다.
+import "./load-env";
+
+import { describe, it, expect } from "vitest";
+import { runContractForCollection } from "@/lib/harness/contract-runner";
+import { loadContract } from "@/lib/harness/load-contract";
+import { createTheme, getThemeById } from "@/lib/repositories/theme-repository";
+import { addSource, getSourcesByThemeId, updateSourceFetchResult, updateSourceSummary } from "@/lib/repositories/source-repository";
+import { fetchUrlContent } from "@/lib/services/url-fetcher";
+import { generateSourceSummaryWithAi } from "@/lib/ai/source-auto-summarizer";
+import { saveDraftArticle, saveArticleMasterManuscript, approveArticle } from "@/lib/repositories/article-repository";
+import { buildMasterManuscript } from "@/lib/articles/master-manuscript-builder";
+import { evaluateArticleForMode } from "@/lib/ai/eval-article";
+import { saveEvalRun } from "@/lib/repositories/eval-repository";
+import { generateAiArticleDraft } from "@/lib/ai/article-writer";
+import { summarizeSourcesWithAi } from "@/lib/ai/source-summarizer";
+import { shouldUseAnthropic } from "@/lib/ai/ai-config";
+import { getArticleModeConfig } from "@/lib/articles/article-modes";
+import { generateSelectedPlatformPosts } from "@/lib/social/multi-platform-generation-service";
+import { getSocialPostById } from "@/lib/repositories/social-posts-repository";
+import { runSocialPostQualityGateAndSave } from "@/lib/social/social-post-service";
+import { summarizeAutoReview, summarizeUserFacingReview } from "@/lib/social/social-post-auto-review";
+import { runAutoFixAndRecheck } from "@/lib/social/post-auto-fix-service";
+import { bulkApproveSocialPosts } from "@/lib/social/social-post-approval-service";
+import { summarizeMultiPlatformReview } from "@/lib/ui/multi-platform-review-summary";
+import { getPostApprovalNextActions } from "@/lib/social/post-approval-next-actions";
+import type { SocialPlatform, SocialPostQualityChecklistItem } from "@/lib/social/social-platform-types";
+
+const APPROVED_BY = "ops-04-article-b";
+const PLATFORMS: SocialPlatform[] = ["naver_blog", "naver_cafe", "x", "threads", "instagram"];
+
+const SOURCES = [
+  { url: "https://ko.wikipedia.org/wiki/간헐적_단식", title: "간헐적 단식", publisher: "위키백과" },
+  { url: "https://ko.wikipedia.org/wiki/기초대사량", title: "기초대사량", publisher: "위키백과" },
+  { url: "https://en.wikipedia.org/wiki/Intermittent_fasting", title: "Intermittent fasting", publisher: "Wikipedia" },
+];
+
+const THEME_TITLE = "간헐적 단식의 원리와 시작 전 고려할 점";
+
+const state: {
+  themeId?: string;
+  articleId?: string;
+  socialPostIds: Partial<Record<SocialPlatform, string>>;
+  timings: Record<string, number>;
+} = { socialPostIds: {}, timings: {} };
+
+function mark(label: string, startedAt: number) {
+  state.timings[label] = Date.now() - startedAt;
+  console.log(`[ops-04-article-b] ${label}: ${state.timings[label]}ms`);
+}
+
+describe("OPS-04 Article B: naver_blog/naver_cafe/x/threads/instagram 실제 운영", () => {
+  it("aiMode가 실제로 활성화되어 있다", () => {
+    expect(shouldUseAnthropic()).toBe(true);
+  });
+
+  it("1. Theme 생성", async () => {
+    const t0 = Date.now();
+    const theme = await createTheme({
+      title: THEME_TITLE,
+      description: "간헐적 단식이 신체에 작용하는 원리와, 시작하기 전에 고려해야 할 주의사항을 출처 기반으로 설명하는 정보성 콘텐츠",
+      keywords: ["간헐적단식", "기초대사량", "식이요법", "체중관리"],
+      language: "ko",
+    });
+    state.themeId = theme.id;
+    mark("theme_create", t0);
+    console.log(`[ops-04-article-b] themeId=${state.themeId}`);
+    expect(theme.id).toBeTruthy();
+  });
+
+  it("2. Source 3건 등록 + 본문 수집 + AI 요약", async () => {
+    const t0 = Date.now();
+    const themeId = state.themeId!;
+    for (const s of SOURCES) {
+      const source = await addSource({ themeId, url: s.url, title: s.title, publisher: s.publisher, publishedAt: "", summary: "" });
+      const fetchResult = await fetchUrlContent(s.url);
+      await updateSourceFetchResult(source.id, fetchResult, s.title);
+      if (fetchResult.status === "success" && fetchResult.rawContent) {
+        const summary = await generateSourceSummaryWithAi(source, fetchResult.rawContent);
+        await updateSourceSummary(source.id, summary, "success");
+      } else {
+        console.log(`[ops-04-article-b] source fetch failed: ${s.url} (${fetchResult.status})`);
+      }
+    }
+    mark("sources_add_fetch_summarize", t0);
+    const sources = await getSourcesByThemeId(themeId);
+    expect(sources.length).toBe(3);
+  }, 120_000);
+
+  it("3. 출처 계약 검사 통과 확인", async () => {
+    const themeId = state.themeId!;
+    const sources = await getSourcesByThemeId(themeId);
+    const contract = loadContract("source.contract.yaml");
+    const result = runContractForCollection(contract, sources as unknown as Record<string, unknown>[], {
+      collections: { topic_sources: sources as unknown as Record<string, unknown>[] },
+    });
+    expect(result.passed).toBe(true);
+  });
+
+  it("4. AI 마스터 원고(article) 생성 + 계약 검사 + 저장 + 평가", async () => {
+    const t0 = Date.now();
+    const themeId = state.themeId!;
+    const theme = await getThemeById(themeId);
+    expect(theme, "theme not found").toBeTruthy();
+    const themeSources = await getSourcesByThemeId(themeId);
+
+    const sourceSummaries = await summarizeSourcesWithAi(theme!, themeSources);
+    const generated = await generateAiArticleDraft(theme!, sourceSummaries, "source_based_explainer");
+    mark("article_ai_generate", t0);
+
+    const citedSources = themeSources.filter((s) => generated.citedSourceIds.includes(s.id));
+    const articleContract = loadContract("article.contract.yaml");
+    const articleResult = runContractForCollection(
+      articleContract,
+      [{ title: generated.title, content: generated.content, topicId: themeId, status: "draft" }],
+      { collections: { article_sources: citedSources as unknown as Record<string, unknown>[] }, operation: "create" }
+    );
+    expect(articleResult.passed).toBe(true);
+
+    const article = await saveDraftArticle({
+      themeId,
+      title: generated.title,
+      content: generated.content,
+      citedSourceIds: generated.citedSourceIds,
+      articleMode: "source_based_explainer",
+      modeFields: {
+        seoTitle: generated.seoTitle,
+        metaDescription: generated.metaDescription,
+        targetKeyword: generated.targetKeyword,
+        secondaryKeywords: generated.secondaryKeywords,
+        searchIntent: generated.searchIntent,
+        readerPersona: generated.readerPersona,
+        adSlots: generated.adSlots,
+        internalLinkSuggestions: generated.internalLinkSuggestions,
+        monetizationScore: generated.monetizationScore,
+        policyRiskScore: generated.policyRiskScore,
+      },
+    });
+    state.articleId = article.id;
+    console.log(`[ops-04-article-b] articleId=${article.id}`);
+
+    try {
+      const mm = buildMasterManuscript(article, citedSources);
+      await saveArticleMasterManuscript(article.id, mm);
+    } catch (e) {
+      console.log(`[ops-04-article-b] master manuscript 저장 실패(부가 데이터, 무시): ${e instanceof Error ? e.message : e}`);
+    }
+
+    const citedSummaries = sourceSummaries.filter((s) => article.citedSourceIds.includes(s.sourceId));
+    const evalResult = await evaluateArticleForMode(
+      "source_based_explainer",
+      { title: article.title, content: article.content },
+      citedSummaries,
+      true
+    );
+    const evalConfigName = getArticleModeConfig("source_based_explainer").evalFileName.replace(/\.yaml$/, "");
+    await saveEvalRun({ articleId: article.id, evalName: evalConfigName, result: evalResult });
+
+    expect(article.status).toBe("draft");
+    console.log(`[ops-04-article-b] article eval passed=${evalResult.passed}, score=${evalResult.aggregateScore}`);
+  }, 180_000);
+
+  it("5. 마스터 원고 승인(reviewed)", async () => {
+    const article = await approveArticle({ articleId: state.articleId!, approvedBy: APPROVED_BY });
+    expect(article.status).toBe("reviewed");
+  });
+
+  it("6. naver_blog/naver_cafe/x/threads/instagram 5개 플랫폼 글 생성(실제 AI 호출)", async () => {
+    const t0 = Date.now();
+    const summary = await generateSelectedPlatformPosts({
+      articleId: state.articleId!,
+      platforms: PLATFORMS,
+      toneMode: "auto_recommended",
+    });
+    mark("platform_generation_all", t0);
+    if ("error" in summary) throw new Error(summary.error);
+
+    for (const r of summary.results) {
+      console.log(`[ops-04-article-b] platform=${r.platform} status=${r.status} tone=${r.toneStyle ?? "-"}`);
+      if (r.socialPostId) state.socialPostIds[r.platform] = r.socialPostId;
+    }
+    console.log(`[ops-04-article-b] generatedCount=${summary.generatedCount} failedCount=${summary.failedCount}`);
+  }, 300_000);
+
+  it("7. 플랫폼별 품질 검사 + 자동 검토 + 자동 수정 + fact-grounding 관찰", async () => {
+    const t0 = Date.now();
+    for (const platform of PLATFORMS) {
+      const socialPostId = state.socialPostIds[platform];
+      if (!socialPostId) {
+        console.log(`[ops-04-article-b] ${platform} 생성 실패 — 검토 단계 건너뜀`);
+        continue;
+      }
+
+      const gateResult = await runSocialPostQualityGateAndSave(socialPostId);
+      console.log(`[ops-04-article-b] ${platform} quality gate success=${gateResult.success} status=${gateResult.socialPost?.qualityStatus}`);
+
+      const post = await getSocialPostById(socialPostId);
+      expect(post).toBeTruthy();
+      const checklist = Array.isArray(post!.qualitySummary?.checklist)
+        ? (post!.qualitySummary.checklist as unknown as SocialPostQualityChecklistItem[])
+        : [];
+      const review = summarizeAutoReview(checklist);
+      const userFacing = summarizeUserFacingReview(post!.qualityStatus, review, checklist);
+      const factGroundingItem = checklist.find((c) => c.key === "fact_grounding");
+      console.log(
+        `[ops-04-article-b] ${platform} review state=${userFacing.state} confirmationCount=${userFacing.confirmationCount} blocked=${review.counts.blocked} fact_grounding=${factGroundingItem ? JSON.stringify(factGroundingItem) : "not_run"}`
+      );
+
+      if (post!.qualityStatus === "needs_revision") {
+        const autoFix = await runAutoFixAndRecheck(socialPostId);
+        console.log(
+          `[ops-04-article-b] ${platform} auto-fix changesApplied=${autoFix.changesApplied.length} noSafeChangesFound=${autoFix.noSafeChangesFound} finalState=${autoFix.finalState}`
+        );
+      }
+    }
+    mark("quality_review_autofix_all", t0);
+  }, 180_000);
+
+  it("8. MultiPlatformReviewSummary 계산 + bulk approval", async () => {
+    const t0 = Date.now();
+    const posts = [];
+    for (const platform of PLATFORMS) {
+      const id = state.socialPostIds[platform];
+      if (!id) continue;
+      const post = await getSocialPostById(id);
+      const checklist = Array.isArray(post!.qualitySummary?.checklist)
+        ? (post!.qualitySummary.checklist as unknown as SocialPostQualityChecklistItem[])
+        : [];
+      const review = summarizeAutoReview(checklist);
+      const userFacing = summarizeUserFacingReview(post!.qualityStatus, review, checklist);
+      posts.push({ id: post!.id, approvalStatus: post!.approvalStatus, review: userFacing });
+    }
+    const reviewSummary = summarizeMultiPlatformReview(posts);
+    console.log(
+      `[ops-04-article-b] MultiPlatformReviewSummary total=${reviewSummary.total} ready=${reviewSummary.ready} needsConfirmation=${reviewSummary.needsConfirmation} blocked=${reviewSummary.blocked} failed=${reviewSummary.failed} bulkEligible=${reviewSummary.bulkApprovalEligiblePostIds.length}`
+    );
+
+    const bulkResult = await bulkApproveSocialPosts(reviewSummary.bulkApprovalEligiblePostIds, APPROVED_BY);
+    console.log(`[ops-04-article-b] bulkApprove success=${bulkResult.successCount} failure=${bulkResult.failureCount}`);
+    for (const f of bulkResult.failures) console.log(`[ops-04-article-b] bulk approve failure: ${f.socialPostId} - ${f.message}`);
+    mark("review_summary_bulk_approve", t0);
+
+    console.log(`[ops-04-article-b] NEEDS_OPERATOR_REVIEW_IDS=${JSON.stringify(state.socialPostIds)}`);
+  }, 60_000);
+
+  it("9. 승인 완료/대기 post 상태 및 다음 작업 확인 — '게시하기'/자동 posted 없음", async () => {
+    for (const platform of PLATFORMS) {
+      const id = state.socialPostIds[platform];
+      if (!id) continue;
+      const post = await getSocialPostById(id);
+      console.log(`[ops-04-article-b] ${platform} approvalStatus=${post!.approvalStatus}`);
+      if (post!.approvalStatus !== "approved") continue;
+      const next = getPostApprovalNextActions({ platform: post!.platform, apiConfigured: false });
+      console.log(`[ops-04-article-b] ${platform} next action = ${next.primaryAction.actionType} (${next.primaryAction.label}) manualPostStatus=${post!.manualPostStatus}`);
+      expect(next.primaryAction.actionType).not.toBe("publish");
+      expect(post!.manualPostStatus).not.toBe("posted");
+    }
+  });
+
+  it("10. 결과 요약 출력(운영 로그 작성용)", async () => {
+    console.log(`[ops-04-article-b] themeId=${state.themeId} articleId=${state.articleId}`);
+    for (const platform of PLATFORMS) {
+      console.log(`[ops-04-article-b] ${platform} socialPostId=${state.socialPostIds[platform] ?? "(생성 실패)"}`);
+    }
+    console.log(`[ops-04-article-b] timings=${JSON.stringify(state.timings)}`);
+  });
+});

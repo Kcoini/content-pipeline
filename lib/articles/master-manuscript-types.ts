@@ -44,6 +44,22 @@ export interface MasterManuscriptVerifiedFact {
   confidence: FactConfidence;
   /** Phase 4-8: 기존에 저장된 마스터 원고에는 없을 수 있다(선택 필드) — 없으면 "other"로 취급한다. */
   factType?: MasterManuscriptFactType;
+  /**
+   * OPS-04-FIX1: raw source content로 이 fact를 검증한 결과. verifiedFacts에
+   * 포함된 항목은 항상 "supported"다(그렇지 않으면 애초에 verifiedFacts에
+   * 들어오지 않는다 — 기존에 저장된 마스터 원고에는 없을 수 있어 선택 필드).
+   */
+  integrityStatus?: "supported";
+  /** OPS-04-FIX1: rawContent에서 실제로 추출한 근거 일부(있으면). 새로 지어낸 문장이 아니다. */
+  evidenceExcerpt?: string;
+}
+
+/** OPS-04-FIX1: verifiedFacts로 승격하지 못한 candidate fact(감사/디버깅용, 사람이 읽는 문장으로만 노출한다). */
+export interface MasterManuscriptRejectedFact {
+  fact: string;
+  sourceIds: string[];
+  status: "needs_review" | "unsupported" | "conflicting";
+  reason: string;
 }
 
 /** 사실과 해석을 구분해서 담는다 — 해석/전망을 사실처럼 쓰지 않기 위한 구조. */
@@ -340,6 +356,13 @@ export interface MasterManuscript {
   /** Phase 4-8: 이 내용이 독자에게 실질적으로 어떤 의미가 있는지(플랫폼 글의 "독자 의미" 문단 재료). */
   readerMeaning: string[];
   verificationNeeded: string[];
+  /**
+   * OPS-04-FIX1: source evidence integrity 검사에서 verifiedFacts로
+   * 승격되지 못한 candidate fact 목록(감사/디버깅용 — verificationNeeded에도
+   * 사람이 읽는 문장으로 이미 반영되어 있다). 기존에 저장된 마스터
+   * 원고에는 없을 수 있다(선택 필드).
+   */
+  rejectedFacts?: MasterManuscriptRejectedFact[];
   prohibitedOrCarefulExpressions: MasterManuscriptProhibitedExpressions;
   titleCandidates: MasterManuscriptTitleCandidates;
   platformBriefs: MasterManuscriptPlatformBriefs;
