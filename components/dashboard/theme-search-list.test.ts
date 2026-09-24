@@ -10,9 +10,9 @@ describe("ThemeSearchList (정적 소스 검사, Phase 1-23)", () => {
     expect(componentSource).toMatch(/filterThemesByQuery\(items, query, \(entry\) => entry\.theme\.title\)/);
   });
 
-  it("검색 input에 접근성 라벨을 제공한다", () => {
+  it("검색 input에 접근성 라벨을 제공한다 (PRODUCT-01E: 사용자 언어 '주제')", () => {
     expect(componentSource).toContain('type="search"');
-    expect(componentSource).toContain('aria-label="테마 검색"');
+    expect(componentSource).toContain('aria-label="주제 검색"');
   });
 
   it("archiveThemeAction(삭제)은 prop으로 전달받아 그대로 사용한다(기능 로직 변경 없음)", () => {
@@ -24,9 +24,9 @@ describe("ThemeSearchList (정적 소스 검사, Phase 1-23)", () => {
     expect(componentSource).toMatch(/text-\[10px\] font-medium text-zinc-400/);
   });
 
-  it("동일 제목 테마를 구분할 수 있도록 출처 수/진행 단계/등록일을 부제목으로 표시한다 (Phase 3-23-3)", () => {
+  it("동일 제목 테마를 구분할 수 있도록 참고자료 수/진행 단계/등록일을 부제목으로 표시한다 (Phase 3-23-3, PRODUCT-01E 용어 통일)", () => {
     expect(componentSource).toContain("stageLabel");
     expect(componentSource).toContain("dateLabel");
-    expect(componentSource).toMatch(/출처 \{sourceCount\} · \{stageLabel\} · \{dateLabel\}/);
+    expect(componentSource).toMatch(/참고자료 \{sourceCount\} · \{stageLabel\} · \{dateLabel\}/);
   });
 });

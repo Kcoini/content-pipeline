@@ -27,6 +27,7 @@ import {
 import type { TrendCandidate, ThemeCluster } from "@/lib/types/domain";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 import { PlatformBadge } from "@/components/common/platform-badge";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 
 export const dynamic = "force-dynamic";
 
@@ -605,7 +606,10 @@ function PlatformStatus({
   return (
     <span className={`flex items-center gap-1 text-xs ${isOk ? "text-green-700" : "text-red-600"}`}>
       <span className={`inline-block h-1.5 w-1.5 rounded-full ${isOk ? "bg-green-500" : "bg-red-400"}`} />
-      {label}: {isOk ? `성공 (${count}건)` : `실패${error ? ` — ${error}` : ""}`}
+      {label}:{" "}
+      {isOk
+        ? `성공 (${count}건)`
+        : `실패${error ? ` — ${describeUnexpectedError(error, "수집하지 못했습니다.").userMessage}` : ""}`}
     </span>
   );
 }

@@ -50,6 +50,29 @@ function urlDomain(url: string | null | undefined): string | null {
 }
 
 /**
+ * QA-01-FIX1과 동일한 이유(platform-publishing-guard-service.ts의
+ * requiresManualExportPrecondition 참고): export_status/
+ * platformPublishGuardStatus/platformPublishReady/
+ * platformPublishDryRunStatus/handoffStatus는 전부 "manual export/
+ * handoff"(social-manual-export-service.ts → platform-publish-dry-run-
+ * service.ts → platform-export-handoff-service.ts) 파이프라인을 실제로
+ * 거치는 플랫폼(naver_blog/news_article/opinion_column/naver_cafe/x/
+ * threads/instagram — PublishCapability "manual"/"copy")에만 의미가
+ * 있다. wordpress_blog는 Draft 기반의 완전히 다른 게시 준비 경로
+ * (wordpress-blog-publish-prep-state.ts)를 쓰고 이 파이프라인을 전혀
+ * 거치지 않으므로 해당 필드들이 영원히 초기값으로 남는다 — 이
+ * 전제조건들을 공통으로 요구하면 wordpress_blog는 "게시 체크리스트
+ * 만들기"(prepareManualPostingRecordAction, checklistPrepared 계산에
+ * 쓰임)가 항상 실패한다(실제로 발견된 버그 — export_status 단계에서
+ * "게시용 내보내기 준비가 아직 끝나지 않아..."로 막힘).
+ * lib/ui를 import하지 않기 위해(레이어 방향 유지) 같은 구분을 여기서도
+ * 직접 반복한다.
+ */
+function requiresManualExportPipelinePrecondition(platform: string): boolean {
+  return platform !== "wordpress_blog";
+}
+
+/**
  * 수동 게시 결과를 기록할 수 없는 이유를 반환한다. 가능하면 null.
  * Phase UX-05B: raw DB 필드명/enum이 사용자에게 그대로 보이던 문제를
  * 고쳐 전부 자연어 문장으로 바꿨다(governance: disabled 사유에 raw
@@ -64,19 +87,23 @@ function checkRecordable(post: SocialPost): string | null {
   if (post.manualPostStatus === "posted") return "이미 게시 완료로 기록된 글입니다(중복 기록 방지).";
   if (post.qualityStatus !== "ready") return "품질검사를 먼저 통과해야 게시 완료를 기록할 수 있습니다.";
   if (post.approvalStatus !== "approved") return "먼저 승인이 완료되어야 게시 완료를 기록할 수 있습니다.";
-  if (post.exportStatus !== "ready" && post.exportStatus !== "exported") {
-    return "게시용 내보내기 준비가 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
+
+  if (requiresManualExportPipelinePrecondition(post.platform)) {
+    if (post.exportStatus !== "ready" && post.exportStatus !== "exported") {
+      return "게시용 내보내기 준비가 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
+    }
+    if (post.platformPublishGuardStatus !== "ready") {
+      return "게시 준비 확인이 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
+    }
+    if (!post.platformPublishReady) return "게시 준비가 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
+    if (post.platformPublishDryRunStatus !== "ready") {
+      return "게시 전 미리보기 준비가 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
+    }
+    if (post.handoffStatus !== "completed") {
+      return "수동 게시 준비 완료 표시가 아직 되어 있지 않아 게시 완료를 기록할 수 없습니다.";
+    }
   }
-  if (post.platformPublishGuardStatus !== "ready") {
-    return "게시 준비 확인이 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
-  }
-  if (!post.platformPublishReady) return "게시 준비가 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
-  if (post.platformPublishDryRunStatus !== "ready") {
-    return "게시 전 미리보기 준비가 아직 끝나지 않아 게시 완료를 기록할 수 없습니다.";
-  }
-  if (post.handoffStatus !== "completed") {
-    return "수동 게시 준비 완료 표시가 아직 되어 있지 않아 게시 완료를 기록할 수 없습니다.";
-  }
+
   if (post.publishStatus === "blocked") return "게시 상태가 차단되어 있어 게시 완료를 기록할 수 없습니다.";
   if (post.publishStatus === "failed") return "게시 상태가 실패로 기록되어 있어 다시 게시 완료를 기록할 수 없습니다.";
   return null;

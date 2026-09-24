@@ -51,7 +51,7 @@ export function ApiDryRunPayloadPreview({ payload }: { payload: PlatformApiPubli
       </details>
 
       <p className="mt-2 text-[11px] text-zinc-400">
-        이 payload는 실제 API 호출에 쓰이는 최종 object가 아니며, 어떤 값도 pipeline_logs에 저장되지 않습니다.
+        이 payload는 실제 API 호출에 쓰이는 최종 object가 아니며, 어떤 값도 작업 기록에 저장되지 않습니다.
       </p>
     </div>
   );

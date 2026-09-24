@@ -51,10 +51,10 @@ describe("getDashboardStatusSummary (Phase 3-23-2)", () => {
     approvedCount: 0,
   };
 
-  it("needs_source: 출처 추가 안내와 버튼을 반환한다", () => {
+  it("needs_source: 참고자료 추가 안내와 버튼을 반환한다 (PRODUCT-01E: 사용자 언어로 통일)", () => {
     const summary = getDashboardStatusSummary("needs_source", baseCtx);
-    expect(summary.headline).toContain("아직 출처가 없습니다");
-    expect(summary.primaryActionLabel).toBe("출처 추가하기");
+    expect(summary.headline).toContain("아직 참고자료가 없습니다");
+    expect(summary.primaryActionLabel).toBe("참고자료 추가하기");
     expect(summary.primaryActionHref).toBe("#source-url-input");
   });
 

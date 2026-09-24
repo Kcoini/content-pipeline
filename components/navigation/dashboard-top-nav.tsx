@@ -21,6 +21,7 @@ export type DashboardTopNavActive =
   | "blog"
   | "rewrite"
   | "social-performance"
+  | "settings"
   | "platform-api"
   | "automation-safety"
   | null;
@@ -36,15 +37,24 @@ export interface DashboardMenuItem {
 export interface DashboardMenuGroup {
   title: string;
   items: DashboardMenuItem[];
+  /**
+   * PRODUCT-01B: 이 그룹이 일반 내부 사용자(콘텐츠를 만들고 검토하는
+   * 사람)용인지, 관리자/고급 기능(운영 상태 점검용, RBAC는 아직 없음 —
+   * 정보 구조만 분리)인지 표시한다. 기존 route는 그대로 유지하고,
+   * 드롭다운 안에서 시각적으로만 구분한다.
+   */
+  audience: "user" | "admin";
 }
 
 /**
- * 드롭다운 메뉴 구성 — 역할별로 묶는다(콘텐츠 관리/성과 분석/운영 설정).
- * 영문 버튼명은 한국어로 통일한다(Content Dashboard → 콘텐츠 현황 등).
+ * 드롭다운 메뉴 구성 — 역할별로 묶는다(콘텐츠 관리/성과 분석 = 일반
+ * 사용자, 관리자/고급 = 운영자). 영문 버튼명은 한국어로 통일한다
+ * (Content Dashboard → 콘텐츠 현황 등).
  */
 export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
   {
     title: "콘텐츠 관리",
+    audience: "user",
     items: [
       { key: "content", href: "/dashboard/content", label: "콘텐츠 현황" },
       { key: "blog", href: "/dashboard/blog", label: "블로그 현황" },
@@ -53,13 +63,22 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
   },
   {
     title: "성과 분석",
+    audience: "user",
     items: [{ key: "social-performance", href: "/dashboard/social-performance", label: "소셜 성과" }],
   },
   {
-    title: "운영 설정",
+    // PRODUCT-01D: 일반 사용자용 Settings(현재 서비스 준비 상태 +
+    // 게시 방식 확인). 관리자/고급 그룹과 섞지 않는다(섹션 12/13).
+    title: "설정",
+    audience: "user",
+    items: [{ key: "settings", href: "/dashboard/settings", label: "설정" }],
+  },
+  {
+    title: "관리자 / 고급",
+    audience: "admin",
     items: [
-      { key: "platform-api", href: "/dashboard/platform-api", label: "API 연동 준비" },
-      { key: "automation-safety", href: "/dashboard/automation-safety", label: "자동화 안전", danger: true },
+      { key: "platform-api", href: "/dashboard/platform-api", label: "API 연동 준비 상태" },
+      { key: "automation-safety", href: "/dashboard/automation-safety", label: "자동화 안전 점검", danger: true },
     ],
   },
 ];
@@ -132,6 +151,11 @@ export function DashboardTopNav({ active }: DashboardTopNavProps) {
         기사 목록
       </Link>
 
+      {/* PRODUCT-01C: "대시보드"는 이 트리거가 실제로 담고 있는
+          내용(콘텐츠 관리/성과 분석/관리자·고급)과 맞지 않아, 처음
+          쓰는 사람이 "대시보드라는 별도 화면으로 가는 버튼"으로
+          오해할 수 있었다 — 모바일에서 이미 쓰던 "메뉴"로 desktop도
+          통일한다(라우팅 대상은 전혀 바꾸지 않는다). */}
       <button
         type="button"
         aria-haspopup="menu"
@@ -142,8 +166,7 @@ export function DashboardTopNav({ active }: DashboardTopNavProps) {
           menuTriggerActive ? PRIMARY_ACTIVE_CLASS : PRIMARY_INACTIVE_CLASS
         }`}
       >
-        <span className="hidden sm:inline">대시보드</span>
-        <span className="sm:hidden">메뉴</span> ▾
+        메뉴 ▾
       </button>
 
       {open && (
@@ -164,31 +187,46 @@ export function DashboardTopNav({ active }: DashboardTopNavProps) {
             기사 목록
           </Link>
 
-          {DASHBOARD_MENU_GROUPS.map((group) => (
-            <div key={group.title} className="mt-1.5 first:mt-0">
-              <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">{group.title}</p>
-              {group.items.map((item) => {
-                const isActive = item.key === active;
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    role="menuitem"
-                    aria-current={isActive ? "page" : undefined}
-                    className={`block rounded px-2 py-1.5 text-sm ${
-                      isActive
-                        ? "bg-zinc-100 font-semibold text-zinc-900"
-                        : item.danger
-                          ? "text-red-700 hover:bg-red-50"
-                          : "text-zinc-700 hover:bg-zinc-50"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+          {DASHBOARD_MENU_GROUPS.map((group, index) => {
+            // PRODUCT-01B: admin 그룹은 위쪽 구분선 + "관리자 전용" 안내
+            // 문구로 시각적으로 분리한다(권한 제어는 아직 없음 — 정보
+            // 구조로만 구분). 일반 사용자 그룹과 같은 무게로 보이지
+            // 않게 한다.
+            const previousAudience = index > 0 ? DASHBOARD_MENU_GROUPS[index - 1].audience : group.audience;
+            const isFirstAdminGroup = group.audience === "admin" && previousAudience !== "admin";
+            return (
+              <div key={group.title} className={`mt-1.5 first:mt-0 ${isFirstAdminGroup ? "mt-2 border-t border-zinc-200 pt-2" : ""}`}>
+                {isFirstAdminGroup && (
+                  <p className="px-2 text-[10px] font-medium text-zinc-400">
+                    아래는 콘텐츠 작업에는 필요 없는 운영자/관리자 전용 화면입니다.
+                  </p>
+                )}
+                <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">{group.title}</p>
+                {group.items.map((item) => {
+                  const isActive = item.key === active;
+                  return (
+                    <Link
+                      key={item.key}
+                      href={item.href}
+                      role="menuitem"
+                      aria-current={isActive ? "page" : undefined}
+                      className={`block rounded px-2 py-1.5 text-sm ${
+                        isActive
+                          ? "bg-zinc-100 font-semibold text-zinc-900"
+                          : item.danger
+                            ? "text-red-700 hover:bg-red-50"
+                            : group.audience === "admin"
+                              ? "text-zinc-500 hover:bg-zinc-50"
+                              : "text-zinc-700 hover:bg-zinc-50"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

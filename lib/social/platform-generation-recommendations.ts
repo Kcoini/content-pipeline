@@ -31,6 +31,22 @@ export const PLATFORM_LABELS: Record<SocialPlatform, string> = {
   instagram: "Instagram",
 };
 
+// PRODUCT-01E 섹션 11: 플랫폼 카드에 붙이는 한 줄 목적 설명. 기존
+// PLATFORM_SHORT_DESCRIPTIONS는 어댑터/변환 방식 같은 기술적 부연이
+// 섞여 있어(HTML 변환, plain text, 수동 export 등) 그대로 재사용하지
+// 않고, 카드에서만 쓸 더 짧고 비기술적인 문구를 별도로 둔다. 기술
+// adapter 이름은 여기서도 노출하지 않는다.
+export const PLATFORM_PURPOSE_LABELS: Record<SocialPlatform, string> = {
+  news_article: "보도 기사 형식 글",
+  opinion_column: "의견/칼럼 글",
+  wordpress_blog: "블로그용 긴 글",
+  naver_blog: "네이버 블로그용 글",
+  naver_cafe: "네이버 카페용 글",
+  x: "짧은 게시물",
+  threads: "짧은 대화형 게시물",
+  instagram: "캡션용 콘텐츠",
+};
+
 export const PLATFORM_SHORT_DESCRIPTIONS: Record<SocialPlatform, string> = {
   news_article: "스트레이트 기사·보도 기사 형식 (사실 전달, 중립적 설명, 육하원칙, 수동 export)",
   opinion_column: "관점과 해석이 중심인 의견형 글 (근거, 반론/한계, 사실-의견 구분, 수동 export)",

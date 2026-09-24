@@ -342,13 +342,14 @@ describe("마스터 원고 정보 섹션 (정적 소스 검사, Phase 4-4)", () 
     expect(pageSource).toContain("그대로 게시되는 내용이 아닙니다");
   });
 
-  it("Phase 4-8: 마스터 원고 자동 검토 상태 배지와 근거 연결(evidenceMap)/쟁점 개수를 보여준다", () => {
+  it("Phase 4-8: 마스터 원고 자동 검토 상태 배지와 근거 연결/쟁점 개수를 보여준다 (PRODUCT-01H: raw 필드명(evidenceMap) 노출 제거)", () => {
     expect(pageSource).toContain("reviewMasterManuscript");
     expect(pageSource).toContain("masterManuscriptReview.statusLabel");
     const start = pageSource.indexOf("마스터 원고 정보</h2>");
     const end = pageSource.indexOf("기사 본문</h2>");
     const block = pageSource.slice(start, end);
-    expect(block).toContain("근거 연결(evidenceMap)");
+    expect(block).toContain("근거 연결</dt>");
+    expect(block).not.toContain("근거 연결(evidenceMap)");
     expect(block).toContain("masterManuscript.issues.length");
   });
 });
@@ -397,15 +398,15 @@ describe("SEO 정보 반영 상태 요약 카드 + 개발자용 상세 정보 �
     expect(section).toContain('"retry"');
   });
 
-  it("개발자용 상세 정보는 기본 접힘(<details>) 영역 안에서만 노출되고 기능은 삭제되지 않는다", () => {
+  it("개발자용 상세 정보는 기본 접힘(<details>) 영역 안에서만 노출되고 기능은 삭제되지 않는다(PRODUCT-01B: 라벨은 한국어로)", () => {
     const section = getSeoWriteStatusSectionSource();
     expect(section).toContain("<details");
     expect(section).toContain("SEO 반영 상세 보기");
     const detailsStart = section.indexOf("<details");
     const detailsContent = section.slice(detailsStart);
-    expect(detailsContent).toContain("SEO_PLUGIN_PROVIDER");
-    expect(detailsContent).toContain("SEO_PLUGIN_WRITE_ENABLED");
-    expect(detailsContent).toContain("WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED");
+    expect(detailsContent).toContain("SEO 연동 방식");
+    expect(detailsContent).toContain("SEO 자동 반영 기능 상태");
+    expect(detailsContent).toContain("Custom Endpoint 기능 상태");
     expect(detailsContent).toContain("custom endpoint path");
     expect(detailsContent).toContain("Custom Endpoint (Rank Math 전용)");
     // 기존 액션(실제 반영 테스트/custom endpoint write)은 삭제되지 않고 접힘 안에 남아 있다.
@@ -454,16 +455,17 @@ describe("WordPress 게시 준비 요약 카드 + 개발자용 테스트 정보 
     const beforeDetails = section.slice(0, section.indexOf("<details"));
     expect(beforeDetails).not.toContain("Step 2. WordPress Media Upload");
     expect(beforeDetails).not.toContain("WORDPRESS_MEDIA_UPLOAD_ENABLED");
+    expect(beforeDetails).not.toContain("이미지 업로드 기능 상태");
     expect(beforeDetails).not.toContain("WordPress 이미지 업로드 테스트");
     expect(beforeDetails).not.toContain("업로드 상태 확인");
   });
 
-  it("이미지 업로드 상세 보기 접힘 안에는 기존 raw 값/버튼이 그대로 남아 있다(기능 유지)", () => {
+  it("이미지 업로드 상세 보기 접힘 안에는 기존 raw 값/버튼이 그대로 남아 있다(기능 유지, PRODUCT-01B: 라벨은 한국어로)", () => {
     const section = getMediaUploadSectionSource();
     expect(section).toContain("이미지 업로드 상세 보기");
     const detailsStart = section.indexOf("<details");
     const detailsContent = section.slice(detailsStart);
-    expect(detailsContent).toContain("WORDPRESS_MEDIA_UPLOAD_ENABLED");
+    expect(detailsContent).toContain("이미지 업로드 기능 상태");
     expect(detailsContent).toContain("prepareWordPressMediaUploadAction");
     expect(detailsContent).toContain("uploadFeaturedImageToWordPressAction");
     expect(detailsContent).toContain("checkWordPressMediaUploadStatusAction");
@@ -484,19 +486,19 @@ describe("WordPress 게시 준비 요약 카드 + 개발자용 테스트 정보 
     const beforeDetails = section.slice(0, section.indexOf("<details"));
     expect(beforeDetails).not.toContain("WordPress Connection Test");
     expect(beforeDetails).not.toContain("process.env.WORDPRESS_BASE_URL");
-    expect(beforeDetails).not.toContain("publish enabled");
-    expect(beforeDetails).not.toContain("media upload enabled");
+    expect(beforeDetails).not.toContain("게시 기능 상태");
+    expect(beforeDetails).not.toContain("이미지 업로드 기능 상태");
     expect(beforeDetails).toContain("연결 상태 확인");
   });
 
-  it("WordPress 연결 상세 보기 접힘 안에는 base URL/raw flag가 있고 Application Password/Authorization header는 어디에도 없다", () => {
+  it("WordPress 연결 상세 보기 접힘 안에는 base URL/raw flag가 있고 Application Password/Authorization header는 어디에도 없다(PRODUCT-01B: 라벨은 한국어로)", () => {
     const section = getConnectionTestSectionSource();
     expect(section).toContain("WordPress 연결 상세 보기");
     const detailsStart = section.indexOf("<details");
     const detailsContent = section.slice(detailsStart);
     expect(detailsContent).toContain("process.env.WORDPRESS_BASE_URL");
-    expect(detailsContent).toContain("publish enabled");
-    expect(detailsContent).toContain("media upload enabled");
+    expect(detailsContent).toContain("게시 기능 상태");
+    expect(detailsContent).toContain("이미지 업로드 기능 상태");
     expect(section).not.toContain("Application Password:");
     expect(section).not.toContain("Authorization:");
     expect(pageSource).not.toContain("Authorization header:");
@@ -599,5 +601,38 @@ describe("Phase UX-02A (C7): SEO plugin provider select는 기본 화면에 노�
     const block = getSeoPluginMetadataFormSource();
     expect(block).toContain("SEO_PLUGIN_PROVIDER_OPTIONS.map");
     expect(block).toContain("generateSeoPluginMetadataAction");
+  });
+});
+
+describe("PRODUCT-01B: env var 이름이 사용자 라벨(JSX 텍스트)로 노출되지 않는다", () => {
+  // env var를 읽는 코드(process.env.X)는 그대로 유지한다 — 라벨 텍스트로
+  // 쓰이던 자리(<dt>...</dt> 등)만 사람이 읽는 한국어로 바꿨는지 확인한다.
+  const bannedLabelPatterns = [
+    ">WORDPRESS_BASE_URL<",
+    ">WORDPRESS_PUBLISH_ENABLED<",
+    ">WORDPRESS_MEDIA_UPLOAD_ENABLED:",
+    ">SEO_PLUGIN_PROVIDER<",
+    ">SEO_PLUGIN_WRITE_ENABLED<",
+    ">WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED<",
+    "SEO_PLUGIN_PROVIDER=none",
+    "SEO_PLUGIN_PROVIDER가 rank_math",
+    "WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED=false",
+  ];
+
+  it.each(bannedLabelPatterns)("%s 패턴이 더 이상 라벨/안내 문구로 노출되지 않는다", (pattern) => {
+    expect(pageSource).not.toContain(pattern);
+  });
+
+  it("env var 값을 읽는 코드 자체(process.env.WORDPRESS_BASE_URL)는 그대로 유지된다(기능 삭제 아님)", () => {
+    expect(pageSource).toContain("process.env.WORDPRESS_BASE_URL");
+  });
+
+  it("바뀐 라벨들이 실제로 존재한다", () => {
+    expect(pageSource).toContain("WordPress 사이트 주소");
+    expect(pageSource).toContain("게시 기능 상태");
+    expect(pageSource).toContain("WordPress 게시 기능 상태");
+    expect(pageSource).toContain("SEO 연동 방식");
+    expect(pageSource).toContain("SEO 자동 반영 기능 상태");
+    expect(pageSource).toContain("Custom Endpoint 기능 상태");
   });
 });

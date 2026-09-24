@@ -105,26 +105,31 @@ export function getDashboardStatusSummary(
   switch (state) {
     case "needs_theme":
       return {
-        headline: "아직 선택된 테마가 없습니다.",
-        nextAction: "테마를 생성하거나 목록에서 선택하세요.",
-        primaryActionLabel: "테마 생성/선택하기",
+        // PRODUCT-01E: Step 1(주제) 사용자 언어로 통일 — 내부 코드/DB는
+        // theme을 그대로 쓴다(섹션 7).
+        headline: "아직 선택된 주제가 없습니다.",
+        nextAction: "주제를 만들거나 목록에서 선택하세요.",
+        primaryActionLabel: "주제 만들기/선택하기",
         primaryActionHref: "#theme-list",
       };
     case "needs_source":
       return {
+        // PRODUCT-01E: Step 2(참고자료) 사용자 언어로 통일 — 내부 코드/DB는
+        // source를 그대로 쓴다(섹션 8). nextAction은 행동 중심으로
+        // 표현한다(섹션 27).
         headline:
           ctx.sourceCount === 0
-            ? "아직 출처가 없습니다."
-            : `출처가 ${ctx.sourceCount}개 등록되어 있지만 아직 부족합니다.`,
-        nextAction: `기사 작성에 사용할 출처를 추가하세요 (${Math.max(ctx.minSourceCount - ctx.sourceCount, 0)}개 더 필요).`,
-        primaryActionLabel: "출처 추가하기",
+            ? "아직 참고자료가 없습니다."
+            : `참고자료가 ${ctx.sourceCount}개 등록되어 있지만 아직 부족합니다.`,
+        nextAction: `콘텐츠의 근거로 사용할 참고자료를 추가하세요 (${Math.max(ctx.minSourceCount - ctx.sourceCount, 0)}개 더 필요).`,
+        primaryActionLabel: "참고자료 추가하기",
         primaryActionHref: "#source-url-input",
         secondaryActionLabel: "관련 기사 URL 수집",
         secondaryActionHref: ctx.themeId ? `/themes/${ctx.themeId}` : undefined,
       };
     case "ready_to_generate":
       return {
-        headline: `출처가 준비되었습니다 (${ctx.sourceCount}개).`,
+        headline: `참고자료가 준비되었습니다 (${ctx.sourceCount}개).`,
         nextAction: "WordPress 블로그, 네이버 블로그, 네이버 카페 글을 생성하려면 먼저 마스터 원고를 만드세요.",
         primaryActionLabel: "마스터 원고 만들기",
         primaryActionHref: "#generate-draft",

@@ -78,6 +78,7 @@ import {
 } from "../actions";
 import { PLATFORM_WRITING_CONFIGS } from "@/lib/social/platform-writing-config";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 
 export const dynamic = "force-dynamic";
 
@@ -239,7 +240,11 @@ export default async function ArticleSocialPage({
           </div>
         )}
 
-        {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {describeUnexpectedError(error, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage}
+          </div>
+        )}
         {publishMessage && (
           <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
             {publishMessage}
@@ -856,9 +861,9 @@ export default async function ArticleSocialPage({
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="socialPostId" value={post.id} />
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <input name="manualPostUrl" placeholder="게시된 URL" className="rounded border border-zinc-300 px-1.5 py-1" />
+                        <input name="manualPostUrl" placeholder="게시한 주소(URL)" className="rounded border border-zinc-300 px-1.5 py-1" />
                         <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
-                          게시 결과 기록
+                          게시 완료 기록
                         </button>
                       </form>
                       <form action={recordSocialPostMetricsAction} className="mt-1 flex flex-wrap items-end gap-1">

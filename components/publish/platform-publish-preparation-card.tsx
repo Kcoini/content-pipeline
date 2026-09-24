@@ -4,7 +4,12 @@
 // NextActionPanel의 renderAction과 같은 패턴).
 
 import type { ReactNode } from "react";
-import type { PublishPreparationAction, PublishPreparationViewModel } from "@/lib/ui/publish-preparation-view-model";
+import {
+  getPublishCapability,
+  describePublishCapability,
+  type PublishPreparationAction,
+  type PublishPreparationViewModel,
+} from "@/lib/ui/publish-preparation-view-model";
 
 const STATE_TONE_CLASS: Record<PublishPreparationViewModel["state"], string> = {
   failed: "border-red-200 bg-red-50 text-red-800",
@@ -27,6 +32,10 @@ export function PlatformPublishPreparationCard({ viewModel, platformLabel, rende
     <div className={`rounded border p-2 text-[11px] ${STATE_TONE_CLASS[viewModel.state]}`}>
       <p className="font-semibold">{platformLabel}</p>
       <p className="mt-0.5">{viewModel.title}</p>
+      {/* PRODUCT-01F 섹션 13: 플랫폼 이름/현재 상태/게시 방식/다음 행동
+          4개를 기본으로 보여준다 — 게시 방식은 capability(draft/manual/
+          copy)에서만 파생한다(새 값 추가 없음). */}
+      <p className="mt-0.5 text-[10px] opacity-80">게시 방식: {describePublishCapability(getPublishCapability(viewModel.platform))}</p>
       {viewModel.message && <p className="mt-0.5 text-[10px] opacity-80">{viewModel.message}</p>}
       {viewModel.primaryAction && <div className="mt-1.5">{renderAction(viewModel.primaryAction, "primary")}</div>}
       {viewModel.primaryAction?.disabled && viewModel.primaryAction.disabledReason && (

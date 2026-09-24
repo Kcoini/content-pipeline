@@ -66,6 +66,19 @@ export function getPublishCapability(platform: SocialPlatform): PublishCapabilit
   return PLATFORM_CAPABILITY[platform];
 }
 
+// PRODUCT-01F 섹션 13/14: 플랫폼 카드에 "게시 방식"을 별도 필드로
+// 보여주기 위한 사용자 언어. draft/manual/copy는 실제 capability 값을
+// 그대로 쓰고(새 값 추가 없음), 라벨만 여기서 사용자 언어로 변환한다.
+const CAPABILITY_LABELS: Record<PublishCapability, string> = {
+  draft: "초안으로 저장",
+  manual: "외부에서 직접 게시",
+  copy: "본문 복사 후 직접 게시",
+};
+
+export function describePublishCapability(capability: PublishCapability): string {
+  return CAPABILITY_LABELS[capability];
+}
+
 export interface PublishPreparationAction {
   type: string;
   label: string;

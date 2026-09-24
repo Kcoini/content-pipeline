@@ -4,6 +4,7 @@ import {
   fromPostApprovalNextActionsToPublishPreparation,
   notApprovedPublishPreparation,
   getPublishCapability,
+  describePublishCapability,
   describePublishPreparationState,
 } from "./publish-preparation-view-model";
 import { getWordPressPublishPrepState } from "@/lib/social/wordpress-blog-publish-prep-state";
@@ -103,6 +104,16 @@ describe("PublishPreparationState mapping (Phase UX-05A)", () => {
     expect(getPublishCapability("x")).toBe("copy");
     expect(getPublishCapability("threads")).toBe("copy");
     expect(getPublishCapability("instagram")).toBe("copy");
+  });
+
+  it("PRODUCT-01F: describePublishCapability는 draft/manual/copy를 서로 다른 한국어 문구로 구분한다(같은 의미로 섞이지 않는다)", () => {
+    const draft = describePublishCapability("draft");
+    const manual = describePublishCapability("manual");
+    const copy = describePublishCapability("copy");
+    expect(draft).toBe("초안으로 저장");
+    expect(manual).toBe("외부에서 직접 게시");
+    expect(copy).toBe("본문 복사 후 직접 게시");
+    expect(new Set([draft, manual, copy]).size).toBe(3);
   });
 
   it("describePublishPreparationState는 7가지 상태 모두 한국어 라벨을 반환한다", () => {

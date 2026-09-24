@@ -5,11 +5,15 @@
 
 export type ContentProgressStep = "theme" | "sources" | "generate" | "review" | "publish_ready";
 
+// PRODUCT-01E: 라벨을 사용자 언어(주제/참고자료/콘텐츠 만들기/결과 확인)로
+// 맞춘다. key(theme/sources/generate/review/publish_ready)와 파생 로직은
+// 그대로 유지한다 — 새 step state를 만들지 않는다(app/dashboard/page.tsx의
+// workflowState에서 그대로 파생).
 const STEPS: { key: ContentProgressStep; label: string }[] = [
-  { key: "theme", label: "테마 선택" },
-  { key: "sources", label: "출처 입력" },
-  { key: "generate", label: "글 생성" },
-  { key: "review", label: "검토/승인" },
+  { key: "theme", label: "주제 선택" },
+  { key: "sources", label: "참고자료 확인" },
+  { key: "generate", label: "콘텐츠 만들기" },
+  { key: "review", label: "결과 확인" },
   { key: "publish_ready", label: "게시 준비" },
 ];
 

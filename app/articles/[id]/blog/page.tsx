@@ -59,6 +59,8 @@ import {
   getWordPressBlogNextRecommendedAction,
 } from "@/lib/social/wordpress-blog-workflow-steps";
 import { getWordPressPublishPrepState } from "@/lib/social/wordpress-blog-publish-prep-state";
+import { getContentServiceReadiness } from "@/lib/ui/content-service-readiness";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 import { describePublishGuardIssues } from "@/lib/social/publish-guard-issue-view";
 import { describeStatusBadgeClass } from "@/lib/ui/status-badge-class";
 import { PublishGuardIssueList } from "@/components/wordpress/publish-guard-issue-list";
@@ -240,6 +242,14 @@ export default async function ArticleBlogPage({
     notFound();
   }
 
+  // PRODUCT-01F 섹션 6/20: WordPress "연결" 상태(계정/API 자격증명이
+  // 실제로 살아있는지)는 이 post 하나의 게시 준비 상태(readiness.blockers,
+  // quality/approval/체크리스트)와는 완전히 다른 축이다 — 이 페이지에는
+  // 지금까지 연결 상태 표시가 전혀 없었다. PRODUCT-01D에서 만든
+  // getContentServiceReadiness()(재계산 없이 그대로 재사용, Settings
+  // 화면과 동일한 함수)로만 표시한다 — Settings와 문구가 어긋나지 않게.
+  const wordpressConnection = getContentServiceReadiness().wordpressAvailable;
+
   // wordpress_blog 카드의 "WordPress 게시 준비" 섹션에서 쓸 요약을 미리 계산한다
   // (draft/SEO/featured image/guard 상태 — 읽기 전용, API 호출 없음).
   const wordpressBlogSummaries = new Map(
@@ -347,7 +357,10 @@ export default async function ArticleBlogPage({
         {/* action 실행 결과(성공/실패)는 본문 중간에 계속 남는 alert box 대신
             잠깐 떴다 사라지는 toast로 보여준다. 상세 기록은 여전히 로그에 남고
             (harness logger), 상태 자체는 각 카드의 상태 요약에 남는다. */}
-        <TransientNotice message={error ?? null} variant="error" />
+        <TransientNotice
+          message={error ? describeUnexpectedError(error, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage : null}
+          variant="error"
+        />
         <TransientNotice message={publishMessage ?? null} variant="success" />
 
         {/* Phase 4-17: Job Progress System — WordPress 게시 준비 자동 실행처럼
@@ -1739,8 +1752,32 @@ export default async function ArticleBlogPage({
                               </div>
                               <p className="mt-1 text-[10px] text-zinc-600">
                                 이 단계에서 wordpress_blog 글의 제목과 본문이 실제 WordPress Draft로
-                                생성되거나 업데이트됩니다(article 원문 아님).
+                                생성되거나 업데이트됩니다(article 원문 아님). 게시 방식: 항상 초안(Draft)으로
+                                저장 — 공개 게시는 하지 않습니다.
                               </p>
+                              {/* PRODUCT-01F 섹션 6/7: WordPress 연결 상태(Settings와 동일 문구). */}
+                              <p className="mt-1 flex items-center gap-1 text-[10px]">
+                                <span className="font-medium text-zinc-600">WordPress 연결:</span>
+                                <span
+                                  className={
+                                    wordpressConnection.status === "available"
+                                      ? "text-green-700"
+                                      : wordpressConnection.status === "needs_attention"
+                                        ? "text-amber-700"
+                                        : "text-zinc-500"
+                                  }
+                                >
+                                  {wordpressConnection.message}
+                                </span>
+                              </p>
+                              {wordpressConnection.status !== "available" && (
+                                <p className="mt-0.5 text-[10px] text-zinc-500">
+                                  관리자에게 설정 확인을 요청해 주세요.{" "}
+                                  <Link href="/dashboard/settings" className="underline">
+                                    설정에서 상태 확인
+                                  </Link>
+                                </p>
+                              )}
                               <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
                                 <div>
                                   <dt className="font-medium">WordPress Post ID</dt>
@@ -1960,20 +1997,20 @@ export default async function ArticleBlogPage({
                                 </p>
                                 <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-[11px] text-indigo-800 sm:grid-cols-2">
                                   <div>
-                                    <dt className="font-medium">현재 provider</dt>
+                                    <dt className="font-medium">현재 SEO 연동 방식</dt>
                                     <dd>{seoPluginProvider}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium">SEO Plugin update status</dt>
-                                    <dd>{seoPluginWriteStatus}</dd>
+                                    <dt className="font-medium">SEO 반영 처리 결과</dt>
+                                    <dd>{describeStatusValue(seoPluginWriteStatus)}</dd>
                                   </div>
                                   <div>
-                                    <dt className="font-medium">last updated at</dt>
+                                    <dt className="font-medium">마지막 반영 시각</dt>
                                     <dd>{seoPluginWriteUpdatedAt ?? "-"}</dd>
                                   </div>
                                   {seoPluginWriteError && (
                                     <div className="sm:col-span-2">
-                                      <dt className="font-medium text-red-700">error message</dt>
+                                      <dt className="font-medium text-red-700">오류 메시지</dt>
                                       <dd className="text-red-700">{seoPluginWriteError}</dd>
                                     </div>
                                   )}
@@ -2593,7 +2630,8 @@ export default async function ArticleBlogPage({
                                             <input type="hidden" name="socialPostId" value={post.id} />
                                             <input type="hidden" name="returnTo" value={selfReturnTo} />
                                             <label className="flex flex-col text-zinc-700">
-                                              게시 URL
+                                              게시한 주소
+                                              <span className="text-[10px] font-normal text-zinc-500">외부 게시 후 게시물 주소를 입력해 주세요.</span>
                                               <input
                                                 type="url"
                                                 name="manualPostUrl"
@@ -2604,12 +2642,12 @@ export default async function ArticleBlogPage({
                                               />
                                             </label>
                                             <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
-                                              게시 URL 저장
+                                              게시 완료 기록
                                             </button>
                                           </form>
                                         ) : isUrlItem ? (
                                           <p className="mt-2 text-[10px] text-zinc-500">
-                                            위 &ldquo;게시 URL 저장&rdquo;에 URL을 입력하면 이 항목도 함께 완료 처리됩니다.
+                                            위 &ldquo;게시 완료 기록&rdquo;에 주소를 입력하면 이 항목도 함께 완료 처리됩니다.
                                           </p>
                                         ) : isConfirmable ? (
                                           <form action={markManualChecklistItemConfirmedAction} className="mt-2">
@@ -2631,7 +2669,7 @@ export default async function ArticleBlogPage({
                               {(post.manualPostUrl || post.postUrl) && (
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-zinc-600">
                                   <span>
-                                    게시 URL 기록 완료:{" "}
+                                    게시한 주소 기록 완료:{" "}
                                     <a
                                       href={post.manualPostUrl ?? post.postUrl ?? undefined}
                                       target="_blank"
@@ -2697,9 +2735,9 @@ export default async function ArticleBlogPage({
                         <input type="hidden" name="articleId" value={article.id} />
                         <input type="hidden" name="socialPostId" value={post.id} />
                         <input type="hidden" name="returnTo" value={selfReturnTo} />
-                        <input name="manualPostUrl" placeholder="게시된 URL" className="rounded border border-zinc-300 px-1.5 py-1" />
+                        <input name="manualPostUrl" placeholder="게시한 주소(URL)" className="rounded border border-zinc-300 px-1.5 py-1" />
                         <button type="submit" className="rounded border border-green-300 bg-green-50 px-2 py-1 font-medium text-green-700 hover:bg-green-100">
-                          게시 결과 기록
+                          게시 완료 기록
                         </button>
                       </form>
                       <form action={recordSocialPostMetricsAction} className="mt-1 flex flex-wrap items-end gap-1">

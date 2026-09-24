@@ -153,7 +153,7 @@ export async function addSource(formData: FormData): Promise<void> {
     if (error instanceof DuplicateSourceError) {
       revalidatePath("/dashboard");
       redirect(
-        `/dashboard?themeId=${themeId}&sourceError=${encodeURIComponent("이미 이 테마에 등록된 출처입니다. 다른 URL을 입력하거나 기존 출처를 사용하세요.")}`
+        `/dashboard?themeId=${themeId}&sourceError=${encodeURIComponent("이미 이 주제에 등록된 참고자료입니다. 다른 URL을 입력하거나 기존 참고자료를 사용하세요.")}`
       );
     }
     throw error;
@@ -703,7 +703,7 @@ export async function archiveThemeAction(formData: FormData): Promise<void> {
   const theme = await getThemeById(themeId);
 
   if (!theme) {
-    redirect(`/dashboard?deleteError=${encodeURIComponent("테마를 찾을 수 없습니다.")}`);
+    redirect(`/dashboard?deleteError=${encodeURIComponent("주제를 찾을 수 없습니다.")}`);
   }
 
   if (theme.archivedAt) {
@@ -714,7 +714,7 @@ export async function archiveThemeAction(formData: FormData): Promise<void> {
       details: { themeId },
       themeId,
     });
-    redirect(`/dashboard?deleteError=${encodeURIComponent("이미 삭제된 테마입니다.")}`);
+    redirect(`/dashboard?deleteError=${encodeURIComponent("이미 삭제된 주제입니다.")}`);
   }
 
   const relatedCounts = await getThemeRelatedCounts(themeId);
@@ -729,7 +729,7 @@ export async function archiveThemeAction(formData: FormData): Promise<void> {
   });
 
   revalidatePath("/dashboard");
-  redirect(`/dashboard?deleteMessage=${encodeURIComponent(`테마를 삭제했습니다: ${theme.title}`)}`);
+  redirect(`/dashboard?deleteMessage=${encodeURIComponent(`주제를 삭제했습니다: ${theme.title}`)}`);
 }
 
 /**

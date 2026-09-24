@@ -36,6 +36,7 @@ import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { describeStatusValue, describeStatusField } from "@/lib/social/status-labels";
 import { RelatedPostLinks } from "@/components/navigation/related-post-links";
 import { shouldShowPerformanceLink } from "@/lib/social/performance-link-visibility";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 import {
   getRewriteSuggestionNextAction,
   getRewriteVersionNextAction,
@@ -143,7 +144,11 @@ export default async function ArticleRewritePage({
           </div>
         )}
 
-        {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {describeUnexpectedError(error, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage}
+          </div>
+        )}
         {publishMessage && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}</div>}
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

@@ -59,4 +59,24 @@ describe("PlatformPublishPreparationCard (Phase UX-05A)", () => {
     );
     expect(html).not.toContain("needs_setup");
   });
+
+  it("PRODUCT-01F: 플랫폼별 capability(draft/manual/copy)에서 파생한 '게시 방식'을 항상 보여준다", () => {
+    const wordpress: PublishPreparationViewModel = { platform: "wordpress_blog", state: "ready", title: "게시 준비 완료" };
+    const manual: PublishPreparationViewModel = { platform: "naver_blog", state: "ready", title: "게시 준비 완료" };
+    const copy: PublishPreparationViewModel = { platform: "x", state: "ready", title: "게시 준비 완료" };
+
+    const wordpressHtml = renderToStaticMarkup(
+      <PlatformPublishPreparationCard viewModel={wordpress} platformLabel="WordPress 블로그" renderAction={() => null} />
+    );
+    const manualHtml = renderToStaticMarkup(
+      <PlatformPublishPreparationCard viewModel={manual} platformLabel="네이버 블로그" renderAction={() => null} />
+    );
+    const copyHtml = renderToStaticMarkup(
+      <PlatformPublishPreparationCard viewModel={copy} platformLabel="X" renderAction={() => null} />
+    );
+
+    expect(wordpressHtml).toContain("게시 방식: 초안으로 저장");
+    expect(manualHtml).toContain("게시 방식: 외부에서 직접 게시");
+    expect(copyHtml).toContain("게시 방식: 본문 복사 후 직접 게시");
+  });
 });

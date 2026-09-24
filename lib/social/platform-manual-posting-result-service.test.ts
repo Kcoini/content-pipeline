@@ -141,6 +141,63 @@ describe("prepareManualPostingRecord", () => {
     expect(result.success).toBe(false);
     expect(updateManualPostingResult).toHaveBeenCalledWith("social-post-1", expect.objectContaining({ status: "blocked" }));
   });
+
+  // 실제 버그 재현: wordpress_blog는 manual export/handoff 파이프라인을
+  // 전혀 거치지 않아 exportStatus/platformPublishGuardStatus/
+  // platformPublishReady/platformPublishDryRunStatus/handoffStatus가
+  // 항상 초기값으로 남는데, checkRecordable()이 이 값들을 공통으로
+  // 요구해서 "게시 체크리스트 만들기"가 항상 실패했다(사용자가 실제로
+  // 재현). quality/approval만 되어 있으면 통과해야 한다.
+  it("wordpress_blog는 manual export 파이프라인 전제조건 없이도 준비가 가능하다(실제 버그 재현)", async () => {
+    getSocialPostForManualPosting.mockResolvedValue(
+      makeSocialPost({
+        platform: "wordpress_blog",
+        qualityStatus: "ready",
+        approvalStatus: "approved",
+        exportStatus: "not_exported",
+        platformPublishGuardStatus: "not_checked",
+        platformPublishReady: false,
+        platformPublishDryRunStatus: "not_created",
+        handoffStatus: "not_started",
+      })
+    );
+
+    const result = await prepareManualPostingRecord("social-post-1");
+
+    expect(result.success).toBe(true);
+    expect(updateManualPostingChecklist).toHaveBeenCalled();
+  });
+
+  it("wordpress_blog여도 품질검사가 ready가 아니면 여전히 blocked된다", async () => {
+    getSocialPostForManualPosting.mockResolvedValue(
+      makeSocialPost({ platform: "wordpress_blog", qualityStatus: "needs_revision", exportStatus: "not_exported" })
+    );
+
+    const result = await prepareManualPostingRecord("social-post-1");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("품질검사");
+  });
+
+  it("wordpress_blog여도 승인이 안 되어 있으면 여전히 blocked된다", async () => {
+    getSocialPostForManualPosting.mockResolvedValue(
+      makeSocialPost({ platform: "wordpress_blog", approvalStatus: "pending_review", exportStatus: "not_exported" })
+    );
+
+    const result = await prepareManualPostingRecord("social-post-1");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("승인");
+  });
+
+  it("naver_blog(manual 플랫폼)는 기존과 동일하게 export 전제조건이 여전히 필요하다(회귀 방지)", async () => {
+    getSocialPostForManualPosting.mockResolvedValue(makeSocialPost({ platform: "naver_blog", exportStatus: "not_exported" }));
+
+    const result = await prepareManualPostingRecord("social-post-1");
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("내보내기");
+  });
 });
 
 describe("recordManualPostingResult", () => {

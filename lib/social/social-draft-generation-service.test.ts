@@ -412,6 +412,20 @@ describe("generateSocialDraft", () => {
     vi.unstubAllEnvs();
   });
 
+  it("PRODUCT-01G: aiResult.error에 env var 이름이 섞여 있어도 반환 message에는 노출하지 않는다(발견된 오류 전달 bug 수정)", async () => {
+    vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
+    generateSocialPostWithAI.mockResolvedValue({
+      ok: false,
+      error: "AI 응답이 max_tokens(4000) 제한에 도달해 중간에 잘렸습니다 — SOCIAL_AI_MAX_TOKENS를 늘려야 합니다.",
+    });
+
+    const result = await generateSocialDraft("article-1", "naver_blog", "informational");
+
+    expect(result.success).toBe(false);
+    expect(result.message).not.toContain("SOCIAL_AI_MAX_TOKENS");
+    vi.unstubAllEnvs();
+  });
+
   it("logs에 API로 생성된 full post body가 저장되지 않는다 (AI 모드)", async () => {
     vi.stubEnv("SOCIAL_AI_GENERATION_ENABLED", "true");
     const fullBody = "AI가 생성한 매우 긴 본문입니다. ".repeat(50);

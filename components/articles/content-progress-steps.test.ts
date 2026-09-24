@@ -5,11 +5,11 @@ import path from "node:path";
 const source = readFileSync(path.join(__dirname, "content-progress-steps.tsx"), "utf8");
 
 describe("ContentProgressSteps (정적 소스 검사, Phase 3-22)", () => {
-  it("5단계(테마 선택/출처 입력/글 생성/검토·승인/게시 준비)를 정의한다", () => {
-    expect(source).toContain("테마 선택");
-    expect(source).toContain("출처 입력");
-    expect(source).toContain("글 생성");
-    expect(source).toContain("검토/승인");
+  it("5단계(주제 선택/참고자료 확인/콘텐츠 만들기/결과 확인/게시 준비)를 정의한다 (PRODUCT-01E: 사용자 언어로 통일)", () => {
+    expect(source).toContain("주제 선택");
+    expect(source).toContain("참고자료 확인");
+    expect(source).toContain("콘텐츠 만들기");
+    expect(source).toContain("결과 확인");
     expect(source).toContain("게시 준비");
   });
 

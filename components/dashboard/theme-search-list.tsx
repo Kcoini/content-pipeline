@@ -30,7 +30,7 @@ export function ThemeSearchList({ items, selectedThemeId, archiveAction }: Theme
   const filtered = useMemo(() => filterThemesByQuery(items, query, (entry) => entry.theme.title), [items, query]);
 
   if (items.length === 0) {
-    return <p className="mt-2 text-xs text-zinc-500">아직 등록된 테마가 없습니다.</p>;
+    return <p className="mt-2 text-xs text-zinc-500">아직 등록된 주제가 없습니다.</p>;
   }
 
   return (
@@ -39,8 +39,8 @@ export function ThemeSearchList({ items, selectedThemeId, archiveAction }: Theme
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="테마 검색"
-        aria-label="테마 검색"
+        placeholder="주제 검색"
+        aria-label="주제 검색"
         className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
       />
 
@@ -51,10 +51,10 @@ export function ThemeSearchList({ items, selectedThemeId, archiveAction }: Theme
           {filtered.map(({ theme, articleCount, sourceCount, stageLabel, dateLabel }) => {
             const isSelected = selectedThemeId === theme.id;
             const confirmMessage = [
-              "이 테마를 삭제하시겠습니까?",
+              "이 주제를 삭제하시겠습니까?",
               "",
-              `연결된 기사 ${articleCount}개, 출처 ${sourceCount}개가 있습니다.`,
-              "연결된 기사와 출처가 있을 경우 영향을 받을 수 있습니다.",
+              `연결된 기사 ${articleCount}개, 참고자료 ${sourceCount}개가 있습니다.`,
+              "연결된 기사와 참고자료가 있을 경우 영향을 받을 수 있습니다.",
               "이미 생성된 WordPress 글은 자동 삭제되지 않습니다.",
             ].join("\n");
 
@@ -76,7 +76,7 @@ export function ThemeSearchList({ items, selectedThemeId, archiveAction }: Theme
                     {theme.title}
                   </span>
                   <span className={`block text-[11px] ${isSelected ? "text-zinc-300" : "text-zinc-500"}`}>
-                    출처 {sourceCount} · {stageLabel} · {dateLabel}
+                    참고자료 {sourceCount} · {stageLabel} · {dateLabel}
                   </span>
                 </a>
                 <form action={archiveAction}>

@@ -49,6 +49,7 @@ import { detectContentTypeMismatch } from "@/lib/social/content-type-mismatch";
 import { getPostApprovalNextActions, type PostApprovalNextAction } from "@/lib/social/post-approval-next-actions";
 import { buildWordPressBlogPublishPreparationSummary } from "@/lib/social/wordpress-blog-publish-preparation-summary";
 import { CopyPostBodyButton } from "@/components/social/copy-post-body-button";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 
 export const dynamic = "force-dynamic";
 
@@ -241,7 +242,11 @@ export default async function SocialPostDetailPage({
           바로 수정한 뒤, 자동 검토를 통과하면 최종 승인하세요. 최종 승인 전에는 export/Draft 반영이 불가능합니다.
         </div>
 
-        {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {describeUnexpectedError(error, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage}
+          </div>
+        )}
         {publishMessage && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}</div>}
 
         <header className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

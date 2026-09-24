@@ -384,13 +384,21 @@ export async function generateSocialDraft(
       });
 
       if (!aiResult.ok || !aiResult.output) {
-        const message = aiResult.error ?? "AI 생성에 실패했습니다.";
-        await logSocialEvent("social_draft_generation_failed", "failed", `AI 생성 실패: ${message}`, articleId, {
+        // PRODUCT-01G: aiResult.error가 "SOCIAL_AI_MAX_TOKENS를 늘려야
+        // 합니다" 같은 환경변수 이름을 그대로 포함할 수 있었다(발견된
+        // 오류 전달 bug) — 로그에는 원문을 그대로 남기고, 반환값만
+        // 사용자 친화 문구로 감싼다(判단 로직/재시도 정책 변경 없음).
+        const rawMessage = aiResult.error ?? "AI 생성에 실패했습니다.";
+        const { userMessage } = describeUnexpectedError(
+          rawMessage,
+          "콘텐츠를 만드는 중 문제가 발생했습니다. 작성되지 않은 콘텐츠는 저장되지 않았습니다."
+        );
+        await logSocialEvent("social_draft_generation_failed", "failed", `AI 생성 실패: ${rawMessage}`, articleId, {
           platform,
           toneStyle,
           aiEnabled,
         });
-        return { success: false, message };
+        return { success: false, message: userMessage };
       }
 
       // "생성 결과가 너무 짧다" 문제를 화면 캡처가 아니라 로그로도 바로

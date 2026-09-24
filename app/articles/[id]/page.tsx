@@ -93,6 +93,7 @@ import { isSeoCustomEndpointEnabled, getSeoCustomEndpointPath } from "@/lib/seo/
 import { summarizeSeoPluginWriteStatus, type SeoWriteSummaryStatus } from "@/lib/seo/seo-plugin-status-summary";
 import { summarizeWordPressPublishingReadiness } from "@/lib/wordpress/wordpress-publishing-readiness-summary";
 import type { SeoPluginPayload } from "@/lib/seo/seo-plugin-types";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 
 export const dynamic = "force-dynamic";
 
@@ -377,7 +378,16 @@ export default async function ArticleDetailPage({
             ← 기사 목록으로
           </Link>
           <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">
-            기사를 찾을 수 없습니다 (id: {id}).
+            <p>콘텐츠를 찾을 수 없습니다.</p>
+            <p className="mt-1 break-keep text-xs text-zinc-400">
+              주소가 잘못되었거나, 이미 삭제되었을 수 있습니다.
+            </p>
+            <Link
+              href="/dashboard"
+              className="mt-4 inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+            >
+              내 콘텐츠로 돌아가기
+            </Link>
           </section>
         </div>
       </div>
@@ -531,7 +541,7 @@ export default async function ArticleDetailPage({
 
         {error && (
           <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
+            {describeUnexpectedError(error, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage}
           </div>
         )}
 
@@ -654,7 +664,7 @@ export default async function ArticleDetailPage({
                 <dd className="text-zinc-700">{masterManuscript.verifiedFacts.length}건</dd>
               </div>
               <div>
-                <dt className="font-medium text-zinc-600">근거 연결(evidenceMap)</dt>
+                <dt className="font-medium text-zinc-600">근거 연결</dt>
                 <dd className="text-zinc-700">{masterManuscript.evidenceMap.length}건</dd>
               </div>
               <div>
@@ -691,7 +701,7 @@ export default async function ArticleDetailPage({
             {masterManuscript.evidenceMap.length > 0 && (
               <details className="mt-2">
                 <summary className="cursor-pointer text-[11px] text-zinc-500">
-                  근거 연결(evidenceMap) 보기 ({masterManuscript.evidenceMap.length}건)
+                  근거 연결 보기 ({masterManuscript.evidenceMap.length}건)
                 </summary>
                 <ul className="mt-1 flex flex-col gap-1 text-[11px] text-zinc-600">
                   {masterManuscript.evidenceMap.map((entry, index) => (
@@ -1593,7 +1603,7 @@ export default async function ArticleDetailPage({
             <summary className="cursor-pointer text-xs font-medium text-zinc-500">이미지 업로드 상세 보기</summary>
 
             <p className="mt-2 text-xs font-medium">
-              WORDPRESS_MEDIA_UPLOAD_ENABLED:{" "}
+              이미지 업로드 기능 상태:{" "}
               {isWordPressMediaUploadEnabled() ? (
                 <span className="text-green-700">true (실제 업로드 시도)</span>
               ) : (
@@ -1751,21 +1761,21 @@ export default async function ArticleDetailPage({
             </p>
             <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
               <div>
-                <dt className="font-medium text-zinc-600">base URL</dt>
+                <dt className="font-medium text-zinc-600">WordPress 사이트 주소</dt>
                 <dd className="text-zinc-500 font-mono break-all">
                   {process.env.WORDPRESS_BASE_URL || "설정되지 않음"}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-zinc-600">publish enabled</dt>
+                <dt className="font-medium text-zinc-600">게시 기능 상태</dt>
                 <dd className="text-zinc-500">
-                  {isWordPressPublishEnabled() ? "true (실제 draft 생성)" : "false (dry-run)"}
+                  {isWordPressPublishEnabled() ? "실제 draft 생성" : "dry-run(실제 호출 없음)"}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-zinc-600">media upload enabled</dt>
+                <dt className="font-medium text-zinc-600">이미지 업로드 기능 상태</dt>
                 <dd className="text-zinc-500">
-                  {isWordPressMediaUploadEnabled() ? "true" : "false (비활성화)"}
+                  {isWordPressMediaUploadEnabled() ? "사용 가능" : "비활성화"}
                 </dd>
               </div>
             </dl>
@@ -1788,8 +1798,8 @@ export default async function ArticleDetailPage({
             <summary className="cursor-pointer text-xs font-medium text-zinc-500">고급 설정 보기</summary>
             <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
               <div>
-                <dt className="font-medium text-zinc-600">WORDPRESS_PUBLISH_ENABLED</dt>
-                <dd className="text-zinc-500">{isWordPressPublishEnabled() ? "true" : "false"}</dd>
+                <dt className="font-medium text-zinc-600">WordPress 게시 기능 상태</dt>
+                <dd className="text-zinc-500">{isWordPressPublishEnabled() ? "활성화" : "비활성화"}</dd>
               </div>
               <div>
                 <dt className="font-medium text-zinc-600">현재 모드</dt>
@@ -2175,19 +2185,19 @@ export default async function ArticleDetailPage({
 
           <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
             <div>
-              <dt className="font-medium text-zinc-600">SEO_PLUGIN_PROVIDER</dt>
+              <dt className="font-medium text-zinc-600">SEO 연동 방식</dt>
               <dd className="text-zinc-500">{getSeoPluginProvider()}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-600">SEO_PLUGIN_WRITE_ENABLED</dt>
-              <dd className="text-zinc-500">{isSeoPluginWriteEnabled() ? "true" : "false"}</dd>
+              <dt className="font-medium text-zinc-600">SEO 자동 반영 기능 상태</dt>
+              <dd className="text-zinc-500">{isSeoPluginWriteEnabled() ? "활성화" : "비활성화"}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-600">write provider (마지막 시도)</dt>
+              <dt className="font-medium text-zinc-600">마지막 반영 시도 방식</dt>
               <dd className="text-zinc-500">{article.seoPluginActualWriteProvider ?? "해당 없음"}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-600">target_keyword (focus keyword)</dt>
+              <dt className="font-medium text-zinc-600">타겟 키워드</dt>
               <dd className={hasFocusKeyword ? "text-zinc-500" : "font-medium text-amber-700"}>
                 {article.targetKeyword || "없음"}
               </dd>
@@ -2214,7 +2224,7 @@ export default async function ArticleDetailPage({
 
           {getSeoPluginProvider() === "none" && (
             <p className="mt-3 text-xs font-medium text-amber-700">
-              ⚠ SEO_PLUGIN_PROVIDER=none이어서 실제 write를 시도할 수 없습니다.
+              ⚠ SEO 연동이 설정되어 있지 않아 실제 반영을 시도할 수 없습니다.
             </p>
           )}
           {!hasWordPressSuccess && (
@@ -2275,8 +2285,8 @@ export default async function ArticleDetailPage({
 
             <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
               <div>
-                <dt className="font-medium text-zinc-600">WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED</dt>
-                <dd className="text-zinc-500">{isSeoCustomEndpointEnabled() ? "true" : "false"}</dd>
+                <dt className="font-medium text-zinc-600">Custom Endpoint 기능 상태</dt>
+                <dd className="text-zinc-500">{isSeoCustomEndpointEnabled() ? "활성화" : "비활성화"}</dd>
               </div>
               <div>
                 <dt className="font-medium text-zinc-600">custom endpoint path</dt>
@@ -2298,12 +2308,12 @@ export default async function ArticleDetailPage({
 
             {getSeoPluginProvider() !== "rank_math" && (
               <p className="mt-2 text-xs font-medium text-amber-700">
-                ⚠ SEO_PLUGIN_PROVIDER가 rank_math가 아니어서 custom endpoint를 사용할 수 없습니다.
+                ⚠ SEO 연동 방식이 Rank Math가 아니어서 custom endpoint를 사용할 수 없습니다.
               </p>
             )}
             {!isSeoCustomEndpointEnabled() && (
               <p className="mt-1 text-xs font-medium text-amber-700">
-                ⚠ WORDPRESS_SEO_CUSTOM_ENDPOINT_ENABLED=false이어서 custom endpoint write를 건너뜁니다.
+                ⚠ Custom Endpoint 기능이 꺼져 있어 custom endpoint write를 건너뜁니다.
               </p>
             )}
             {!hasWordPressSuccess && (

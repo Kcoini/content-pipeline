@@ -27,9 +27,9 @@ describe("dashboard 테마 목록 삭제(보관 처리) 버튼 (정적 소스 �
     expect(themeSearchListSource).toContain("삭제");
   });
 
-  it("삭제 확인 모달 문구에 연결된 기사/출처 개수와 WordPress 안내가 포함된다", () => {
-    expect(themeSearchListSource).toContain("이 테마를 삭제하시겠습니까?");
-    expect(themeSearchListSource).toMatch(/연결된 기사 \$\{articleCount\}개, 출처 \$\{sourceCount\}개/);
+  it("삭제 확인 모달 문구에 연결된 기사/참고자료 개수와 WordPress 안내가 포함된다 (PRODUCT-01E: 사용자 언어 통일)", () => {
+    expect(themeSearchListSource).toContain("이 주제를 삭제하시겠습니까?");
+    expect(themeSearchListSource).toMatch(/연결된 기사 \$\{articleCount\}개, 참고자료 \$\{sourceCount\}개/);
     expect(themeSearchListSource).toContain("이미 생성된 WordPress 글은 자동 삭제되지 않습니다.");
   });
 
@@ -75,10 +75,10 @@ describe("dashboard 상단 내비게이션 단순화 (정적 소스 검사, Phas
 });
 
 describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정적 소스 검사, Phase 1-23)", () => {
-  it("새 테마 입력 폼은 <details>로 기본 접힘 상태다", () => {
+  it("새 주제 입력 폼은 <details>로 기본 접힘 상태다 (PRODUCT-01E: 사용자 언어 '주제')", () => {
     const match = pageSource.match(/<details className="group rounded-lg[\s\S]*?<\/summary>[\s\S]*?<form action=\{createTheme\}/);
     expect(match).not.toBeNull();
-    expect(pageSource).not.toMatch(/<details[^>]*open[^>]*>[\s\S]{0,50}<summary[^>]*>[\s\S]{0,80}\+ 새 테마/);
+    expect(pageSource).not.toMatch(/<details[^>]*open[^>]*>[\s\S]{0,50}<summary[^>]*>[\s\S]{0,80}\+ 새 주제/);
   });
 
   it("테마 검색은 ThemeSearchList 컴포넌트로 분리되어 있다", () => {
@@ -93,13 +93,13 @@ describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정�
     expect(themeSearchListSource).toContain("font-medium text-white");
   });
 
-  it("선택된 테마 요약 카드에는 출처 개수/조건 충족 여부만 표시하고, 다른 판단(기사 작성 가능 여부 등)은 중복 표시하지 않는다 (Phase 3-23-2)", () => {
-    expect(pageSource).toMatch(/출처 \{sources\.length\}개 등록됨/);
-    expect(pageSource).toContain('{sourceStatus.isReady ? "조건 충족" : "출처 부족"}');
+  it("선택된 테마 요약 카드에는 참고자료 개수/조건 충족 여부만 표시하고, 다른 판단(기사 작성 가능 여부 등)은 중복 표시하지 않는다 (Phase 3-23-2, PRODUCT-01E 용어 통일)", () => {
+    expect(pageSource).toMatch(/참고자료 \{sources\.length\}개 등록됨/);
+    expect(pageSource).toContain('{sourceStatus.isReady ? "조건 충족" : "참고자료 부족"}');
     // "기사 작성 가능/불가"는 workflowState 기반 상태 카드와 중복/모순될 수
     // 있어 제거했다 — 실제 JSX 출력에는 이 문구가 없어야 한다(설명용
     // 주석에는 남아있을 수 있으므로, 렌더링되는 실제 <p> 줄만 좁혀서 검사).
-    const summaryLineMatch = pageSource.match(/출처 \{sources\.length\}개 등록됨[\s\S]{0,150}<\/p>/);
+    const summaryLineMatch = pageSource.match(/참고자료 \{sources\.length\}개 등록됨[\s\S]{0,150}<\/p>/);
     expect(summaryLineMatch).not.toBeNull();
     expect(summaryLineMatch![0]).not.toContain("기사 작성 가능");
     expect(summaryLineMatch![0]).not.toContain("기사 작성 불가");
@@ -122,9 +122,9 @@ describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정�
     expect(pageSource).toContain("statusSummary.primaryActionLabel");
 
     // 문구 자체(각 상태의 정확한 안내/버튼 라벨)는 helper 쪽에서 보장한다.
-    expect(workflowPresentationSource).toContain("아직 출처가 없습니다.");
-    expect(workflowPresentationSource).toContain("출처 추가하기");
-    expect(workflowPresentationSource).toContain("출처가 준비되었습니다");
+    expect(workflowPresentationSource).toContain("아직 참고자료가 없습니다.");
+    expect(workflowPresentationSource).toContain("참고자료 추가하기");
+    expect(workflowPresentationSource).toContain("참고자료가 준비되었습니다");
     expect(workflowPresentationSource).toContain("WordPress 블로그, 네이버 블로그, 네이버 카페 글을 생성하세요.");
     expect(workflowPresentationSource).toContain("선택한 플랫폼 글 생성");
     expect(workflowPresentationSource).toContain("글 내용을 검토하세요.");
@@ -157,9 +157,9 @@ describe("dashboard 선택한 테마 중심 작업형 대시보드 개편 (정�
     expect(logIndex).toBeGreaterThan(detailsIndex);
   });
 
-  it("출처 상태 요약이 출처 등록 폼보다 먼저 표시된다", () => {
-    const statusIndex = pageSource.indexOf("출처 {sourceStatus.total}개 등록됨");
-    const formIndex = pageSource.indexOf("+ 출처 추가");
+  it("참고자료 상태 요약이 참고자료 등록 폼보다 먼저 표시된다 (PRODUCT-01E 용어 통일)", () => {
+    const statusIndex = pageSource.indexOf("참고자료 {sourceStatus.total}개 등록됨");
+    const formIndex = pageSource.indexOf("+ 참고자료 추가");
     expect(statusIndex).toBeGreaterThanOrEqual(0);
     expect(formIndex).toBeGreaterThan(statusIndex);
   });
@@ -259,14 +259,14 @@ describe("기사초안 생성 무반응 방지 (정적 소스 검사, Phase 2-22
   it("페이지는 재생성 확인 배너(취소/새 원고로 생성)를 표시한다 (Phase 4-1)", () => {
     expect(pageSource).toContain("showRegenerateConfirm");
     expect(pageSource).toContain("새 원고로 생성");
-    expect(pageSource).toContain("이미 이 테마로 생성된 마스터 원고가 있습니다.");
+    expect(pageSource).toContain("이미 이 주제로 생성된 마스터 원고가 있습니다.");
   });
 
-  it("disabled 버튼에는 이유를 표시한다(출처 부족)", () => {
+  it("disabled 버튼에는 이유를 표시한다(참고자료 부족) (PRODUCT-01E 용어 통일)", () => {
     const start = pageSource.indexOf('disabled={sources.length < MIN_SOURCE_COUNT}');
     const end = pageSource.indexOf("</form>", start);
     const block = pageSource.slice(start, end);
-    expect(block).toContain("출처가 부족합니다");
+    expect(block).toContain("참고자료가 부족합니다");
   });
 
   it("이미 마스터 원고가 있으면 라디오 폼 대신 '생성 완료' 요약과 재생성 옵션 토글을 보여준다 (Phase 3-23-4, Phase 4-1)", () => {
@@ -351,9 +351,9 @@ describe("dashboard 상태 판단 통합 및 섹션 접힘 (정적 소스 검사
       /<details className="group mt-3" open=\{Boolean\(sourceError\) \|\| sectionExpansion\.sourceAddExpanded\}>/
     );
     expect(pageSource).toMatch(/<details className="mt-3" open=\{sectionExpansion\.platformGenerationExpanded\}>/);
-    // 출처 목록은 이제 상태와 무관하게 항상 "전체 출처 보기" 토글 뒤로 접힌다.
-    expect(pageSource).toContain("전체 출처 보기");
-    // 현재 단계가 아닌 세 관리 영역(출처/원고/플랫폼)은 "다른 단계 관리 보기" 접힘 영역에 모인다.
+    // 참고자료 목록은 이제 상태와 무관하게 항상 "전체 참고자료 보기" 토글 뒤로 접힌다.
+    expect(pageSource).toContain("전체 참고자료 보기");
+    // 현재 단계가 아닌 세 관리 영역(참고자료/원고/플랫폼)은 "다른 단계 관리 보기" 접힘 영역에 모인다.
     expect(pageSource).toContain("다른 단계 관리 보기");
     expect(pageSource).toContain('currentStepArea !== "source" && sourceManagementBlock');
     expect(pageSource).toContain('currentStepArea !== "draft" && draftManagementBlock');
@@ -429,25 +429,110 @@ describe("dashboard 플랫폼 카드 / 출처 목록 축소 / 새 테마 축소 
     expect(pageSource).toContain("그래도 전체 생성하시겠습니까?");
   });
 
-  it("출처 목록은 기본적으로 전체를 펼치지 않고, 최근 출처 미리보기 + '전체 출처 보기' 토글로 구성된다", () => {
+  it("참고자료 목록은 기본적으로 전체를 펼치지 않고, 최근 참고자료 미리보기 + '전체 참고자료 보기' 토글로 구성된다 (PRODUCT-01E 용어 통일)", () => {
     expect(pageSource).toContain("recentSources");
-    expect(pageSource).toContain("전체 출처 보기 ({sources.length}개)");
+    expect(pageSource).toContain("전체 참고자료 보기 ({sources.length}개)");
   });
 
-  it("새 테마 입력은 기본적으로 '+ 새 테마' 버튼만 보이도록 축소되어 있다(이미 만족됨)", () => {
-    expect(pageSource).toMatch(/<span className="group-open:hidden">\+ 새 테마<\/span>/);
+  it("새 주제 입력은 기본적으로 '+ 새 주제' 버튼만 보이도록 축소되어 있다(이미 만족됨)", () => {
+    expect(pageSource).toMatch(/<span className="group-open:hidden">\+ 새 주제<\/span>/);
   });
 });
 
 describe("dashboard 마스터 원고 갱신 권장 배너 (정적 소스 검사, Phase 1-24)", () => {
-  it("needsMasterManuscriptRefresh 플래그가 있으면 갱신 권장 배너를 표시한다", () => {
+  it("needsMasterManuscriptRefresh 플래그가 있으면 갱신 권장 배너를 표시한다 (PRODUCT-01E 용어 통일)", () => {
     expect(pageSource).toContain("needsMasterManuscriptRefresh");
-    expect(pageSource).toContain("새 출처가 추가되었습니다.");
+    expect(pageSource).toContain("새 참고자료가 추가되었습니다.");
   });
 
   it("갱신/유지 선택지를 모두 제공하고 자동으로 원고를 덮어쓰지 않는다", () => {
     expect(pageSource).toContain("마스터 원고 갱신");
     expect(pageSource).toContain("dismissMasterManuscriptRefreshNotice");
     expect(pageSource).toContain("기존 원고 유지");
+  });
+});
+
+describe("PRODUCT-01D: First-use welcome empty state (정적 소스 검사)", () => {
+  // 첫 사용 판단 기준은 새 쿼리/DB 컬럼이 아니라 기존 `!selectedTheme`
+  // (= themes.length === 0)을 그대로 재사용한다(섹션 7 — 새 조건 추가 금지).
+  it("selectedTheme이 없을 때(첫 사용)만 welcome 블록을 보여준다 — 기존 분기 그대로 재사용", () => {
+    expect(pageSource).toContain('data-testid="dashboard-welcome-empty-state"');
+    const welcomeIndex = pageSource.indexOf('data-testid="dashboard-welcome-empty-state"');
+    const branchStart = pageSource.lastIndexOf("!selectedTheme", welcomeIndex);
+    expect(branchStart).toBeGreaterThanOrEqual(0);
+    // welcome 블록과 조건문 사이에 다른 조건 분기가 끼어들지 않았는지(가까운 거리) 확인.
+    expect(welcomeIndex - branchStart).toBeLessThan(400);
+  });
+
+  it("welcome 블록에 5단계 안내와 '첫 콘텐츠 만들기' CTA가 있다", () => {
+    expect(pageSource).toContain("환영합니다.");
+    expect(pageSource).toContain("1. 주제 선택");
+    expect(pageSource).toContain("2. 참고자료 확인");
+    expect(pageSource).toContain("3. 콘텐츠 생성");
+    expect(pageSource).toContain("4. 확인이 필요한 내용 검토");
+    expect(pageSource).toContain("5. 게시 준비");
+    expect(pageSource).toContain("첫 콘텐츠 만들기");
+  });
+
+  it("CTA는 새 wizard route가 아니라 기존 테마 생성 진입점(#theme-list anchor)으로 연결된다", () => {
+    const welcomeStart = pageSource.indexOf('data-testid="dashboard-welcome-empty-state"');
+    const welcomeEnd = pageSource.indexOf(") : (", welcomeStart);
+    const block = pageSource.slice(welcomeStart, welcomeEnd);
+    expect(block).toContain('href="#theme-list"');
+    expect(block).not.toContain("/onboarding");
+    expect(block).not.toContain("/wizard");
+  });
+
+  it("기존 사용자(테마가 있는 경우)는 welcome 블록을 렌더링하는 분기를 타지 않는다(else 분기 존재)", () => {
+    const welcomeStart = pageSource.indexOf('data-testid="dashboard-welcome-empty-state"');
+    const welcomeEnd = pageSource.indexOf(") : (", welcomeStart);
+    expect(welcomeEnd).toBeGreaterThan(welcomeStart);
+    // else 분기(기존 사용자 워크플로)가 이어서 존재해야 한다.
+    expect(pageSource.slice(welcomeEnd, welcomeEnd + 100)).toContain("선택된 테마 요약 카드");
+  });
+});
+
+describe("PRODUCT-01E: Content Creation Experience (정적 소스 검사)", () => {
+  it("새 step state/DB 컬럼(creation_step/wizard_step/onboarding_step)을 추가하지 않는다 — 기존 workflowState에서만 파생한다", () => {
+    for (const forbidden of ["creation_step", "wizard_step", "onboarding_step"]) {
+      expect(pageSource).not.toContain(forbidden);
+    }
+    expect(pageSource).toContain("resolveDashboardWorkflowState(");
+    expect(pageSource).toContain("ContentProgressSteps");
+  });
+
+  it("Source Integrity를 기술 기능으로 노출하지 않고 신뢰 안내 문장 하나로만 표현한다(섹션 9)", () => {
+    expect(pageSource).toContain("참고자료에서 확인되지 않은 내용은 최종 콘텐츠의 근거로 사용하지 않습니다.");
+    for (const forbidden of ["candidateFacts", "verifiedFacts", "rejectedFacts", "candidate facts"]) {
+      expect(pageSource).not.toContain(forbidden);
+    }
+  });
+
+  it("플랫폼 카드에 기술 adapter 이름 대신 간단한 목적 설명이 있다(섹션 11)", () => {
+    expect(pageSource).toContain("PLATFORM_PURPOSE_LABELS");
+    expect(pageSource).toContain("PLATFORM_PURPOSE_LABELS[card.platform]");
+  });
+
+  it("Settings readiness와 연결된다 — 새 판단 로직 없이 기존 getContentServiceReadiness()를 재사용하고, 준비 상태가 나빠도 생성 폼을 막지 않는다(섹션 25)", () => {
+    expect(pageSource).toContain('import { getContentServiceReadiness } from "@/lib/ui/content-service-readiness"');
+    expect(pageSource).toContain("getContentServiceReadiness()");
+    expect(pageSource).toContain("콘텐츠 생성 준비 상태를 확인해 주세요.");
+    expect(pageSource).toContain("설정에서 확인하기");
+    expect(pageSource).toContain('href="/dashboard/settings"');
+    // 생성 폼(action={createTheme}/action={addSource}/action={generateArticleDraft})은
+    // readiness 상태와 무관하게 항상 렌더링된다 — 조건부로 감싸지 않는다.
+    expect(pageSource).toContain("action={createTheme}");
+    expect(pageSource).not.toMatch(/contentReadiness\.canCreateContent\.status === "available" &&[\s\S]{0,80}action=\{createTheme\}/);
+  });
+
+  it("비용 보호(전체 플랫폼 생성 confirm)는 그대로 유지된다(섹션 20/30)", () => {
+    expect(pageSource).toContain("ConfirmSubmitButton");
+    expect(pageSource).toContain("confirmMessage");
+    expect(pageSource).toContain("그래도 전체 생성하시겠습니까?");
+    expect(pageSource).toContain("이미 생성된 플랫폼은 자동으로 건너뜁니다");
+  });
+
+  it("빈 상태(참고자료 없음)는 통보형이 아니라 행동 중심 문구를 쓴다(섹션 27)", () => {
+    expect(pageSource).toContain("콘텐츠의 근거로 사용할 참고자료를 추가해 주세요.");
   });
 });

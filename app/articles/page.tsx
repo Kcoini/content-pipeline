@@ -6,6 +6,7 @@ import type { ArticleStatus } from "@/lib/types/domain";
 import { TransientNotice } from "@/components/ui/transient-notice";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
 import { archiveArticleAction } from "./actions";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,11 @@ export default async function ArticlesPage({
   searchParams: Promise<{ deleteMessage?: string; deleteError?: string }>;
 }) {
   const { deleteMessage, deleteError } = await searchParams;
+  // PRODUCT-01G: 사용자에게 보이기 직전에만 raw 런타임 에러를 친화
+  // 문구로 바꾼다(기존 helper 재사용, 새 판단 로직 없음).
+  const friendlyDeleteError = deleteError
+    ? describeUnexpectedError(deleteError, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage
+    : null;
   const [articles, themes] = await Promise.all([getArticles(), getThemes()]);
   const themeTitleMap = new Map(themes.map((theme) => [theme.id, theme.title]));
   const evalRuns = await Promise.all(
@@ -56,7 +62,7 @@ export default async function ArticlesPage({
         </header>
 
         <TransientNotice message={deleteMessage} variant="success" />
-        <TransientNotice message={deleteError} variant="error" />
+        <TransientNotice message={friendlyDeleteError} variant="error" />
 
         {articles.length === 0 ? (
           <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">

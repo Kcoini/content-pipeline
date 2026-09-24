@@ -346,8 +346,8 @@ describe("SEO Plugin Metadata (blog 카드 내부, 정적 소스 검사)", () =>
     expect(pageSource).toContain("SEO Plugin Metadata");
     expect(pageSource).toContain("WORDPRESS_BLOG_SEO_PLUGIN_PROVIDERS");
     expect(pageSource).toContain('name="seoPluginProvider"');
-    expect(pageSource).toContain("SEO Plugin update status");
-    expect(pageSource).toContain("last updated at");
+    expect(pageSource).toContain("SEO 반영 처리 결과");
+    expect(pageSource).toContain("마지막 반영 시각");
     expect(pageSource).toContain("updateWordPressSeoPluginMetadataFromBlogPostAction");
   });
 
@@ -372,15 +372,15 @@ describe("SEO Plugin Metadata (blog 카드 내부, 정적 소스 검사)", () =>
 
     const beforeDetails = pageSource.slice(sectionStart, detailsStart);
     expect(beforeDetails).toContain("seoPluginWriteFriendlyLabel");
-    expect(beforeDetails).not.toContain("현재 provider");
-    expect(beforeDetails).not.toContain("SEO Plugin update status");
+    expect(beforeDetails).not.toContain("현재 SEO 연동 방식");
+    expect(beforeDetails).not.toContain("SEO 반영 처리 결과");
     expect(beforeDetails).not.toContain('name="seoPluginProvider"');
 
     const detailsEnd = pageSource.indexOf("</details>", detailsStart);
     const detailsContent = pageSource.slice(detailsStart, detailsEnd);
     expect(detailsContent).toContain("SEO 반영 상세 보기");
-    expect(detailsContent).toContain("현재 provider");
-    expect(detailsContent).toContain("SEO Plugin update status");
+    expect(detailsContent).toContain("현재 SEO 연동 방식");
+    expect(detailsContent).toContain("SEO 반영 처리 결과");
     expect(detailsContent).toContain('name="seoPluginProvider"');
     // 기능(provider 변경/반영 폼)은 삭제되지 않고 접힘 안에 그대로 있다.
     expect(detailsContent).toContain("updateWordPressSeoPluginMetadataFromBlogPostAction");
@@ -670,11 +670,12 @@ describe("확인 필요 항목 수동 검토 UI (Step 7, blog 카드 내부, 정
     expect(pageSource).toContain("CONFIRMABLE_MANUAL_CHECKLIST_ITEM_KEYS.has(item.key)");
   });
 
-  it("게시 후 URL 기록 필요 항목에는 URL 입력 필드와 저장 버튼이 있다", () => {
+  it("게시 후 URL 기록 필요 항목에는 URL 입력 필드와 저장 버튼이 있다 (PRODUCT-01F: '게시한 주소'/'게시 완료 기록' 사용자 언어)", () => {
     expect(pageSource).toContain('item.key === "record_url_after_posting"');
     expect(pageSource).toContain('type="url"');
     expect(pageSource).toContain('name="manualPostUrl"');
-    expect(pageSource).toContain("게시 URL 저장");
+    expect(pageSource).toContain("게시한 주소");
+    expect(pageSource).toContain("게시 완료 기록");
   });
 
   it("URL 저장은 기존 recordManualPostingResultAction을 재사용한다(새 action 아님, http/https만 허용하는 pattern 포함)", () => {
@@ -988,7 +989,7 @@ describe("프로세스 로그 / 실행 이력 (페이지 하단, 정적 소스 �
 
 describe("일시적 action 결과 메시지 (toast/transient notice, 정적 소스 검사)", () => {
   it("error/publishMessage를 본문 중간 alert box(div)가 아니라 TransientNotice로 렌더링한다", () => {
-    expect(pageSource).toContain("<TransientNotice message={error ?? null} variant=\"error\" />");
+    expect(pageSource).toMatch(/<TransientNotice\s+message=\{error[\s\S]{0,200}variant="error"\s*\/>/);
     expect(pageSource).toContain('<TransientNotice message={publishMessage ?? null} variant="success" />');
     expect(pageSource).not.toContain('border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}');
     expect(pageSource).not.toContain('border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{publishMessage}');
@@ -1620,5 +1621,32 @@ describe("QA-01: 프로세스 로그/guard 이벤트 라벨 로직은 lib/social
     expect(logViewSource).toContain("social_platform_publish_guard_completed: \"준비 완료\"");
     expect(logViewSource).toContain("social_platform_publish_guard_failed: \"실패\"");
     expect(logViewSource).toContain("export function describeProcessLogEntryStatus");
+  });
+});
+
+describe("PRODUCT-01F: WordPress 연결 상태 / 게시 안전 문구 (정적 소스 검사)", () => {
+  it("WordPress 연결 상태를 기존 getContentServiceReadiness()로 재사용한다(새 판단 로직 없음, Settings와 동일 함수)", () => {
+    expect(pageSource).toContain('import { getContentServiceReadiness } from "@/lib/ui/content-service-readiness"');
+    expect(pageSource).toContain("getContentServiceReadiness().wordpressAvailable");
+  });
+
+  it("연결 상태가 정상이 아니어도 가짜 '연결하기' 버튼을 만들지 않고, 관리자 문의 안내로 대체한다", () => {
+    expect(pageSource).not.toContain(">연결하기<");
+    expect(pageSource).toContain("관리자에게 설정 확인을 요청해 주세요");
+    expect(pageSource).toContain('href="/dashboard/settings"');
+  });
+
+  it("게시 방식은 항상 '초안'으로 표현하고, 오해를 부르는 표현이 없다(섹션 25)", () => {
+    expect(pageSource).toMatch(/항상 초안\(Draft\)으로\s+저장/);
+    expect(pageSource).toContain("공개 게시는 하지 않습니다.");
+    for (const forbidden of ["WordPress에 게시 완료", "자동 게시 완료", "SNS 게시 완료"]) {
+      expect(pageSource).not.toContain(forbidden);
+    }
+  });
+
+  it("게시 URL 입력 필드는 '게시한 주소'로 표현하고, 기술적인 'URL field' 용어를 그대로 쓰지 않는다", () => {
+    expect(pageSource).toContain("게시한 주소");
+    expect(pageSource).toContain("외부 게시 후 게시물 주소를 입력해 주세요.");
+    expect(pageSource).toContain("게시 완료 기록");
   });
 });

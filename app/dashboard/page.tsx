@@ -36,6 +36,7 @@ import { SOCIAL_PLATFORMS, type SocialPlatform } from "@/lib/social/social-platf
 import {
   PLATFORM_LABELS,
   PLATFORM_SHORT_DESCRIPTIONS,
+  PLATFORM_PURPOSE_LABELS,
   PLATFORM_COST_LEVELS,
   type PlatformCostLevel,
   getRecommendedPlatforms,
@@ -45,6 +46,8 @@ import { TONE_STYLE_CONFIGS } from "@/lib/social/tone-style-config";
 import { PlatformSelectionCheckboxes } from "@/components/articles/platform-selection-checkboxes";
 import { generateSelectedPlatformPostsAction, generateAllPlatformPostsAction } from "@/app/articles/[id]/actions";
 import { ConfirmSubmitButton } from "@/app/articles/[id]/confirm-submit-button";
+import { getContentServiceReadiness } from "@/lib/ui/content-service-readiness";
+import { describeUnexpectedError } from "@/lib/errors/describe-unexpected-error";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +107,17 @@ export default async function DashboardPage({
     pendingMode,
     existingMode,
   } = await searchParams;
+  // PRODUCT-01G 섹션 5/30: server action이 어디선가 raw JS 런타임
+  // 에러 텍스트를 그대로 query param에 실어 보냈더라도, 화면에
+  // 표시되기 직전 이 한 곳에서 사용자 친화 문구로 바꾼다(기존
+  // describeUnexpectedError 재사용, 새 helper 없음). 이미 사람이 쓴
+  // 한국어 메시지는 그대로 둔다.
+  const friendlyGenerationError = generationError
+    ? describeUnexpectedError(generationError, "콘텐츠를 만드는 중 문제가 발생했습니다. 작성 중이던 내용은 저장되지 않았습니다.").userMessage
+    : null;
+  const friendlyDeleteError = deleteError
+    ? describeUnexpectedError(deleteError, "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.").userMessage
+    : null;
   const themes = await getThemes();
   const themeRelatedCounts = await Promise.all(themes.map((theme) => getThemeRelatedCounts(theme.id)));
   // Phase 3-23-3: 동일 제목 테마도 구분할 수 있도록 출처 수/진행 단계/등록일을 함께 계산한다.
@@ -143,6 +157,13 @@ export default async function DashboardPage({
   ).length;
 
   const logs = await getLogs(20);
+
+  // PRODUCT-01E 섹션 25: readiness가 needs_attention/unknown이어도 사용자가
+  // 해결할 수 없는 기술 설정을 직접 요구하지 않는다 — "관리자에게 설정
+  // 확인을 요청해 주세요"로만 안내하고, 기존 생성 폼/버튼은 그대로 둔다
+  // (막지 않는다). getContentServiceReadiness()는 PRODUCT-01D에서 만든
+  // 기존 함수를 그대로 재사용한다(새 판단 로직 없음).
+  const contentReadiness = getContentServiceReadiness();
 
   const sourceStatus = summarizeSourceStatus(sources, MIN_SOURCE_COUNT);
 
@@ -360,9 +381,9 @@ export default async function DashboardPage({
   const recentSources = sources.slice(0, 2);
   const sourceManagementBlock = selectedTheme ? (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-zinc-700">출처 관리</h2>
+      <h2 className="text-sm font-semibold text-zinc-700">참고자료 관리</h2>
       <p className="mt-1 text-xs text-zinc-600">
-        출처 {sourceStatus.total}개 등록됨 · 최소 {sourceStatus.minRequired}개{" "}
+        참고자료 {sourceStatus.total}개 등록됨 · 최소 {sourceStatus.minRequired}개{" "}
         {sourceStatus.isReady ? "충족" : "미충족"} · 본문 수집 완료 {sourceStatus.fetchSuccessCount}개 · 요약 완료{" "}
         {sourceStatus.summarySuccessCount}개
         {sourceStatus.fetchFailedCount + sourceStatus.summaryFailedCount > 0 &&
@@ -374,11 +395,17 @@ export default async function DashboardPage({
             sourceStatus.isReady ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
           }`}
         >
-          {sourceStatus.isReady ? "조건 충족" : "출처 부족"}
+          {sourceStatus.isReady ? "조건 충족" : "참고자료 부족"}
         </span>
       </div>
+      {/* PRODUCT-01E 섹션 9: Layer 1(Source Integrity) 검증을 기술 기능으로
+          노출하지 않고, 신뢰 안내 문장 하나로만 표현한다. 내부 fact 검증
+          단계의 raw 값(후보/검증됨/거부됨 배열 등)은 여기 노출하지 않는다. */}
+      <p className="mt-1.5 break-keep text-[11px] text-zinc-400">
+        참고자료에서 확인되지 않은 내용은 최종 콘텐츠의 근거로 사용하지 않습니다.
+      </p>
 
-      {/* 출처 추가 — 기본은 "+ 출처 추가"만 보이고, 열면 URL 중심의
+      {/* 참고자료 추가 — 기본은 "+ 참고자료 추가"만 보이고, 열면 URL 중심의
           compact 폼이 나온다. 제목/출판사/발행일/요약은 "추가 정보
           입력(선택)" 안에 접어둔다(URL만 입력해도 서버에서 본문/요약을
           자동 수집한다). */}
@@ -389,8 +416,8 @@ export default async function DashboardPage({
       )}
       <details className="group mt-3" open={Boolean(sourceError) || sectionExpansion.sourceAddExpanded}>
         <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
-          <span className="group-open:hidden">+ 출처 추가</span>
-          <span className="hidden group-open:inline">출처 추가 폼 접기</span>
+          <span className="group-open:hidden">+ 참고자료 추가</span>
+          <span className="hidden group-open:inline">참고자료 추가 폼 접기</span>
         </summary>
         <form action={addSource} className="mt-3 flex flex-col gap-2">
           <input type="hidden" name="themeId" value={selectedTheme.id} />
@@ -411,7 +438,7 @@ export default async function DashboardPage({
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs text-zinc-600">
                 제목
-                <input name="title" placeholder="출처 제목" className="rounded border border-zinc-300 px-2 py-1 text-sm" />
+                <input name="title" placeholder="참고자료 제목" className="rounded border border-zinc-300 px-2 py-1 text-sm" />
               </label>
               <label className="flex flex-col gap-1 text-xs text-zinc-600">
                 출판사 / 기관명
@@ -430,7 +457,7 @@ export default async function DashboardPage({
                 <textarea
                   name="summary"
                   rows={2}
-                  placeholder="출처 내용 요약"
+                  placeholder="참고자료 내용 요약"
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 />
               </label>
@@ -438,18 +465,19 @@ export default async function DashboardPage({
           </details>
           <div className="mt-1">
             <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700">
-              출처 추가
+              참고자료 추가
             </button>
           </div>
         </form>
       </details>
 
-      {/* 출처 목록 — Phase 3-23-4: 기본으로 전체를 펼치지 않는다. 최근
-          1~2개 제목만 미리 보여주고, "전체 출처 보기"를 눌러야 전체
+      {/* 참고자료 목록 — Phase 3-23-4: 기본으로 전체를 펼치지 않는다. 최근
+          1~2개 제목만 미리 보여주고, "전체 참고자료 보기"를 눌러야 전체
           목록(도메인/요약/본문/뱃지 등 기존 UI 그대로)이 펼쳐진다. */}
       <div className="mt-3">
         {sources.length === 0 ? (
-          <p className="text-xs text-zinc-500">아직 등록된 출처가 없습니다.</p>
+          // PRODUCT-01E 섹션 27: "없습니다" 통보 대신 행동 중심 문구로.
+          <p className="text-xs text-zinc-500">콘텐츠의 근거로 사용할 참고자료를 추가해 주세요.</p>
         ) : (
           <ul className="flex flex-col gap-0.5 text-xs text-zinc-500">
             {recentSources.map((source) => (
@@ -461,10 +489,10 @@ export default async function DashboardPage({
         )}
         <details className="mt-1.5">
           <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800">
-            전체 출처 보기 ({sources.length}개)
+            전체 참고자료 보기 ({sources.length}개)
           </summary>
           {sources.length === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">아직 등록된 출처가 없습니다.</p>
+            <p className="mt-2 text-xs text-zinc-500">콘텐츠의 근거로 사용할 참고자료를 추가해 주세요.</p>
           ) : (
             <ul className="mt-3 flex flex-col gap-2">
               {sources.map((source, index) => (
@@ -485,11 +513,19 @@ export default async function DashboardPage({
                   {source.summary && (
                     <p className="mt-1 line-clamp-2 break-keep text-xs leading-relaxed text-zinc-600">{source.summary}</p>
                   )}
+                  {/* PRODUCT-01G 섹션 10/30: fetchError/summaryError는
+                      내부 수집기가 그대로 저장한 raw 오류 텍스트일 수
+                      있다 — 사용자에게 보이기 직전에만 친화 문구로
+                      바꾼다(DB 값 자체는 바꾸지 않는다). */}
                   {source.fetchStatus === "failed" && source.fetchError && (
-                    <p className="mt-1 text-xs text-red-600">수집 오류: {source.fetchError}</p>
+                    <p className="mt-1 text-xs text-red-600">
+                      수집 오류: {describeUnexpectedError(source.fetchError, "이 참고자료를 불러오지 못했습니다.").userMessage}
+                    </p>
                   )}
                   {source.summaryStatus === "failed" && source.summaryError && (
-                    <p className="mt-0.5 text-xs text-orange-600">요약 오류: {source.summaryError}</p>
+                    <p className="mt-0.5 text-xs text-orange-600">
+                      요약 오류: {describeUnexpectedError(source.summaryError, "이 참고자료를 요약하지 못했습니다.").userMessage}
+                    </p>
                   )}
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     {source.url && (
@@ -548,7 +584,7 @@ export default async function DashboardPage({
     >
       <h2 className="text-sm font-semibold text-zinc-700">마스터 원고</h2>
       <p className="mt-1 break-keep text-xs text-zinc-500">
-        출처를 바탕으로 모든 플랫폼 글의 기준이 되는 마스터 원고를 만듭니다. 이 원고는 그대로 게시하지 않고, 이후 각
+        참고자료를 바탕으로 모든 플랫폼 글의 기준이 되는 마스터 원고를 만듭니다. 이 원고는 그대로 게시하지 않고, 이후 각
         플랫폼에 맞게 변환됩니다.
       </p>
 
@@ -558,11 +594,11 @@ export default async function DashboardPage({
           선택하게 안내만 한다. */}
       {Boolean(selectedTheme?.metadata?.needsMasterManuscriptRefresh) && selectedTheme && (
         <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-          <p className="font-medium">새 출처가 추가되었습니다.</p>
+          <p className="font-medium">새 참고자료가 추가되었습니다.</p>
           <p className="mt-1 break-keep">기존 마스터 원고에 새 자료를 반영할지 확인하세요.</p>
           {typeof selectedTheme.metadata?.lastCrossDayAddedSourceCount === "number" && (
             <p className="mt-1 break-keep text-blue-700">
-              추가된 출처: {selectedTheme.metadata?.lastCrossDayAddedSourceCount as number}개
+              추가된 참고자료: {selectedTheme.metadata?.lastCrossDayAddedSourceCount as number}개
             </p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
@@ -586,7 +622,7 @@ export default async function DashboardPage({
                 변경 내용 보기
               </summary>
               <p className="mt-1 max-w-xs break-keep text-blue-700">
-                아래 &ldquo;등록된 출처&rdquo; 목록에서 최근 추가된 출처를 확인할 수 있습니다.
+                아래 &ldquo;등록된 참고자료&rdquo; 목록에서 최근 추가된 참고자료를 확인할 수 있습니다.
               </p>
             </details>
           </div>
@@ -598,7 +634,7 @@ export default async function DashboardPage({
           이 확인 배너를 먼저 보여준다. */}
       {showRegenerateConfirm && (
         <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">이미 이 테마로 생성된 마스터 원고가 있습니다.</p>
+          <p className="font-medium">이미 이 주제로 생성된 마스터 원고가 있습니다.</p>
           <p className="mt-1 break-keep">
             현재 원고: <span className="font-medium">{existingModeLabel ?? "알 수 없음"}</span> · 선택한 생성 방향:{" "}
             <span className="font-medium">{pendingModeLabel}</span>
@@ -658,7 +694,7 @@ export default async function DashboardPage({
                     <span className="font-medium text-zinc-800">{getMasterManuscriptDirectionLabel(direction)}</span>
                     <span className="block text-xs text-zinc-500">
                       {direction === AUTO_MASTER_MANUSCRIPT_DIRECTION
-                        ? "테마와 출처를 보고 가장 적합한 방향을 시스템이 고릅니다."
+                        ? "주제와 참고자료를 보고 가장 적합한 방향을 시스템이 고릅니다."
                         : ARTICLE_MODE_CONFIGS[direction].description}
                     </span>
                   </span>
@@ -672,7 +708,7 @@ export default async function DashboardPage({
               disabled={sources.length < MIN_SOURCE_COUNT}
               title={
                 sources.length < MIN_SOURCE_COUNT
-                  ? `출처가 부족합니다 (${sources.length}/${MIN_SOURCE_COUNT}개 등록됨).`
+                  ? `참고자료가 부족합니다 (${sources.length}/${MIN_SOURCE_COUNT}개 등록됨).`
                   : undefined
               }
               className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500"
@@ -684,7 +720,7 @@ export default async function DashboardPage({
                 알려준다. */}
             {sources.length < MIN_SOURCE_COUNT && (
               <p className="mt-1 text-xs text-amber-600">
-                출처가 부족합니다 ({sources.length}/{MIN_SOURCE_COUNT}개 등록됨) — 출처를 더 등록해야 마스터 원고를
+                참고자료가 부족합니다 ({sources.length}/{MIN_SOURCE_COUNT}개 등록됨) — 참고자료를 더 등록해야 마스터 원고를
                 만들 수 있습니다.
               </p>
             )}
@@ -734,7 +770,7 @@ export default async function DashboardPage({
                       <span className="font-medium text-zinc-800">{getMasterManuscriptDirectionLabel(direction)}</span>
                       <span className="block text-xs text-zinc-500">
                         {direction === AUTO_MASTER_MANUSCRIPT_DIRECTION
-                          ? "테마와 출처를 보고 가장 적합한 방향을 시스템이 고릅니다."
+                          ? "주제와 참고자료를 보고 가장 적합한 방향을 시스템이 고릅니다."
                           : ARTICLE_MODE_CONFIGS[direction].description}
                       </span>
                     </span>
@@ -774,7 +810,15 @@ export default async function DashboardPage({
       {!article ? (
         <p className="mt-2 text-xs text-zinc-500">먼저 마스터 원고를 만들어야 플랫폼별 글을 만들 수 있습니다.</p>
       ) : (
+        // PRODUCT-01B: "카드별 글 생성하기"(플랫폼 1개씩)와 "여러 플랫폼
+        // 한 번에 선택해 생성"이 같은 화면에 동시에 보여 primary action이
+        // 충돌해 보일 수 있다는 지적을 반영 — 기능은 그대로 두고, 둘이
+        // 서로 다른 범위(1개 vs 여러 개)의 선택지임을 안내 문구로
+        // 명확히 한다.
         <>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            플랫폼마다 카드에서 하나씩 만들거나, 여러 플랫폼을 한 번에 만들 수 있습니다 — 둘 다 같은 기능입니다.
+          </p>
           {/* Phase 3-23-2: 대시보드에서 실행한 생성 결과를 대시보드
               안에서 바로 확인할 수 있게, 결과 메시지를 토스트뿐 아니라
               이 섹션에도 그대로 남겨둔다(새로고침해도 토스트처럼
@@ -801,6 +845,9 @@ export default async function DashboardPage({
                     </span>
                   )}
                 </div>
+                {/* PRODUCT-01E 섹션 11: 플랫폼 카드에 어댑터 이름 대신 간단한
+                    목적 설명 한 줄을 보여준다. */}
+                <p className="mt-0.5 text-zinc-400">{PLATFORM_PURPOSE_LABELS[card.platform]}</p>
                 <p className="mt-1.5">
                   <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${card.toneClass}`}>
                     상태: {card.statusLabel}
@@ -906,16 +953,30 @@ export default async function DashboardPage({
             }
           />
           {/* 항상 보이는 버튼은 "자동 테마 찾기"/"기사 목록" + 대시보드 메뉴
-              뿐이다 — 나머지(콘텐츠/블로그/리라이트/성과/운영 설정)는
-              드롭다운 메뉴 안에서 확인한다(Phase 1-22). */}
+              뿐이다 — 나머지(콘텐츠/블로그/리라이트/성과/관리자·고급)는
+              드롭다운 메뉴 안에서 확인한다(Phase 1-22, PRODUCT-01B에서
+              관리자/고급 그룹으로 재구성). */}
           <DashboardTopNav active={null} />
         </header>
 
         <TransientNotice message={deleteMessage} variant="success" />
-        <TransientNotice message={deleteError} variant="error" />
+        <TransientNotice message={friendlyDeleteError} variant="error" />
         <TransientNotice message={generationSuccessMessage} variant="success" />
-        <TransientNotice message={generationError} variant="error" />
+        <TransientNotice message={friendlyGenerationError} variant="error" />
         <TransientNotice message={platformGenerationMessage} variant="success" />
+
+        {/* PRODUCT-01E 섹션 25: 콘텐츠 생성 서비스 준비 상태가 정상이 아니면
+            안내만 하고, 아래 생성 폼/버튼은 막지 않는다(실제로 눌러보면
+            기존 에러 배너가 이유를 알려준다) — 사용자가 고칠 수 없는 기술
+            설정을 여기서 직접 요구하지 않는다. */}
+        {contentReadiness.canCreateContent.status !== "available" && (
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            콘텐츠 생성 준비 상태를 확인해 주세요.{" "}
+            <Link href="/dashboard/settings" className="font-medium text-amber-900 underline hover:no-underline">
+              설정에서 확인하기
+            </Link>
+          </div>
+        )}
 
         {/*
           Phase 1-23: "선택한 테마 중심 작업형 대시보드"로 재구성.
@@ -930,8 +991,8 @@ export default async function DashboardPage({
           <aside className="flex flex-col gap-6">
             <details className="group rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
               <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
-                <span className="group-open:hidden">+ 새 테마</span>
-                <span className="hidden group-open:inline">새 테마 입력 접기</span>
+                <span className="group-open:hidden">+ 새 주제</span>
+                <span className="hidden group-open:inline">새 주제 입력 접기</span>
               </summary>
               <form action={createTheme} className="mt-3 flex flex-col gap-2">
                 <label className="flex flex-col gap-1 text-xs text-zinc-600">
@@ -975,7 +1036,7 @@ export default async function DashboardPage({
                   type="submit"
                   className="mt-1 rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
                 >
-                  테마 생성
+                  주제 만들기
                 </button>
               </form>
             </details>
@@ -985,7 +1046,7 @@ export default async function DashboardPage({
               tabIndex={-1}
               className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-indigo-500"
             >
-              <h2 className="text-sm font-semibold text-zinc-700">테마 목록</h2>
+              <h2 className="text-sm font-semibold text-zinc-700">주제 목록</h2>
               <div className="mt-2">
                 <ThemeSearchList
                   items={themeListEntries}
@@ -999,18 +1060,33 @@ export default async function DashboardPage({
           {/* 우측: 선택된 테마 작업 영역 */}
           <main className="flex flex-col gap-6">
             {!selectedTheme ? (
-              <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">
-                {/* Phase 3-23-2: "왼쪽에서"는 데스크톱 grid 레이아웃에서만
-                    맞는 표현이다 — 모바일에서는 flex-col-reverse로 테마
-                    목록/생성 폼이 화면 맨 아래로 밀리므로, 방향에 의존하지
-                    않는 중립적인 문구로 바꾼다. */}
-                아직 선택된 테마가 없습니다. 테마 목록에서 기존 테마를 선택하거나 새 테마를 추가하세요.
-                <div className="mt-3">
+              // PRODUCT-01D: themes.length === 0(아직 만든 테마가 하나도
+              // 없음)를 "첫 사용" 판단 기준으로 그대로 재사용한다 — 새
+              // DB 컬럼/쿼리를 추가하지 않는다(섹션 7). 기존에 있던
+              // "선택된 테마 없음" 빈 화면을 제품형 welcome 문구로
+              // 보강한다 — 진입점(href="#theme-list")과 실제 생성 폼은
+              // 전혀 바꾸지 않았다(가짜 wizard route 금지, 섹션 11).
+              <section
+                data-testid="dashboard-welcome-empty-state"
+                className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-600"
+              >
+                <p className="text-base font-semibold text-zinc-800">환영합니다.</p>
+                <p className="mt-2 break-keep">
+                  주제를 입력하고 참고자료를 확인하면 블로그와 SNS용 콘텐츠를 만들 수 있습니다.
+                </p>
+                <ol className="mx-auto mt-4 flex max-w-sm flex-col gap-1.5 text-left text-xs text-zinc-500">
+                  <li>1. 주제 선택</li>
+                  <li>2. 참고자료 확인</li>
+                  <li>3. 콘텐츠 생성</li>
+                  <li>4. 확인이 필요한 내용 검토</li>
+                  <li>5. 게시 준비</li>
+                </ol>
+                <div className="mt-4">
                   <a
                     href="#theme-list"
-                    className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+                    className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
                   >
-                    테마 생성/선택하기
+                    첫 콘텐츠 만들기
                   </a>
                 </div>
               </section>
@@ -1043,7 +1119,7 @@ export default async function DashboardPage({
                       이 정보는 바로 아래 "현재 상태 / 다음 작업" 카드가
                       workflowState 하나로 더 정확하게 알려준다. */}
                   <p className="mt-3 text-xs text-zinc-500">
-                    출처 {sources.length}개 등록됨 · {sourceStatus.isReady ? "조건 충족" : "출처 부족"}
+                    참고자료 {sources.length}개 등록됨 · {sourceStatus.isReady ? "조건 충족" : "참고자료 부족"}
                   </p>
                 </section>
 
@@ -1109,7 +1185,7 @@ export default async function DashboardPage({
                     여기 들어가므로 이 accordion은 항상 렌더링한다. */}
                 <details className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
                   <summary className="cursor-pointer text-sm font-semibold text-zinc-700">
-                    다른 단계 관리 보기 (출처 관리 · 출처 기반 원고 · 플랫폼별 글 생성)
+                    다른 단계 관리 보기 (참고자료 관리 · 참고자료 기반 원고 · 플랫폼별 글 생성)
                   </summary>
                   <div className="mt-3 flex flex-col gap-4">
                     {currentStepArea !== "source" && sourceManagementBlock}
@@ -1127,7 +1203,7 @@ export default async function DashboardPage({
                   </summary>
 
                   <div className="mt-3 flex flex-col gap-3">
-                    <ContractCheckResult label="출처 계약 (source.contract.yaml)" check={sourceCheck} />
+                    <ContractCheckResult label="참고자료 계약 (source.contract.yaml)" check={sourceCheck} />
                     <ContractCheckResult label="기사 계약 (article.contract.yaml)" check={articleCheck} />
                   </div>
 
@@ -1135,7 +1211,7 @@ export default async function DashboardPage({
                     <div className="mt-4">
                       <h3 className="text-xs font-semibold text-zinc-600">기사 본문 미리보기</h3>
                       <p className="mt-1 text-xs text-zinc-500">
-                        인용된 출처: {article.citedSourceIds.length}개 · 본문 길이: {article.content.length}자
+                        인용된 참고자료: {article.citedSourceIds.length}개 · 본문 길이: {article.content.length}자
                       </p>
                       <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-700">
                         {article.content}
